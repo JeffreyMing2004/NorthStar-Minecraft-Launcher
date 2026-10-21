@@ -5,7 +5,7 @@
   "identifier": "cool.cnb.jeffreyming.nscl",
   "build": { "beforeDevCommand": "npm run dev", "devUrl": "http://localhost:1420", "beforeBuildCommand": "npm run build", "frontendDist": "../dist" },
   "app": {
-    "windows": [{ "label": "main", "title": "NorthStar Minecraft Launcher", "width": 1200, "height": 760, "minWidth": 960, "minHeight": 640, "decorations": false }],
+    "windows": [],
     "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost" }
   },
   "bundle": { "active": false }
