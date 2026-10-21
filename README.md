@@ -19,6 +19,12 @@ NorthStar Minecraft Launcher，简称 **NSCL**，是一款使用 **Rust** 编写
 - **编写语言**：Rust
 - **UI 框架**：Tauri / egui（具体方案待确定）
 
+## UI 方案草案
+
+建议采用 **Tauri 2 + Vue 3 + TypeScript**，由 Rust 承担启动器核心逻辑。顶部左侧展示 `NorthStar Minecraft Launcher (v{version})` 或 `NSCL (v{version})`，中间依次为 **开始 / 账号 / 下载 / 设置 / 更多**，右侧为窗口控制按钮。
+
+首页以实例选择和启动游戏为主要操作，右侧提供账号摘要与角色皮肤预览。详细的框架取舍、页面职责、布局及交互状态见 [UI 方案草案](docs/ui-design.md)。此方案尚未实现，最终技术选型待确认。
+
 ## 规划功能
 
 以下为项目计划支持的功能，不代表当前已实现。
