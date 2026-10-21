@@ -39,7 +39,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     launch.add_space(10.0);
     app::body(
         &mut launch,
-        if app.service.installed.is_empty() {
+        if app.service.instances.is_empty() {
             "安装第一个 Minecraft 实例，让冒险拥有自己的起点。"
         } else {
             "选择已安装版本，开启你的下一段旅程。"
@@ -57,7 +57,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         6.0,
         Color32::from_rgb(0x7e, 0xa4, 0xba),
     );
-    if app.service.installed.is_empty() {
+    if app.service.instances.is_empty() {
         p.text(
             instance.min + Vec2::new(50.0, 28.0),
             egui::Align2::LEFT_CENTER,
@@ -75,24 +75,53 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     } else {
         let mut selection =
             launch.new_child(UiBuilder::new().max_rect(instance.shrink2(Vec2::new(50.0, 14.0))));
+        let previous = app.service.selected.clone();
+        let selected_name = app
+            .service
+            .instances
+            .iter()
+            .find(|i| i.id == app.service.selected)
+            .map(|i| i.name.as_str())
+            .unwrap_or("选择实例");
         egui::ComboBox::from_id_salt("installed-version")
             .width(selection.available_width())
-            .selected_text(&app.service.selected)
+            .selected_text(selected_name)
             .show_ui(&mut selection, |ui| {
-                for version in &app.service.installed {
+                for instance in &app.service.instances {
                     ui.selectable_value(
                         &mut app.service.selected,
-                        version.id.clone(),
-                        format!("Minecraft {} · Java {}", version.id, version.java_major),
+                        instance.id.clone(),
+                        format!("{} · {}", instance.name, instance.version_id),
                     );
                 }
             });
-        app::hint(&mut selection, "原版 · 独立游戏目录 · 离线测试启动");
+        if previous != app.service.selected {
+            app.remember_instance();
+        }
+        app::hint(
+            &mut selection,
+            if app.settings.online_mode {
+                "独立游戏目录 · Microsoft 正版身份"
+            } else {
+                "独立游戏目录 · 离线测试身份"
+            },
+        );
     }
     launch.add_space(20.0);
-    if app.service.installed.is_empty() {
-        if app::primary_button(&mut launch, "＋  安装 Minecraft     →") {
-            app.page = Page::Downloads;
+    if app.service.instances.is_empty() {
+        if app::primary_button(
+            &mut launch,
+            if app.service.installed.is_empty() {
+                "＋  安装 Minecraft     →"
+            } else {
+                "＋  创建游戏实例     →"
+            },
+        ) {
+            if app.service.installed.is_empty() {
+                app.page = Page::Downloads;
+            } else {
+                app.instance_manager = true;
+            }
         }
     } else {
         launch.horizontal(|ui| {
@@ -105,11 +134,11 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                         "启动游戏 →"
                     },
                 ) {
-                    app.service.launch(&app.settings, ui.ctx());
+                    app.service.launch(&app.settings, &app.accounts, ui.ctx());
                 }
             });
-            if ui.button("安装其他版本").clicked() {
-                app.page = Page::Downloads;
+            if ui.button("管理实例").clicked() {
+                app.instance_manager = true;
             }
             if app.service.last_log.is_some() && ui.button("查看日志").clicked() {
                 app.open_log();
@@ -124,7 +153,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         } else if !app.service.notice.is_empty() {
             &app.service.notice
         } else {
-            "设置中可选择 Java、游戏目录和下载镜像。"
+            "账号页可登录正版账号，设置中可配置 Java 与下载镜像。"
         },
     );
 
@@ -143,7 +172,16 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                 .color(theme::HEADING),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            app::badge_muted(ui, "未登录")
+            app::badge_muted(
+                ui,
+                if app.settings.online_mode && app.accounts.list.current().is_some() {
+                    "正版账号"
+                } else if app.settings.online_mode {
+                    "未登录"
+                } else {
+                    "离线测试"
+                },
+            )
         });
     });
     let preview = Rect::from_min_max(
@@ -186,10 +224,16 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     let mut account = aside.new_child(UiBuilder::new().max_rect(footer));
     account.spacing_mut().item_spacing.y = 0.0;
     account.label(
-        RichText::new("添加你的 Minecraft 账号")
-            .size(16.0)
-            .family(theme::bold_family())
-            .color(theme::HEADING),
+        RichText::new(
+            app.accounts
+                .list
+                .current()
+                .map(|a| a.name.as_str())
+                .unwrap_or("添加你的 Minecraft 账号"),
+        )
+        .size(16.0)
+        .family(theme::bold_family())
+        .color(theme::HEADING),
     );
     account.add_space(10.0);
     account.label(
@@ -369,7 +413,7 @@ fn page_card(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
     });
 }
 
-pub fn account(ui: &mut Ui) {
+pub fn account(ui: &mut Ui, app: &mut NsclApp) {
     page_card(ui, |ui| {
         app::eyebrow(ui, "ACCOUNT & SKIN");
         ui.add_space(12.0);
@@ -377,14 +421,131 @@ pub fn account(ui: &mut Ui) {
         ui.add_space(10.0);
         app::body(
             ui,
-            "Microsoft 账号登录、皮肤上传与 3D 预览将在后续版本提供。",
+            "使用 Microsoft 账号授权，验证 Minecraft Java Edition 身份。",
         );
-        empty_state(
+        ui.add_space(24.0);
+        let editable = !app.accounts.pending && !app.service.busy() && app.service.game.is_none();
+        ui.add_enabled_ui(editable, |ui| {
+            if app::primary_button(ui, "＋  登录 Microsoft 账号") {
+                app.accounts
+                    .login(&app.settings.microsoft_client_id, ui.ctx());
+            }
+        });
+        ui.add_space(12.0);
+        app::hint(
             ui,
-            "◎",
-            "还没有添加账号",
-            "认证服务尚未接入，当前不会收集账号或密码。",
-            Some("Microsoft 登录 · 开发中"),
+            "密码只在 Microsoft 官方网页输入；启动器将刷新令牌保存在系统凭据库。皮肤管理与 3D 预览仍在开发中。",
+        );
+        if app.accounts.pending {
+            ui.add_space(20.0);
+            if let Some(prompt) = &app.accounts.prompt {
+                egui::Frame::NONE
+                    .fill(theme::TOPBAR_BG)
+                    .corner_radius(10.0)
+                    .inner_margin(20)
+                    .show(ui, |ui| {
+                        app::body(ui, "在 Microsoft 页面输入以下代码：");
+                        ui.add_space(10.0);
+                        ui.label(
+                            RichText::new(&prompt.code)
+                                .size(28.0)
+                                .monospace()
+                                .color(theme::ACCENT),
+                        );
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            ui.hyperlink_to("打开 Microsoft 授权页面 ↗", &prompt.url);
+                            if ui.button("复制代码").clicked() {
+                                ui.ctx().copy_text(prompt.code.clone());
+                            }
+                        });
+                        let remaining = prompt
+                            .expires
+                            .saturating_duration_since(std::time::Instant::now())
+                            .as_secs();
+                        app::hint(
+                            ui,
+                            &format!("代码剩余有效期 {} 分 {} 秒", remaining / 60, remaining % 60),
+                        );
+                        ui.ctx()
+                            .request_repaint_after(std::time::Duration::from_secs(1));
+                    });
+            }
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                ui.spinner();
+                app::body(ui, &app.accounts.status);
+            });
+            ui.add_space(10.0);
+            if ui.button("取消登录").clicked() {
+                app.accounts.cancel();
+            }
+        } else if !app.accounts.status.is_empty() {
+            ui.add_space(16.0);
+            app::body(ui, &app.accounts.status);
+        }
+        ui.add_space(28.0);
+        let mut select = None;
+        let mut remove = None;
+        for account in app.accounts.list.accounts.clone() {
+            egui::Frame::NONE
+                .fill(theme::TOPBAR_BG)
+                .corner_radius(10.0)
+                .inner_margin(18)
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(&account.name)
+                                .size(17.0)
+                                .family(theme::bold_family()),
+                        );
+                        if app.settings.online_mode
+                            && app.accounts.list.selected.as_deref() == Some(&account.id)
+                        {
+                            app::badge_muted(ui, "当前账号");
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if download_button(ui, "移除", editable) {
+                                remove = Some(account.id.clone());
+                            }
+                            if download_button(ui, "使用此账号", editable) {
+                                select = Some(account.id.clone());
+                            }
+                        });
+                    });
+                    ui.add_space(10.0);
+                    app::hint(ui, &format!("UUID：{} · 启动时在线验证身份", account.id));
+                });
+            ui.add_space(12.0);
+        }
+        if let Some(id) = select
+            && let Err(error) = app.accounts.select(&id, &mut app.settings)
+        {
+            app.service.error = Some(error);
+        }
+        if let Some(id) = remove
+            && let Err(error) = app.accounts.remove(&id, &mut app.settings)
+        {
+            app.service.error = Some(error);
+        }
+        ui.add_space(16.0);
+        ui.add_enabled_ui(editable, |ui| {
+            let mut offline = !app.settings.online_mode;
+            if ui.checkbox(&mut offline, "使用离线测试身份").changed() {
+                if !offline && app.accounts.list.current().is_none() {
+                    app.service.error = Some("请先登录 Microsoft 账号。".into());
+                } else {
+                    app.settings.online_mode = !offline;
+                    if let Err(error) = app.accounts.save_mode(&app.settings) {
+                        app.service.error = Some(error);
+                    }
+                }
+            }
+        });
+        app::hint(
+            ui,
+            "离线测试玩家名和试玩选项可在设置中配置；正版启动验证失败时不会自动切换离线身份。",
         );
     });
 }
@@ -513,6 +674,47 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 ui,
                 "留空自动检测 JAVA_HOME、PATH 及常见安装目录，选择版本要求的 Java。",
             );
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if download_button(ui, "扫描 Java", !app.service.java_busy) {
+                    app.service.inspect_java(None, ui.ctx());
+                }
+                if download_button(
+                    ui,
+                    "检测当前路径",
+                    !app.service.java_busy && !app.settings.java_path.trim().is_empty(),
+                ) {
+                    app.service
+                        .inspect_java(Some(app.settings.java_path.clone()), ui.ctx());
+                }
+                if ui.button("恢复自动匹配").clicked() {
+                    app.settings.java_path.clear();
+                }
+            });
+            if !app.service.java_runtimes.is_empty() {
+                ui.add_space(12.0);
+                egui::ComboBox::from_id_salt("detected-java")
+                    .width(width)
+                    .selected_text("从检测到的 Java 中选择……")
+                    .show_ui(ui, |ui| {
+                        for runtime in &app.service.java_runtimes {
+                            if ui
+                                .selectable_label(
+                                    false,
+                                    format!("{}\n{}", runtime.label(), runtime.path.display()),
+                                )
+                                .clicked()
+                            {
+                                app.settings.java_path =
+                                    runtime.path.to_string_lossy().into_owned();
+                            }
+                        }
+                    });
+            }
+            if !app.service.java_status.is_empty() {
+                ui.add_space(10.0);
+                app::body(ui, &app.service.java_status);
+            }
             ui.add_space(24.0);
             ui.label(RichText::new("游戏内存（MiB）").size(14.0));
             ui.add_space(10.0);
@@ -568,6 +770,17 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 "镜像失败或校验不通过时回退到官方源",
             );
             ui.add_space(24.0);
+            settings_input(
+                ui,
+                "Microsoft 应用 Client ID",
+                &mut app.settings.microsoft_client_id,
+                width,
+            );
+            app::hint(
+                ui,
+                "NSCL 的公共应用标识；应用需允许个人账号、设备代码登录及 Minecraft Java API 访问。",
+            );
+            ui.add_space(24.0);
             settings_input(ui, "离线测试玩家名", &mut app.settings.player_name, width);
             app::hint(
                 ui,
@@ -585,6 +798,12 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                         return;
                     }
                     if let Err(error) =
+                        crate::accounts::validate_client_id(app.settings.microsoft_client_id.trim())
+                    {
+                        app.save_status = error;
+                        return;
+                    }
+                    if let Err(error) =
                         crate::minecraft::validate_player_name(&app.settings.player_name)
                     {
                         app.save_status = error;
@@ -592,6 +811,8 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     }
                     app.settings.memory = memory;
                     app.settings.java_path = app.settings.java_path.trim().to_owned();
+                    app.settings.microsoft_client_id =
+                        app.settings.microsoft_client_id.trim().to_owned();
                     app.save_status = match crate::store::save(&app.settings) {
                         Ok(()) => {
                             app.service.refresh(&app.settings);
@@ -611,6 +832,310 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
             }
         });
     });
+}
+
+pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
+    let root = crate::store::game_directory(&app.settings);
+    let editable = !app.service.busy() && app.service.game.is_none();
+    if app.instance_manager {
+        let mut open = true;
+        egui::Window::new("管理游戏实例")
+            .open(&mut open)
+            .default_width(760.0)
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 12.0;
+                app::body(
+                    ui,
+                    "每个实例拥有独立存档与配置，同一版本共享客户端、资源和依赖文件。",
+                );
+                if !editable {
+                    app::hint(ui, "游戏或任务运行中，实例配置暂时锁定。");
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("刷新列表").clicked() {
+                        app.service.refresh(&app.settings);
+                    }
+                    if ui.button("安装其他版本").clicked() {
+                        app.page = Page::Downloads;
+                        app.instance_manager = false;
+                    }
+                });
+                egui::ScrollArea::vertical()
+                    .id_salt("instance-manager")
+                    .max_height(330.0)
+                    .show(ui, |ui| {
+                        for instance in app.service.instances.clone() {
+                            egui::Frame::NONE
+                                .fill(theme::TOPBAR_BG)
+                                .corner_radius(8.0)
+                                .inner_margin(14)
+                                .show(ui, |ui| {
+                                    ui.set_min_width(660.0_f32.min(ui.available_width()));
+                                    ui.horizontal_wrapped(|ui| {
+                                        if ui
+                                            .selectable_label(
+                                                app.service.selected == instance.id,
+                                                &instance.name,
+                                            )
+                                            .clicked()
+                                            && editable
+                                        {
+                                            app.service.selected = instance.id.clone();
+                                            app.remember_instance();
+                                        }
+                                        ui.label(
+                                            RichText::new(format!("MC {}", instance.version_id))
+                                                .color(theme::MUTED),
+                                        );
+                                        ui.add_enabled_ui(editable, |ui| {
+                                            if ui.button("配置").clicked() {
+                                                app.instance_memory = instance
+                                                    .memory
+                                                    .map(|m| m.to_string())
+                                                    .unwrap_or_else(|| {
+                                                        app.settings.memory.to_string()
+                                                    });
+                                                app.instance_edit = Some(instance.clone());
+                                            }
+                                            if ui.button("归档").clicked() {
+                                                app.archive_confirm = Some(instance.clone());
+                                            }
+                                        });
+                                        if ui.button("打开目录").clicked() {
+                                            match instance.directory(&root).and_then(|path| {
+                                                std::fs::create_dir_all(&path)
+                                                    .map_err(|e| e.to_string())?;
+                                                open::that_detached(path).map_err(|e| e.to_string())
+                                            }) {
+                                                Ok(()) => {}
+                                                Err(error) => app.service.error = Some(error),
+                                            }
+                                        }
+                                    });
+                                    app::hint(
+                                        ui,
+                                        &format!(
+                                            "Java：{} · 内存：{}",
+                                            instance
+                                                .java_path
+                                                .as_deref()
+                                                .map(|p| if p.is_empty() {
+                                                    "自动匹配"
+                                                } else {
+                                                    p
+                                                })
+                                                .unwrap_or("跟随全局"),
+                                            instance
+                                                .memory
+                                                .map(|m| format!("{m} MiB"))
+                                                .unwrap_or_else(|| "跟随全局".into())
+                                        ),
+                                    );
+                                });
+                        }
+                        if app.service.instances.is_empty() {
+                            app::body(ui, "暂无实例，请先安装客户端，或使用已安装版本创建实例。");
+                        }
+                        egui::CollapsingHeader::new("已归档实例").show(ui, |ui| {
+                            for (entry, instance) in crate::instances::archived(&root) {
+                                ui.horizontal(|ui| {
+                                    ui.label(format!(
+                                        "{} · {}",
+                                        instance.name, instance.version_id
+                                    ));
+                                    if ui
+                                        .add_enabled(editable, egui::Button::new("恢复"))
+                                        .clicked()
+                                    {
+                                        match crate::instances::restore(&root, &entry) {
+                                            Ok(instance) => {
+                                                app.service.refresh(&app.settings);
+                                                app.service.selected = instance.id;
+                                                app.remember_instance();
+                                                app.instance_status = "实例已恢复。".into();
+                                            }
+                                            Err(error) => app.service.error = Some(error),
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    });
+                ui.separator();
+                ui.add_enabled_ui(editable && !app.service.installed.is_empty(), |ui| {
+                    app::heading(ui, "创建空白实例");
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut app.new_instance_name)
+                                .hint_text("实例名称，例如 生存世界")
+                                .desired_width(240.0),
+                        );
+                        if !app
+                            .service
+                            .installed
+                            .iter()
+                            .any(|v| v.id == app.new_instance_version)
+                        {
+                            app.new_instance_version = app
+                                .service
+                                .installed
+                                .first()
+                                .map(|v| v.id.clone())
+                                .unwrap_or_default();
+                        }
+                        egui::ComboBox::from_id_salt("new-instance-version")
+                            .selected_text(&app.new_instance_version)
+                            .show_ui(ui, |ui| {
+                                for version in &app.service.installed {
+                                    ui.selectable_value(
+                                        &mut app.new_instance_version,
+                                        version.id.clone(),
+                                        &version.id,
+                                    );
+                                }
+                            });
+                        if ui.button("创建").clicked() {
+                            match crate::instances::create(
+                                &root,
+                                &app.new_instance_version,
+                                &app.new_instance_name,
+                            ) {
+                                Ok(instance) => {
+                                    app.service.refresh(&app.settings);
+                                    app.service.selected = instance.id;
+                                    app.remember_instance();
+                                    app.new_instance_name.clear();
+                                    app.instance_status = "已创建独立实例，可在开始页启动。".into();
+                                }
+                                Err(error) => app.service.error = Some(error),
+                            }
+                        }
+                    });
+                });
+                if !app.instance_status.is_empty() {
+                    app::body(ui, &app.instance_status);
+                }
+            });
+        app.instance_manager &= open;
+    }
+    if let Some(mut instance) = app.instance_edit.take() {
+        let mut open = true;
+        let mut saved = false;
+        egui::Window::new("实例配置")
+            .open(&mut open)
+            .default_width(530.0)
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 12.0;
+                ui.add_enabled_ui(editable, |ui| {
+                    ui.label(format!(
+                        "Minecraft {} · Java {}",
+                        instance.version_id,
+                        app.service
+                            .installed
+                            .iter()
+                            .find(|v| v.id == instance.version_id)
+                            .map(|v| v.java_major)
+                            .unwrap_or(0)
+                    ));
+                    ui.label("实例名称");
+                    ui.text_edit_singleline(&mut instance.name);
+                    let mut override_java = instance.java_path.is_some();
+                    if ui
+                        .checkbox(&mut override_java, "为此实例单独选择 Java")
+                        .changed()
+                    {
+                        instance.java_path = override_java.then(String::new);
+                    }
+                    if let Some(path) = &mut instance.java_path {
+                        ui.add(
+                            egui::TextEdit::singleline(path)
+                                .hint_text("留空自动匹配 Java；否则填写可执行文件或安装目录"),
+                        );
+                        egui::ComboBox::from_id_salt("instance-java")
+                            .selected_text("使用已检测的 Java……")
+                            .show_ui(ui, |ui| {
+                                for runtime in &app.service.java_runtimes {
+                                    if ui.selectable_label(false, runtime.label()).clicked() {
+                                        *path = runtime.path.to_string_lossy().into_owned();
+                                    }
+                                }
+                            });
+                        if ui.button("扫描 Java").clicked() {
+                            app.service.inspect_java(None, ui.ctx());
+                        }
+                    }
+                    let mut override_memory = instance.memory.is_some();
+                    if ui
+                        .checkbox(&mut override_memory, "为此实例单独分配内存")
+                        .changed()
+                    {
+                        instance.memory = override_memory.then_some(app.settings.memory);
+                    }
+                    if instance.memory.is_some() {
+                        ui.horizontal(|ui| {
+                            ui.text_edit_singleline(&mut app.instance_memory);
+                            ui.label("MiB（1024–32768）");
+                        });
+                    }
+                    if ui.button("保存实例配置").clicked() {
+                        let result = (|| {
+                            if instance.memory.is_some() {
+                                instance.memory = Some(
+                                    app.instance_memory
+                                        .trim()
+                                        .parse()
+                                        .map_err(|_| "内存必须为整数。")?,
+                                );
+                            }
+                            instance.name = instance.name.trim().to_owned();
+                            if let Some(path) = &mut instance.java_path {
+                                *path = path.trim().to_owned();
+                            }
+                            crate::instances::save(&root, &instance)
+                        })();
+                        match result {
+                            Ok(()) => {
+                                saved = true;
+                                app.service.refresh(&app.settings);
+                                app.instance_status = "实例配置已保存。".into();
+                            }
+                            Err(error) => app.service.error = Some(error),
+                        }
+                    }
+                });
+            });
+        if open && !saved {
+            app.instance_edit = Some(instance);
+        }
+    }
+    if let Some(instance) = app.archive_confirm.clone() {
+        egui::Window::new("归档实例确认")
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!("将「{}」移入归档？", instance.name));
+                ui.label("存档、模组和配置会一起保留，可在管理实例的归档列表中恢复。");
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(editable, egui::Button::new("确认归档"))
+                        .clicked()
+                    {
+                        match crate::instances::archive(&root, &instance) {
+                            Ok(_) => {
+                                app.service.refresh(&app.settings);
+                                app.remember_instance();
+                                app.instance_status = "实例已归档，存档和配置均已保留。".into();
+                            }
+                            Err(error) => app.service.error = Some(error),
+                        }
+                        app.archive_confirm = None;
+                    }
+                    if ui.button("取消").clicked() {
+                        app.archive_confirm = None;
+                    }
+                });
+            });
+    }
 }
 
 fn settings_input(ui: &mut Ui, label: &str, value: &mut String, width: f32) {
@@ -930,7 +1455,7 @@ pub fn about(ui: &mut Ui) {
         ui.add_space(10.0);
         app::body(
             ui,
-            "已提供原版版本列表、镜像切换、文件校验与修复、独立实例安装、Java 检测和离线测试启动。账号认证、模组下载及皮肤渲染尚未实现。",
+            "已提供原版安装启动、Microsoft 正版登录与续期、多账号切换、Java 检测和实例独立配置及归档恢复。模组下载、皮肤修改与渲染尚未实现。",
         );
         ui.add_space(22.0);
         ui.label(

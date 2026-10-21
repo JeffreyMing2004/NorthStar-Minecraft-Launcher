@@ -46,6 +46,14 @@ pub struct NsclApp {
     pub save_status: String,
     pub service: crate::service::GameService,
     pub log_view: Option<String>,
+    pub accounts: crate::account_service::AccountService,
+    pub instance_manager: bool,
+    pub instance_edit: Option<crate::instances::Instance>,
+    pub instance_memory: String,
+    pub new_instance_name: String,
+    pub new_instance_version: String,
+    pub archive_confirm: Option<crate::instances::Instance>,
+    pub instance_status: String,
     #[cfg(debug_assertions)]
     pub screenshot_pending: bool,
 }
@@ -70,6 +78,14 @@ impl NsclApp {
             save_status: load_error.unwrap_or_default(),
             service,
             log_view: None,
+            accounts: crate::account_service::AccountService::new(),
+            instance_manager: false,
+            instance_edit: None,
+            instance_memory: String::new(),
+            new_instance_name: String::new(),
+            new_instance_version: String::new(),
+            archive_confirm: None,
+            instance_status: String::new(),
             #[cfg(debug_assertions)]
             screenshot_pending: std::env::var_os("NSCL_SCREENSHOT").is_some(),
         }
@@ -85,7 +101,19 @@ impl eframe::App for NsclApp {
         {
             self.screenshot_pending = true;
         }
+        let previous_instance = self.service.selected.clone();
         self.service.poll(&self.settings);
+        if previous_instance != self.service.selected {
+            self.remember_instance();
+        }
+        self.accounts.poll(&mut self.settings);
+        if let Some(session) = self.service.renewed_session.take() {
+            self.accounts.accept(session);
+        }
+        if let Some(error) = self.accounts.error.take() {
+            self.service.error = Some(error);
+        }
+        pages::instance_windows(&ctx, self);
         if let Some(text) = &self.log_view {
             let mut open = true;
             let mut refresh = false;
@@ -205,7 +233,7 @@ impl eframe::App for NsclApp {
                     .auto_shrink([false, false])
                     .show(ui, |ui| match self.page {
                         Page::Home => pages::home(ui, self),
-                        Page::Account => pages::account(ui),
+                        Page::Account => pages::account(ui, self),
                         Page::Downloads => unreachable!(),
                         Page::Settings => pages::settings(ui, self),
                         Page::About => pages::about(ui),
@@ -215,6 +243,14 @@ impl eframe::App for NsclApp {
 }
 
 impl NsclApp {
+    pub fn remember_instance(&mut self) {
+        self.settings.selected_instance = self.service.selected.clone();
+        let (mut saved, _) = crate::store::load();
+        saved.selected_instance = self.service.selected.clone();
+        if let Err(error) = crate::store::save(&saved) {
+            self.service.error = Some(error);
+        }
+    }
     pub fn open_log(&mut self) {
         use std::io::{Read, Seek, SeekFrom};
         let Some(path) = &self.service.last_log else {

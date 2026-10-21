@@ -489,6 +489,82 @@ fn java_versions_and_player_names_are_validated() {
 }
 
 #[test]
+fn online_arguments_use_msa_identity_and_the_selected_instance_directory() {
+    let fixture = Fixture::new();
+    let mut version = fixture.version.clone();
+    version.arguments.as_mut().unwrap().game.extend(
+        [
+            "--accessToken",
+            "${auth_access_token}",
+            "--userType",
+            "${user_type}",
+            "--xuid",
+            "${auth_xuid}",
+            "--clientId",
+            "${clientid}",
+        ]
+        .into_iter()
+        .map(|s| Argument::Plain(s.into())),
+    );
+    let identity = LaunchIdentity {
+        name: "OnlinePlayer".into(),
+        uuid: "0123456789abcdef0123456789abcdef".into(),
+        access_token: "PRIVATE-TEST-TOKEN".into(),
+        xuid: "12345".into(),
+        client_id: crate::accounts::DEFAULT_CLIENT_ID.into(),
+        online: true,
+    };
+    let settings = crate::store::Settings {
+        player_name: "OfflineName".into(),
+        demo_mode: true,
+        memory: 2048,
+        ..Default::default()
+    };
+    let directory = fixture.root.join("instances/custom survival");
+    let arguments = launch_arguments_for(
+        &fixture.root,
+        &version,
+        &fixture.index,
+        &[fixture.root.join("client.jar")],
+        &fixture.root.join("natives"),
+        &Platform::current(),
+        LaunchContext {
+            settings: &settings,
+            identity: &identity,
+            game_directory: &directory,
+        },
+    )
+    .unwrap();
+    for value in [
+        "OnlinePlayer",
+        "PRIVATE-TEST-TOKEN",
+        "msa",
+        "12345",
+        crate::accounts::DEFAULT_CLIENT_ID,
+        "-Xmx2048M",
+    ] {
+        assert!(arguments.iter().any(|a| a == value));
+    }
+    assert!(
+        arguments
+            .iter()
+            .any(|a| std::path::Path::new(a) == directory)
+    );
+    assert!(
+        !arguments
+            .iter()
+            .any(|a| a == "--demo" || a == "OfflineName")
+    );
+    let plan = LaunchPlan {
+        java: "java".into(),
+        arguments,
+        game_directory: directory,
+        log_path: "log".into(),
+    };
+    assert!(!format!("{plan:?}").contains("PRIVATE-TEST-TOKEN"));
+}
+
+#[test]
 fn old_settings_migrate_without_losing_values() {
     let settings: crate::store::Settings =
         serde_json::from_str(r#"{"memory":2048,"java_path":"test-java"}"#).unwrap();

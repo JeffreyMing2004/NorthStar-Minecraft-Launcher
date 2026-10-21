@@ -13,6 +13,9 @@ pub struct Settings {
     pub source: crate::minecraft::Source,
     pub player_name: String,
     pub demo_mode: bool,
+    pub microsoft_client_id: String,
+    pub online_mode: bool,
+    pub selected_instance: String,
 }
 
 impl Default for Settings {
@@ -24,6 +27,9 @@ impl Default for Settings {
             source: crate::minecraft::Source::default(),
             player_name: "NSCLPlayer".into(),
             demo_mode: false,
+            microsoft_client_id: crate::accounts::DEFAULT_CLIENT_ID.into(),
+            online_mode: false,
+            selected_instance: String::new(),
         }
     }
 }
@@ -73,12 +79,30 @@ pub fn load() -> (Settings, Option<String>) {
 }
 
 pub fn save(settings: &Settings) -> Result<(), String> {
-    let path = settings_path();
+    write_json(&settings_path(), settings)
+}
+
+pub fn write_json(path: &std::path::Path, value: &impl Serialize) -> Result<(), String> {
     if let Some(dir) = path.parent()
         && let Err(e) = std::fs::create_dir_all(dir)
     {
         return Err(format!("保存失败：{e}"));
     }
-    let text = serde_json::to_string_pretty(settings).map_err(|e| format!("保存失败：{e}"))?;
-    std::fs::write(&path, text).map_err(|e| format!("保存失败：{e}"))
+    let text = serde_json::to_vec_pretty(value).map_err(|e| format!("保存失败：{e}"))?;
+    let temporary = path.with_file_name(format!(".nscl-{}.tmp", uuid::Uuid::new_v4().simple()));
+    let result = (|| {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        file.write_all(&text)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, path)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result.map_err(|e| format!("保存失败：{e}"))
 }

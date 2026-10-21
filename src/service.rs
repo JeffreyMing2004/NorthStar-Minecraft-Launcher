@@ -26,6 +26,9 @@ enum Event {
     Failed(String),
     GameStarted(u32, PathBuf),
     GameExited(std::result::Result<i32, String>),
+    Session(crate::accounts::Session),
+    Java(Vec<crate::java::JavaRuntime>),
+    JavaChecked(Result<crate::java::JavaRuntime, String>),
 }
 
 pub struct GameService {
@@ -40,6 +43,11 @@ pub struct GameService {
     pub task: Task,
     pub game: Option<(u32, PathBuf)>,
     pub last_log: Option<PathBuf>,
+    pub instances: Vec<crate::instances::Instance>,
+    pub renewed_session: Option<crate::accounts::Session>,
+    pub java_runtimes: Vec<crate::java::JavaRuntime>,
+    pub java_busy: bool,
+    pub java_status: String,
     versions_requested: bool,
     cancel: Arc<AtomicBool>,
     sender: Sender<Event>,
@@ -50,8 +58,11 @@ impl GameService {
     pub fn new(settings: &Settings) -> Self {
         let (sender, receiver) = mpsc::channel();
         let installed = minecraft::installed_versions(&store::game_directory(settings));
-        let selected = installed
-            .first()
+        let instances = crate::instances::list(&store::game_directory(settings));
+        let selected = instances
+            .iter()
+            .find(|i| i.id == settings.selected_instance)
+            .or_else(|| instances.first())
             .map(|version| version.id.clone())
             .unwrap_or_default();
         Self {
@@ -66,6 +77,11 @@ impl GameService {
             task: Task::Idle,
             game: None,
             last_log: None,
+            instances,
+            renewed_session: None,
+            java_runtimes: Vec::new(),
+            java_busy: false,
+            java_status: String::new(),
             versions_requested: false,
             cancel: Arc::new(AtomicBool::new(false)),
             sender,
@@ -83,9 +99,10 @@ impl GameService {
 
     pub fn refresh(&mut self, settings: &Settings) {
         self.installed = minecraft::installed_versions(&store::game_directory(settings));
-        if !self.installed.iter().any(|entry| entry.id == self.selected) {
+        self.instances = crate::instances::list(&store::game_directory(settings));
+        if !self.instances.iter().any(|entry| entry.id == self.selected) {
             self.selected = self
-                .installed
+                .instances
                 .first()
                 .map(|entry| entry.id.clone())
                 .unwrap_or_default();
@@ -115,6 +132,19 @@ impl GameService {
                 Event::Installed(version) => {
                     self.selected = version.id.clone();
                     self.refresh(settings);
+                    if !self.instances.iter().any(|i| i.version_id == version.id) {
+                        match crate::instances::create(
+                            &store::game_directory(settings),
+                            &version.id,
+                            &format!("Minecraft {}", version.id),
+                        ) {
+                            Ok(instance) => {
+                                self.selected = instance.id;
+                                self.refresh(settings);
+                            }
+                            Err(error) => self.error = Some(error),
+                        }
+                    }
                     self.task = Task::Idle;
                     self.notice = format!("Minecraft {} 安装完成，可在开始页启动。", version.id);
                 }
@@ -141,6 +171,23 @@ impl GameService {
                                 Some(format!("游戏异常退出，退出码 {code}。请查看启动日志。"))
                         }
                         Err(error) => self.error = Some(error),
+                    }
+                }
+                Event::Session(session) => self.renewed_session = Some(session),
+                Event::Java(runtimes) => {
+                    self.java_status = format!("检测到 {} 个 Java 运行环境。", runtimes.len());
+                    self.java_runtimes = runtimes;
+                    self.java_busy = false;
+                }
+                Event::JavaChecked(result) => {
+                    self.java_busy = false;
+                    match result {
+                        Ok(runtime) => {
+                            self.java_status = format!("检测通过：{}", runtime.label());
+                            self.java_runtimes.retain(|r| r.path != runtime.path);
+                            self.java_runtimes.push(runtime);
+                        }
+                        Err(error) => self.java_status = error,
                     }
                 }
             }
@@ -213,28 +260,115 @@ impl GameService {
         });
     }
 
-    pub fn launch(&mut self, settings: &Settings, ctx: &egui::Context) {
+    pub fn inspect_java(&mut self, path: Option<String>, ctx: &egui::Context) {
+        if self.java_busy {
+            return;
+        }
+        self.java_busy = true;
+        self.java_status = "正在检测 Java……".into();
+        let (sender, context) = (self.sender.clone(), ctx.clone());
+        std::thread::spawn(move || {
+            let event = match path {
+                Some(path) => Event::JavaChecked(crate::java::probe(std::path::Path::new(
+                    path.trim().trim_matches('"'),
+                ))),
+                None => Event::Java(crate::java::discover()),
+            };
+            send(&sender, &context, event);
+        });
+    }
+
+    pub fn launch(
+        &mut self,
+        settings: &Settings,
+        accounts: &crate::account_service::AccountService,
+        ctx: &egui::Context,
+    ) {
         if self.busy() || self.game.is_some() || self.selected.is_empty() {
             return;
         }
+        if accounts.pending {
+            self.error = Some("请先完成或取消账号登录。".into());
+            return;
+        }
+        let account = if settings.online_mode {
+            match accounts.launch_account() {
+                Some(account) => Some(account),
+                None => {
+                    self.error =
+                        Some("请先在账号页登录 Microsoft 账号，或明确选择离线测试身份。".into());
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+        let Some(instance) = self
+            .instances
+            .iter()
+            .find(|i| i.id == self.selected)
+            .cloned()
+        else {
+            self.error = Some("所选实例不存在，请刷新实例列表。".into());
+            return;
+        };
         self.begin(Task::Launch);
         self.progress.stage = "校验游戏文件、选择 Java 并准备启动".into();
         let root = store::game_directory(settings);
-        let id = self.selected.clone();
         let settings = settings.clone();
         let sender = self.sender.clone();
         let context = ctx.clone();
         std::thread::spawn(move || {
-            let plan = match minecraft::prepare_launch(&root, &id, &settings) {
-                Ok(plan) => plan,
-                Err(error) => {
-                    send(&sender, &context, Event::Failed(error));
-                    return;
+            let identity = match account {
+                Some((account, cached)) => {
+                    match crate::accounts::AuthClient::new().and_then(|client| {
+                        client.resume(
+                            &account,
+                            cached,
+                            &crate::accounts::SystemVault,
+                            &AtomicBool::new(false),
+                        )
+                    }) {
+                        Ok(session) => {
+                            let identity = minecraft::LaunchIdentity::microsoft(&session);
+                            send(&sender, &context, Event::Session(session));
+                            identity
+                        }
+                        Err(error) => {
+                            send(
+                                &sender,
+                                &context,
+                                Event::Failed(format!("正版身份验证失败：{error}")),
+                            );
+                            return;
+                        }
+                    }
                 }
+                None => minecraft::LaunchIdentity::offline(&settings.player_name),
             };
+            let plan =
+                match minecraft::prepare_instance_launch(&root, &instance, &settings, &identity) {
+                    Ok(plan) => plan,
+                    Err(error) => {
+                        send(&sender, &context, Event::Failed(error));
+                        return;
+                    }
+                };
             let mut started = false;
             let result = minecraft::launch(&plan, |pid, path| {
                 started = true;
+                let mut instance = instance.clone();
+                instance.last_played = Some(crate::accounts::now());
+                if let Err(error) = crate::instances::save(&root, &instance) {
+                    send(
+                        &sender,
+                        &context,
+                        Event::Progress(Progress {
+                            stage: format!("游戏已启动，实例记录保存失败：{error}"),
+                            ..Default::default()
+                        }),
+                    );
+                }
                 send(&sender, &context, Event::GameStarted(pid, path.to_owned()));
             });
             let event = if started {

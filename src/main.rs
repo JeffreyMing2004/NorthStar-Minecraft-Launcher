@@ -1,10 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod account_service;
 mod app;
 mod pages;
 mod service;
 mod theme;
-use nscl::{minecraft, store};
+use nscl::{accounts, instances, java, minecraft, store};
 
 use app::NsclApp;
 

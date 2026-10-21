@@ -15,7 +15,6 @@ use std::{
     process::Stdio,
 };
 
-#[derive(Debug)]
 pub struct LaunchPlan {
     pub java: PathBuf,
     pub arguments: Vec<String>,
@@ -23,9 +22,79 @@ pub struct LaunchPlan {
     pub log_path: PathBuf,
 }
 
+impl std::fmt::Debug for LaunchPlan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LaunchPlan")
+            .field("java", &self.java)
+            .field("game_directory", &self.game_directory)
+            .field("log_path", &self.log_path)
+            .field("arguments", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone)]
+pub struct LaunchIdentity {
+    pub name: String,
+    pub uuid: String,
+    pub access_token: String,
+    pub xuid: String,
+    pub client_id: String,
+    pub online: bool,
+}
+impl LaunchIdentity {
+    pub fn offline(name: &str) -> Self {
+        Self {
+            name: name.into(),
+            uuid: offline_uuid(name),
+            access_token: "0".into(),
+            xuid: String::new(),
+            client_id: String::new(),
+            online: false,
+        }
+    }
+    pub fn microsoft(session: &crate::accounts::Session) -> Self {
+        Self {
+            name: session.account.name.clone(),
+            uuid: session.account.id.clone(),
+            access_token: session.access_token.clone(),
+            xuid: session.account.xuid.clone(),
+            client_id: session.account.client_id.clone(),
+            online: true,
+        }
+    }
+}
+
 pub fn prepare_launch(root: &Path, id: &str, settings: &Settings) -> Result<LaunchPlan> {
+    prepare_instance_launch(
+        root,
+        &crate::instances::Instance {
+            id: id.into(),
+            name: id.into(),
+            version_id: id.into(),
+            ..Default::default()
+        },
+        settings,
+        &LaunchIdentity::offline(&settings.player_name),
+    )
+}
+
+pub fn prepare_instance_launch(
+    root: &Path,
+    instance: &crate::instances::Instance,
+    settings: &Settings,
+    identity: &LaunchIdentity,
+) -> Result<LaunchPlan> {
+    instance.validate()?;
+    let settings = instance.effective_settings(settings);
+    let id = instance.version_id.as_str();
     validate_id(id)?;
-    validate_player_name(&settings.player_name)?;
+    validate_player_name(&identity.name)?;
+    if !crate::accounts::valid_profile_id(&identity.uuid)
+        || (identity.online && (identity.access_token.is_empty() || identity.access_token == "0"))
+    {
+        return Err("启动身份无效，请重新登录。".into());
+    }
     if !(1024..=32768).contains(&settings.memory) {
         return Err("游戏内存必须为 1024–32768 MiB。".into());
     }
@@ -67,18 +136,22 @@ pub fn prepare_launch(root: &Path, id: &str, settings: &Settings) -> Result<Laun
     }
     let natives = extract_natives(&root, id, &platform, &files.natives, None)?;
     materialize_assets(&root, &version, &index, None)?;
-    let java = find_java(&settings.java_path, version.java_major())?;
-    let game_directory = root.join("instances").join(id);
+    let java = crate::java::find(&settings.java_path, version.java_major())?;
+    let game_directory = instance.directory(&root)?;
     fs::create_dir_all(game_directory.join("logs")).map_err(|e| e.to_string())?;
     let log_path = game_directory.join("logs/nscl-launch.log");
-    let arguments = launch_arguments(
+    let arguments = launch_arguments_for(
         &root,
         &version,
         &index,
         &files.classpath,
         &natives,
         &platform,
-        settings,
+        LaunchContext {
+            settings: &settings,
+            identity,
+            game_directory: &game_directory,
+        },
     )?;
     Ok(LaunchPlan {
         java,
@@ -139,6 +212,7 @@ pub fn offline_uuid(name: &str) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+#[cfg(test)]
 pub fn launch_arguments(
     root: &Path,
     version: &Version,
@@ -148,11 +222,44 @@ pub fn launch_arguments(
     platform: &Platform,
     settings: &Settings,
 ) -> Result<Vec<String>> {
+    launch_arguments_for(
+        root,
+        version,
+        index,
+        classpath,
+        natives,
+        platform,
+        LaunchContext {
+            settings,
+            identity: &LaunchIdentity::offline(&settings.player_name),
+            game_directory: &root.join("instances").join(&version.id),
+        },
+    )
+}
+
+pub(super) struct LaunchContext<'a> {
+    pub(super) settings: &'a Settings,
+    pub(super) identity: &'a LaunchIdentity,
+    pub(super) game_directory: &'a Path,
+}
+
+pub(super) fn launch_arguments_for(
+    root: &Path,
+    version: &Version,
+    index: &AssetIndex,
+    classpath: &[PathBuf],
+    natives: &Path,
+    platform: &Platform,
+    context: LaunchContext<'_>,
+) -> Result<Vec<String>> {
+    let settings = context.settings;
+    let identity = context.identity;
+    let demo = settings.demo_mode && !identity.online;
     let classpath = std::env::join_paths(classpath)
         .map_err(|e| format!("类路径包含非法分隔符：{e}"))?
         .to_string_lossy()
         .into_owned();
-    let game_dir = root.join("instances").join(&version.id);
+    let game_dir = context.game_directory;
     let assets = root.join("assets");
     let game_assets = if index.virtual_assets {
         assets.join("virtual").join(&version.asset_index.id)
@@ -160,21 +267,24 @@ pub fn launch_arguments(
         assets.clone()
     };
     let mut values = BTreeMap::from([
-        ("auth_player_name", settings.player_name.clone()),
+        ("auth_player_name", identity.name.clone()),
         ("version_name", version.id.clone()),
         ("game_directory", game_dir.to_string_lossy().into_owned()),
         ("assets_root", assets.to_string_lossy().into_owned()),
         ("game_assets", game_assets.to_string_lossy().into_owned()),
         ("assets_index_name", version.asset_index.id.clone()),
-        ("auth_uuid", offline_uuid(&settings.player_name)),
-        ("auth_access_token", "0".into()),
+        ("auth_uuid", identity.uuid.clone()),
+        ("auth_access_token", identity.access_token.clone()),
         (
             "auth_session",
-            format!("token:0:{}", offline_uuid(&settings.player_name)),
+            format!("token:{}:{}", identity.access_token, identity.uuid),
         ),
-        ("clientid", String::new()),
-        ("auth_xuid", String::new()),
-        ("user_type", "legacy".into()),
+        ("clientid", identity.client_id.clone()),
+        ("auth_xuid", identity.xuid.clone()),
+        (
+            "user_type",
+            if identity.online { "msa" } else { "legacy" }.into(),
+        ),
         ("version_type", version.kind.clone()),
         ("user_properties", "{}".into()),
         ("profile_properties", "{}".into()),
@@ -195,8 +305,8 @@ pub fn launch_arguments(
     ]);
     let (mut jvm, mut game) = if let Some(arguments) = &version.arguments {
         (
-            resolve_arguments(&arguments.jvm, platform, settings.demo_mode, &values)?,
-            resolve_arguments(&arguments.game, platform, settings.demo_mode, &values)?,
+            resolve_arguments(&arguments.jvm, platform, demo, &values)?,
+            resolve_arguments(&arguments.game, platform, demo, &values)?,
         )
     } else if let Some(arguments) = &version.legacy_arguments {
         let mut jvm = vec![
@@ -239,7 +349,7 @@ pub fn launch_arguments(
         jvm.push(format!("-D{property}={}", natives.display()));
     }
     jvm.push(version.main_class.clone());
-    if settings.demo_mode && !game.iter().any(|argument| argument == "--demo") {
+    if demo && !game.iter().any(|argument| argument == "--demo") {
         game.push("--demo".into());
     }
     jvm.extend(game);
@@ -286,113 +396,5 @@ fn substitute(value: &str, values: &BTreeMap<&str, String>) -> Result<String> {
         .into_owned())
 }
 
-pub fn java_major(output: &str) -> Option<u32> {
-    let regex = regex::Regex::new(
-        r#"(?:java\.version\s*=\s*|(?:openjdk|java) version ")(\d+)(?:\.(\d+))?"#,
-    )
-    .unwrap();
-    let capture = regex.captures(output)?;
-    let major = capture[1].parse::<u32>().ok()?;
-    if major == 1 {
-        capture.get(2)?.as_str().parse().ok()
-    } else {
-        Some(major)
-    }
-}
-
-pub fn find_java(configured: &str, required: u32) -> Result<PathBuf> {
-    let mut candidates = Vec::new();
-    let explicit = !configured.trim().is_empty();
-    if explicit {
-        candidates.push(PathBuf::from(configured.trim().trim_matches('"')));
-    } else {
-        if let Some(home) = std::env::var_os("JAVA_HOME") {
-            candidates.push(PathBuf::from(home).join("bin").join(java_executable()));
-        }
-        if let Some(path) = std::env::var_os("PATH") {
-            for dir in std::env::split_paths(&path) {
-                candidates.push(dir.join(java_executable()));
-            }
-        }
-        let roots = if cfg!(windows) {
-            let base = PathBuf::from(
-                std::env::var_os("ProgramFiles").unwrap_or_else(|| r"C:\Program Files".into()),
-            );
-            vec![
-                base.join("Java"),
-                base.join("Eclipse Adoptium"),
-                base.join("Microsoft"),
-                base.join("Zulu"),
-            ]
-        } else if cfg!(target_os = "macos") {
-            vec![PathBuf::from("/Library/Java/JavaVirtualMachines")]
-        } else {
-            vec![PathBuf::from("/usr/lib/jvm")]
-        };
-        for root in roots {
-            if let Ok(entries) = fs::read_dir(root) {
-                for entry in entries.flatten() {
-                    candidates.push(
-                        entry
-                            .path()
-                            .join(if cfg!(target_os = "macos") {
-                                "Contents/Home/bin"
-                            } else {
-                                "bin"
-                            })
-                            .join(java_executable()),
-                    );
-                }
-            }
-        }
-    }
-    let mut errors = Vec::new();
-    for candidate in candidates {
-        if !candidate.is_file() {
-            continue;
-        }
-        let probe = if candidate
-            .file_name()
-            .is_some_and(|name| name == "javaw.exe")
-        {
-            candidate.with_file_name("java.exe")
-        } else {
-            candidate.clone()
-        };
-        match hidden_command(&probe)
-            .args(["-XshowSettings:properties", "-version"])
-            .output()
-        {
-            Ok(output) => {
-                let text = format!(
-                    "{}\n{}",
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
-                );
-                let wrong_bits = usize::BITS == 64 && text.contains("sun.arch.data.model = 32");
-                if output.status.success() && java_major(&text) == Some(required) && !wrong_bits {
-                    return Ok(candidate);
-                }
-                errors.push(format!(
-                    "{}: Java {:?}",
-                    candidate.display(),
-                    java_major(&text)
-                ));
-            }
-            Err(error) => errors.push(format!("{}: {error}", candidate.display())),
-        }
-    }
-    Err(format!(
-        "未找到匹配的 Java {required}（{}位）。请安装对应版本并在设置中选择 java 可执行文件。{}",
-        usize::BITS,
-        if explicit {
-            format!("\n{}", errors.join("\n"))
-        } else {
-            String::new()
-        }
-    ))
-}
-
-fn java_executable() -> &'static str {
-    if cfg!(windows) { "java.exe" } else { "java" }
-}
+#[cfg(test)]
+pub use crate::java::java_major;
