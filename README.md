@@ -45,6 +45,15 @@ NorthStar Minecraft Launcher，简称 **NSCL**，是一款使用 **Rust** 编写
 - 修改 Minecraft 角色皮肤。
 - 在启动器内渲染并预览角色皮肤。
 
+## 仓库同步
+
+CNB 为主仓库，GitHub 为镜像。
+
+- 主仓库：[CNB · NorthStar Minecraft Launcher](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)
+- 镜像：[GitHub · NorthStar Minecraft Launcher](https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher)
+- CNB 上任意分支 `push`、推 `tag` 都会自动同步到 GitHub；提交记录请以 CNB 为源
+- 需要先在 CNB 配置 `GITHUB_USERNAME`、`GITHUB_TOKEN` 两个密钥，详见 [CNB → GitHub 自动同步](docs/github-sync.md)
+
 ## 配套功能规划
 
 为支持上述核心功能，计划逐步完善以下能力，具体范围与优先级将在开发中调整：

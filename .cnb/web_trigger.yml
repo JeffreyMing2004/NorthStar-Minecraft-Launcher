@@ -1,0 +1,10 @@
+branch:
+  - buttons:
+      - name: 同步到 GitHub
+        description: 全量推送所有分支与标签（push 之外的兜底手段）
+        event: web_trigger_sync
+        groupName: 同步
+        permissions:
+          roles:
+            - owner
+            - master

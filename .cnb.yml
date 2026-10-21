@@ -1,0 +1,54 @@
+# CNB -> GitHub 自动同步
+# 依赖官方插件 tencentcom/git-sync：https://cnb.cool/cnb/plugins/tencentcom/git-sync
+# 需要提供两个环境变量（建议放在密钥仓库并从仓库设置注入）：
+#   GITHUB_USERNAME   GitHub 用户名
+#   GITHUB_TOKEN      GitHub PAT（需 repo 权限；建议 fine-grained 只给目标仓库 Contents:读写）
+# 目标地址可用环境变量 GITHUB_SYNC_URL 覆盖，默认推到同名仓库。
+$:
+  # 推送即同步：覆盖所有分支的 push
+  push:
+    - name: sync-to-github
+      env:
+        GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
+      stages:
+        - name: push 当前分支到 GitHub
+          image: tencentcom/git-sync
+          settings:
+            target_url: $GITHUB_SYNC_URL
+            auth_type: https
+            username: $GITHUB_USERNAME
+            password: $GITHUB_TOKEN
+            # 指定分支时只推这一个分支，不加则推全部远端跟踪分支
+            branch: $CNB_BRANCH
+            force: true
+
+  # 页面手动触发（见 .cnb/web_trigger.yml），用于补推历史或全量分支
+  web_trigger_sync:
+    - name: sync-to-github-manual
+      env:
+        GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
+      stages:
+        - name: 全量同步分支与标签到 GitHub
+          image: tencentcom/git-sync
+          settings:
+            target_url: $GITHUB_SYNC_URL
+            auth_type: https
+            username: $GITHUB_USERNAME
+            password: $GITHUB_TOKEN
+            force: true
+            push_tags: true
+
+  # Tag 推送时一并同步标签
+  tag_push:
+    - name: sync-tags-to-github
+      env:
+        GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
+      stages:
+        - name: 推送标签到 GitHub
+          image: tencentcom/git-sync
+          settings:
+            target_url: $GITHUB_SYNC_URL
+            auth_type: https
+            username: $GITHUB_USERNAME
+            password: $GITHUB_TOKEN
+            push_tags: true
