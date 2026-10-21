@@ -213,11 +213,12 @@ impl NsclApp {
                     );
                 });
 
+                // 容器宽度取按钮组实际宽度（5×78 + 4×6 = 414），确保按钮组精确居中而非左对齐
                 let mut nav = ui.new_child(
                     UiBuilder::new()
                         .max_rect(egui::Rect::from_center_size(
                             center,
-                            Vec2::new(480.0, rect.height()),
+                            Vec2::new(414.0, rect.height()),
                         ))
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
