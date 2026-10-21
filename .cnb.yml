@@ -17,7 +17,7 @@ $:
       name: sync-to-github
       env:
         # 密钥仓库文件地址，例如 https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml
-        CNB_SECRETS_IMPORTS: 'https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml'
+        CNB_SECRETS_IMPORTS: 'https://cnb.cool/JeffreyMing/ci-github/-/blob/main/github.yml'
         GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
       stages:
         - name: push 当前分支到 GitHub
@@ -37,7 +37,7 @@ $:
         - ${CNB_SECRETS_IMPORTS}
       name: sync-to-github-manual
       env:
-        CNB_SECRETS_IMPORTS: 'https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml'
+        CNB_SECRETS_IMPORTS: 'https://cnb.cool/JeffreyMing/ci-github/-/blob/main/github.yml'
         GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
       stages:
         - name: 全量同步分支与标签到 GitHub
@@ -56,7 +56,7 @@ $:
         - ${CNB_SECRETS_IMPORTS}
       name: sync-tags-to-github
       env:
-        CNB_SECRETS_IMPORTS: 'https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml'
+        CNB_SECRETS_IMPORTS: 'https://cnb.cool/JeffreyMing/ci-github/-/blob/main/github.yml'
         GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
       stages:
         - name: 推送标签到 GitHub
