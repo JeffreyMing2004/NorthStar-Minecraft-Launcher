@@ -40,6 +40,7 @@ pub struct GameService {
     pub task: Task,
     pub game: Option<(u32, PathBuf)>,
     pub last_log: Option<PathBuf>,
+    versions_requested: bool,
     cancel: Arc<AtomicBool>,
     sender: Sender<Event>,
     receiver: Receiver<Event>,
@@ -65,6 +66,7 @@ impl GameService {
             task: Task::Idle,
             game: None,
             last_log: None,
+            versions_requested: false,
             cancel: Arc::new(AtomicBool::new(false)),
             sender,
             receiver,
@@ -108,7 +110,7 @@ impl GameService {
                 Event::Versions(versions) => {
                     self.versions = versions;
                     self.task = Task::Idle;
-                    self.notice = format!("已获取 {} 个游戏版本", self.versions.len());
+                    self.notice.clear();
                 }
                 Event::Installed(version) => {
                     self.selected = version.id.clone();
@@ -145,10 +147,22 @@ impl GameService {
         }
     }
 
+    pub fn invalidate_versions(&mut self) {
+        self.versions.clear();
+        self.versions_requested = false;
+    }
+
+    pub fn ensure_versions_loaded(&mut self, settings: &Settings, ctx: &egui::Context) {
+        if !self.versions_requested {
+            self.load_versions(settings, ctx);
+        }
+    }
+
     pub fn load_versions(&mut self, settings: &Settings, ctx: &egui::Context) {
         if self.busy() {
             return;
         }
+        self.versions_requested = true;
         self.begin(Task::Manifest);
         self.versions.clear();
         let source = settings.source.clone();

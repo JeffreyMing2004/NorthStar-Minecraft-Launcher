@@ -3,7 +3,7 @@
 ## 桌面使用流程
 
 1. 在「设置」选择游戏文件目录、下载源和 Java 路径，然后保存。Java 路径留空时，会检查 `JAVA_HOME`、`PATH` 以及常见 JDK 安装目录。
-2. 打开「下载 → 原版」，点击「刷新版本列表」。可搜索版本号，默认仅显示正式版，也可以显示快照和历史测试版。
+2. 打开「下载 → 原版」，页面会自动加载并直接显示 Minecraft 版本。可搜索版本号，默认仅显示正式版，也可以显示快照和历史测试版；加载失败时可点击「重新加载」。
 3. 选择版本并点击「安装」。后台下载版本 JSON、客户端 JAR、当前系统所需的依赖库、资源索引、资源对象和日志配置，校验 SHA-1 与文件长度，并准备旧式原生库及资源目录。
 4. 安装完成后回到「开始」，选择已安装版本并点击「启动游戏」。启动前会再次校验文件，选择版本要求的 Java，按元数据生成参数并直接创建 Java 进程。
 5. 游戏退出码会反馈到启动器；运行中或退出后可通过「查看日志」查看最近的启动日志。
@@ -15,7 +15,7 @@
 | 选项 | 根地址 | 说明 |
 | --- | --- | --- |
 | Mojang 官方源 | 按 Mojang 元数据使用官方域名 | 默认选项 |
-| BMCLAPI（bangbang93） | `https://bmclapi2.bangbang93.com` | 下载页显示来源名称，接口参见 [BMCLAPI 官方文档](https://bmclapidoc.bangbang93.com/) |
+| BMCLAPI（bangbang93） | `https://bmclapi2.bangbang93.com` | 设置页的下载源选项中标注来源，接口参见 [BMCLAPI 官方文档](https://bmclapidoc.bangbang93.com/) |
 | mirror.minguncle.cn | `https://mirror.minguncle.cn` | 采用兼容 BMCLAPI 的路径映射 |
 | 自定义镜像 | 用户填写 HTTP/HTTPS 根地址 | 支持带路径前缀的根地址，例如 `https://example.com/minecraft` |
 

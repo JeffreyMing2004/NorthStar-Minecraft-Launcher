@@ -391,8 +391,7 @@ pub fn account(ui: &mut Ui) {
 
 pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
     const CATEGORIES: [&str; 4] = ["原版", "加载器", "整合包", "Mod"];
-    const DESCRIPTIONS: [&str; 4] = [
-        "选择 Minecraft 版本，开启新的冒险。",
+    const DESCRIPTIONS: [&str; 3] = [
         "为你的实例安装 Forge、Fabric 或 NeoForge。",
         "发现组合好的模组与全新玩法。",
         "为现有实例添加更多可能。",
@@ -437,21 +436,15 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
         });
         ui.add_space(18.0);
         ui.separator();
-        ui.add_space(28.0);
-        app::heading(
-            ui,
-            if app.category == 0 {
-                "Minecraft Java Edition"
-            } else {
-                CATEGORIES[app.category]
-            },
-        );
-        ui.add_space(10.0);
-        app::body(ui, DESCRIPTIONS[app.category]);
         if app.category == 0 {
+            ui.add_space(20.0);
             vanilla_downloads(ui, app);
             return;
         }
+        ui.add_space(28.0);
+        app::heading(ui, CATEGORIES[app.category]);
+        ui.add_space(10.0);
+        app::body(ui, DESCRIPTIONS[app.category - 1]);
         if app.category == 1 {
             ui.add_space(20.0);
             ui.horizontal(|ui| {
@@ -592,7 +585,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     app.save_status = match crate::store::save(&app.settings) {
                         Ok(()) => {
                             app.service.refresh(&app.settings);
-                            app.service.versions.clear();
+                            app.service.invalidate_versions();
                             app.service.notice.clear();
                             "设置已保存，新任务将使用当前下载源和游戏目录。".to_owned()
                         }
@@ -624,20 +617,11 @@ fn settings_input(ui: &mut Ui, label: &str, value: &mut String, width: f32) {
 }
 
 fn vanilla_downloads(ui: &mut Ui, app: &mut NsclApp) {
-    ui.add_space(16.0);
-    ui.horizontal(|ui| {
-        ui.label(format!("当前源：{}", app.settings.source.kind.label()));
-        if ui.button("更改下载源").clicked() {
-            app.page = Page::Settings;
-        }
-        ui.add_enabled_ui(!app.service.busy(), |ui| {
-            if app::secondary_button(ui, "刷新版本列表", true) {
-                app.service.load_versions(&app.settings, ui.ctx());
-            }
-        });
-    });
+    app.service.ensure_versions_loaded(&app.settings, ui.ctx());
     task_status(ui, app);
-    ui.add_space(16.0);
+    if app.service.busy() || !app.service.notice.is_empty() {
+        ui.add_space(16.0);
+    }
     ui.horizontal(|ui| {
         ui.add(
             egui::TextEdit::singleline(&mut app.service.search)
@@ -648,14 +632,15 @@ fn vanilla_downloads(ui: &mut Ui, app: &mut NsclApp) {
     });
     ui.add_space(12.0);
     if app.service.versions.is_empty() {
-        app::body(
-            ui,
-            if app.service.busy() {
-                "正在获取版本列表……"
-            } else {
-                "点击刷新版本列表，选择原版客户端进行安装。"
-            },
-        );
+        if app.service.busy() {
+            app::body(ui, "正在获取版本列表……");
+        } else {
+            app::body(ui, "暂无可用版本，请重试或在设置中更换下载源。");
+            ui.add_space(12.0);
+            if app::secondary_button(ui, "重新加载", true) {
+                app.service.load_versions(&app.settings, ui.ctx());
+            }
+        }
         return;
     }
     let query = app.service.search.trim().to_ascii_lowercase();

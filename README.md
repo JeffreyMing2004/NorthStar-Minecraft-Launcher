@@ -23,7 +23,7 @@ NorthStar Minecraft Launcher，简称 **NSCL**，是一款使用 **Rust** 编写
 
 ## 原版客户端使用
 
-在「设置」选择 **Mojang 官方源、BMCLAPI（bangbang93）、mirror.minguncle.cn 或自定义镜像**，保存后到「下载 → 原版」刷新列表、搜索并安装版本。完成后在「开始」选择版本并启动；镜像失败时默认回退官方源。
+在「设置」选择 **Mojang 官方源、BMCLAPI（bangbang93）、mirror.minguncle.cn 或自定义镜像**，保存后打开「下载 → 原版」即可自动加载版本列表，搜索并安装版本。完成后在「开始」选择版本并启动；镜像失败时默认回退官方源。
 
 Java 可以自动检测或手动指定，需安装版本 JSON 要求的 Java 主版本。当前启动使用离线测试身份，可选试玩模式；正式账号登录将后续接入。
 
