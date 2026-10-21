@@ -1,14 +1,12 @@
 # NSCL UI 方案草案
 
-状态：已采用 Tauri 2 + Vue 3 + TypeScript，并实现基础导航、页面空状态和本地设置。本文其余游戏功能与皮肤预览仍为后续实现目标。
+状态：**已切换为纯 Rust 原生界面（eframe/egui）。** 2026-10 前曾按 Tauri 2 + Vue 3 实现界面原型；为落实「启动器全部由 Rust 编写」的定位，按本文预留的备选路线切换到 egui，五个导航页、深色主题与本地设置已在 egui 中复刻。其余游戏功能与皮肤预览仍为后续实现目标。
 
 ## 技术方案
 
-建议采用 **Tauri 2 + Vue 3 + TypeScript + CSS**，Rust 负责下载、文件校验、实例管理、账号认证与游戏进程启动；前端负责页面交互与皮肤预览。
+**当前采用 Rust + eframe/egui**：无 WebView、无 JavaScript，界面与业务逻辑全部为 Rust。中文字体运行时从系统目录加载；设置以 JSON 存于本机（调试构建在可执行文件旁，发布构建在 `%LOCALAPPDATA%\<identifier>`）。3D 皮肤预览计划用 egui + wgpu 自绘实现。
 
-Tauri 使用系统 WebView 展示前端；egui 是 Rust 即时模式 GUI 库。两者都能实现顶部导航，但对本项目的主题定制、资源卡片、下载列表和皮肤展示需求，建议采用 Web UI。此判断是项目设计取舍，并非性能测试结论。
-
-选择 Tauri 意味着项目采用 Rust 与前端语言协作，并非全部代码使用 Rust。若后续确定“界面也必须纯 Rust”，则重新评估 egui。首版不混用两套 UI。
+历史决策记录：最初在 Tauri 2 + Vue 3 与 egui 之间取舍，考虑到主题定制与皮肤展示先选了 Web UI，并约定「若确定界面必须纯 Rust 则重新评估 egui」。2026-10 依据该约定完成切换，理由是：项目对外定位为「Rust 编写的启动器」，当时前端 JavaScript 仅约 40 行、页面均为空状态，迁移成本处于最低点；且 egui 的表格/进度/表单组件适合下载列表等工具型界面，wgpu 自绘为 3D 皮肤预览提供成熟路径。
 
 官方参考：[Tauri 进程模型](https://tauri.app/concept/process-model/)、[egui 项目说明](https://github.com/emilk/egui)。
 
