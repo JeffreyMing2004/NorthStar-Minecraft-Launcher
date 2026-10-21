@@ -44,7 +44,8 @@ pub struct NsclApp {
     pub settings: Settings,
     pub memory_input: String,
     pub save_status: String,
-    pub message: String,
+    pub service: crate::service::GameService,
+    pub log_view: Option<String>,
     #[cfg(debug_assertions)]
     pub screenshot_pending: bool,
 }
@@ -52,13 +53,23 @@ pub struct NsclApp {
 impl NsclApp {
     pub fn new() -> Self {
         let (settings, load_error) = crate::store::load();
+        #[cfg(debug_assertions)]
+        let settings = {
+            let mut settings = settings;
+            if let Some(path) = std::env::var_os("NSCL_PREVIEW_GAME_DIR") {
+                settings.game_directory = path.to_string_lossy().into_owned();
+            }
+            settings
+        };
+        let service = crate::service::GameService::new(&settings);
         Self {
             page: initial_page(),
             category: 0,
             memory_input: settings.memory.to_string(),
             settings,
             save_status: load_error.unwrap_or_default(),
-            message: String::new(),
+            service,
+            log_view: None,
             #[cfg(debug_assertions)]
             screenshot_pending: std::env::var_os("NSCL_SCREENSHOT").is_some(),
         }
@@ -68,6 +79,55 @@ impl NsclApp {
 impl eframe::App for NsclApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        #[cfg(debug_assertions)]
+        if std::env::var_os("NSCL_SCREENSHOT").is_some()
+            && ctx.input(|input| input.key_pressed(egui::Key::F12))
+        {
+            self.screenshot_pending = true;
+        }
+        self.service.poll(&self.settings);
+        if let Some(text) = &self.log_view {
+            let mut open = true;
+            let mut refresh = false;
+            egui::Window::new("游戏启动日志")
+                .open(&mut open)
+                .default_width(800.0)
+                .show(&ctx, |ui| {
+                    if ui.button("刷新日志").clicked() {
+                        refresh = true;
+                    }
+                    egui::ScrollArea::both().max_height(450.0).show(ui, |ui| {
+                        ui.label(RichText::new(text).monospace());
+                    });
+                });
+            if !open {
+                self.log_view = None;
+            } else if refresh {
+                self.open_log();
+            }
+        }
+        if let Some(error) = self.service.error.clone() {
+            let mut open = true;
+            egui::Window::new("操作未完成")
+                .open(&mut open)
+                .default_width(600.0)
+                .show(&ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            ui.label(&error);
+                        });
+                    if let Some(path) = &self.service.last_log {
+                        ui.label(format!("启动日志：{}", path.display()));
+                    }
+                    if ui.button("复制错误信息").clicked() {
+                        ctx.copy_text(error);
+                    }
+                });
+            if !open {
+                self.service.error = None;
+            }
+        }
         #[cfg(debug_assertions)]
         if self.screenshot_pending {
             self.screenshot_pending = false;
@@ -90,10 +150,12 @@ impl eframe::App for NsclApp {
                         ui.add_space(20.0);
                         ui.label(RichText::new("●").size(6.0).color(theme::ACCENT));
                         ui.label(
-                            RichText::new(if self.message.is_empty() {
-                                "界面预览 · 核心游戏服务尚未接入"
+                            RichText::new(if self.service.busy() {
+                                self.service.progress.stage.as_str()
+                            } else if self.service.game.is_some() {
+                                "游戏正在运行"
                             } else {
-                                &self.message
+                                "原版客户端 · 准备就绪"
                             })
                             .size(10.0)
                             .color(theme::FOOTER_TEXT),
@@ -143,6 +205,25 @@ impl eframe::App for NsclApp {
 }
 
 impl NsclApp {
+    pub fn open_log(&mut self) {
+        use std::io::{Read, Seek, SeekFrom};
+        let Some(path) = &self.service.last_log else {
+            return;
+        };
+        let result = (|| -> std::io::Result<String> {
+            let mut file = std::fs::File::open(path)?;
+            let length = file.metadata()?.len();
+            file.seek(SeekFrom::Start(length.saturating_sub(65536)))?;
+            let mut bytes = Vec::new();
+            file.take(65536).read_to_end(&mut bytes)?;
+            Ok(String::from_utf8_lossy(&bytes).into_owned())
+        })();
+        match result {
+            Ok(text) => self.log_view = Some(text),
+            Err(error) => self.service.error = Some(format!("读取日志失败：{error}")),
+        }
+    }
+
     fn page_heading(&mut self, ui: &mut Ui) {
         let (rect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 68.0), Sense::hover());

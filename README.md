@@ -6,9 +6,9 @@ NorthStar Minecraft Launcher，简称 **NSCL**，是一款使用 **Rust** 编写
 
 ## 项目状态
 
-**当前处于基础界面开发阶段。** 已建立纯 Rust 桌面工程（eframe/egui），提供五个导航页面和本地设置保存。游戏安装、启动、认证、资源下载及皮肤渲染尚未实现，暂无正式安装包。
+**当前处于原版客户端流程开发阶段。** 已建立纯 Rust 桌面工程（eframe/egui），支持原版版本列表、下载校验、安装修复和离线测试启动。Microsoft 账号认证、模组下载及皮肤渲染尚未实现，暂无正式安装包。
 
-- 已完成：基础工程、顶部导航、页面空状态和本地设置保存。
+- 已完成：基础界面、本地设置、原版安装与启动核心、Java 检测、下载进度与日志查看。
 - UI 方案：Rust + eframe/egui（无 WebView、无 JavaScript）；首批支持的平台仍待确定。
 - 构建与运行说明见下文「使用与开发」。
 
@@ -19,6 +19,15 @@ NorthStar Minecraft Launcher，简称 **NSCL**，是一款使用 **Rust** 编写
 - **核心语言**：Rust（界面与业务逻辑全部为 Rust，无 WebView 与前端脚本）
 - **界面框架**：eframe/egui
 - **数据持久化**：serde / serde_json（JSON 设置文件）
+- **网络与文件校验**：reqwest（系统 TLS / 代理）、SHA-1、ZIP 原生库解压
+
+## 原版客户端使用
+
+在「设置」选择 **Mojang 官方源、BMCLAPI（bangbang93）、mirror.minguncle.cn 或自定义镜像**，保存后到「下载 → 原版」刷新列表、搜索并安装版本。完成后在「开始」选择版本并启动；镜像失败时默认回退官方源。
+
+Java 可以自动检测或手动指定，需安装版本 JSON 要求的 Java 主版本。当前启动使用离线测试身份，可选试玩模式；正式账号登录将后续接入。
+
+详细说明、镜像接口约定、文件目录、修复机制与命令行用法见 [原版客户端安装与启动](docs/vanilla-client.md)。
 
 ## UI 方案
 
@@ -40,7 +49,7 @@ NorthStar Minecraft Launcher，简称 **NSCL**，是一款使用 **Rust** 编写
 
 ## 规划功能
 
-以下为项目计划支持的功能，不代表当前已实现。
+以下列出项目的完整目标；已实现的原版客户端流程见上文，其余功能进度以开发路线为准。
 
 ### 游戏启动与安装
 
@@ -85,7 +94,7 @@ CNB 为主仓库，GitHub 为镜像。
 - [x] 建立仓库并编写项目 README。
 - [x] 确定 UI 方案，搭建 Rust 工程与基础界面。
 - [x] 界面层切换为纯 Rust（egui），移除 WebView 与 JavaScript。
-- [ ] 实现原版客户端下载、安装与启动流程。
+- [x] 实现原版客户端下载、校验、安装修复与离线测试启动流程。
 - [ ] 完善账号登录、Java 配置与实例管理。
 - [ ] 接入 Forge、Fabric 和 NeoForge 安装流程。
 - [ ] 实现模组与整合包下载及兼容性检查。
@@ -102,13 +111,14 @@ cargo build           # 调试构建
 cargo build --release # 发布构建（暂未配置安装包打包）
 cargo fmt             # 格式化代码
 cargo clippy          # 静态检查
+cargo test --lib       # 原版下载、安装与启动核心回归测试
 ```
 
 首次编译需要下载 Rust 依赖并完成本地编译，耗时较长。界面中的中文字体在运行时从系统字体目录加载，无需随包分发。
 
 设置保存在本机 JSON 文件：调试构建存于可执行文件旁，发布构建存于 `%LOCALAPPDATA%\cool.cnb.jeffreyming.nscl`；不会存储账号令牌。
 
-项目结构：`src/` 为 Rust 源码（`main.rs` 入口、`app.rs` 窗口骨架、`pages.rs` 页面、`theme.rs` 视觉令牌、`store.rs` 设置存取），`docs/` 为设计文档，`image/` 为界面参照图。应用版本从 `Cargo.toml` 读取。
+项目结构：`src/` 为 Rust 源码，`minecraft/` 为下载、安装与启动核心，`service.rs` 为界面后台任务，`bin/nscl-cli.rs` 为共用核心的命令行入口。`docs/` 为设计与使用文档，`image/` 为界面参照图。应用版本从 `Cargo.toml` 读取。
 
 ## 参与贡献
 

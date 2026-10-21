@@ -2,8 +2,9 @@
 
 mod app;
 mod pages;
-mod store;
+mod service;
 mod theme;
+use nscl::{minecraft, store};
 
 use app::NsclApp;
 

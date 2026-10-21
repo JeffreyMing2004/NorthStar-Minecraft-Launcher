@@ -4,10 +4,15 @@ use std::path::PathBuf;
 #[allow(dead_code)] // 发布构建的设置目录会用到
 pub const APP_IDENTIFIER: &str = "cool.cnb.jeffreyming.nscl";
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub memory: u32,
     pub java_path: String,
+    pub game_directory: String,
+    pub source: crate::minecraft::Source,
+    pub player_name: String,
+    pub demo_mode: bool,
 }
 
 impl Default for Settings {
@@ -15,13 +20,17 @@ impl Default for Settings {
         Self {
             memory: 4096,
             java_path: String::new(),
+            game_directory: String::new(),
+            source: crate::minecraft::Source::default(),
+            player_name: "NSCLPlayer".into(),
+            demo_mode: false,
         }
     }
 }
 
 // 与 WebView 时代相同的约束：调试构建的可执行文件在部分开发机上无法写入系统盘，
 // 调试时设置文件放在可执行文件旁，发布构建使用正式数据目录。
-fn settings_path() -> PathBuf {
+pub fn settings_path() -> PathBuf {
     #[cfg(debug_assertions)]
     {
         std::env::current_exe()
@@ -35,6 +44,17 @@ fn settings_path() -> PathBuf {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("."));
         base.join(APP_IDENTIFIER).join("settings.json")
+    }
+}
+
+pub fn game_directory(settings: &Settings) -> PathBuf {
+    if settings.game_directory.trim().is_empty() {
+        settings_path()
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .join("minecraft")
+    } else {
+        PathBuf::from(settings.game_directory.trim())
     }
 }
 

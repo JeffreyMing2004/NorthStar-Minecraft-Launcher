@@ -39,7 +39,11 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     launch.add_space(10.0);
     app::body(
         &mut launch,
-        "安装第一个 Minecraft 实例，让冒险拥有自己的起点。",
+        if app.service.installed.is_empty() {
+            "安装第一个 Minecraft 实例，让冒险拥有自己的起点。"
+        } else {
+            "选择已安装版本，开启你的下一段旅程。"
+        },
     );
     launch.add_space(20.0);
     let (instance, _) =
@@ -53,26 +57,76 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         6.0,
         Color32::from_rgb(0x7e, 0xa4, 0xba),
     );
-    p.text(
-        instance.min + Vec2::new(50.0, 28.0),
-        egui::Align2::LEFT_CENTER,
-        "暂无游戏实例",
-        FontId::new(14.0, theme::bold_family()),
-        theme::HEADING,
-    );
-    p.text(
-        instance.min + Vec2::new(50.0, 55.0),
-        egui::Align2::LEFT_CENTER,
-        "原版 · Forge · Fabric · NeoForge",
-        FontId::proportional(12.0),
-        theme::MUTED,
-    );
+    if app.service.installed.is_empty() {
+        p.text(
+            instance.min + Vec2::new(50.0, 28.0),
+            egui::Align2::LEFT_CENTER,
+            "暂无游戏实例",
+            FontId::new(14.0, theme::bold_family()),
+            theme::HEADING,
+        );
+        p.text(
+            instance.min + Vec2::new(50.0, 55.0),
+            egui::Align2::LEFT_CENTER,
+            "原版 · Forge · Fabric · NeoForge",
+            FontId::proportional(12.0),
+            theme::MUTED,
+        );
+    } else {
+        let mut selection =
+            launch.new_child(UiBuilder::new().max_rect(instance.shrink2(Vec2::new(50.0, 14.0))));
+        egui::ComboBox::from_id_salt("installed-version")
+            .width(selection.available_width())
+            .selected_text(&app.service.selected)
+            .show_ui(&mut selection, |ui| {
+                for version in &app.service.installed {
+                    ui.selectable_value(
+                        &mut app.service.selected,
+                        version.id.clone(),
+                        format!("Minecraft {} · Java {}", version.id, version.java_major),
+                    );
+                }
+            });
+        app::hint(&mut selection, "原版 · 独立游戏目录 · 离线测试启动");
+    }
     launch.add_space(20.0);
-    if app::primary_button(&mut launch, "＋  安装 Minecraft     →") {
-        app.page = Page::Downloads;
+    if app.service.installed.is_empty() {
+        if app::primary_button(&mut launch, "＋  安装 Minecraft     →") {
+            app.page = Page::Downloads;
+        }
+    } else {
+        launch.horizontal(|ui| {
+            ui.add_enabled_ui(!app.service.busy() && app.service.game.is_none(), |ui| {
+                if app::primary_button(
+                    ui,
+                    if app.service.game.is_some() {
+                        "游戏运行中"
+                    } else {
+                        "启动游戏 →"
+                    },
+                ) {
+                    app.service.launch(&app.settings, ui.ctx());
+                }
+            });
+            if ui.button("安装其他版本").clicked() {
+                app.page = Page::Downloads;
+            }
+            if app.service.last_log.is_some() && ui.button("查看日志").clicked() {
+                app.open_log();
+            }
+        });
     }
     launch.add_space(10.0);
-    app::hint(&mut launch, "安装与启动服务正在开发中");
+    app::hint(
+        &mut launch,
+        if app.service.busy() {
+            &app.service.progress.stage
+        } else if !app.service.notice.is_empty() {
+            &app.service.notice
+        } else {
+            "设置中可选择 Java、游戏目录和下载镜像。"
+        },
+    );
 
     let content = aside_rect.shrink(25.0);
     let mut aside = ui.new_child(
@@ -394,6 +448,10 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
         );
         ui.add_space(10.0);
         app::body(ui, DESCRIPTIONS[app.category]);
+        if app.category == 0 {
+            vanilla_downloads(ui, app);
+            return;
+        }
         if app.category == 1 {
             ui.add_space(20.0);
             ui.horizontal(|ui| {
@@ -421,11 +479,15 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
 
 pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
     page_card(ui, |ui| {
+        if app.service.busy() {
+            app::hint(ui, "后台任务进行中，请等待或取消后再修改设置。");
+            ui.disable();
+        }
         app::eyebrow(ui, "PREFERENCES");
         ui.add_space(12.0);
         app::heading(ui, "为你的冒险做好准备");
         ui.add_space(10.0);
-        app::body(ui, "设置保存在本机，当前不会执行 Java 或启动游戏。");
+        app::body(ui, "配置原版游戏下载、独立实例目录及 Java 启动环境。");
         ui.add_space(30.0);
         ui.scope(|ui| {
             let width = ui.available_width().min(580.0);
@@ -444,7 +506,10 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 app.save_status.clear();
             }
             ui.add_space(10.0);
-            app::hint(ui, "留空表示自动检测（检测功能待接入）。");
+            app::hint(
+                ui,
+                "留空自动检测 JAVA_HOME、PATH 及常见安装目录，选择版本要求的 Java。",
+            );
             ui.add_space(24.0);
             ui.label(RichText::new("游戏内存（MiB）").size(14.0));
             ui.add_space(10.0);
@@ -461,15 +526,76 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
             }
             ui.add_space(10.0);
             app::hint(ui, "范围 1024–32768 MiB，请根据设备可用内存配置。");
+            ui.add_space(24.0);
+            settings_input(ui, "游戏文件目录", &mut app.settings.game_directory, width);
+            app::hint(
+                ui,
+                &format!(
+                    "当前目录：{}",
+                    crate::store::game_directory(&app.settings).display()
+                ),
+            );
+            ui.add_space(24.0);
+            ui.label("下载源");
+            ui.add_space(10.0);
+            egui::ComboBox::from_id_salt("download-source")
+                .width(width)
+                .selected_text(app.settings.source.kind.label())
+                .show_ui(ui, |ui| {
+                    for kind in crate::minecraft::SourceKind::ALL {
+                        ui.selectable_value(&mut app.settings.source.kind, kind, kind.label());
+                    }
+                });
+            if app.settings.source.kind == crate::minecraft::SourceKind::Custom {
+                ui.add_space(12.0);
+                settings_input(
+                    ui,
+                    "自定义镜像根地址（BMCLAPI 兼容）",
+                    &mut app.settings.source.custom_base,
+                    width,
+                );
+                app::hint(
+                    ui,
+                    "例如 https://example.com；需支持 /mc/game、/v1、/maven 和 /assets 路径。",
+                );
+            }
+            ui.add_space(10.0);
+            ui.checkbox(
+                &mut app.settings.source.fallback_to_official,
+                "镜像失败或校验不通过时回退到官方源",
+            );
+            ui.add_space(24.0);
+            settings_input(ui, "离线测试玩家名", &mut app.settings.player_name, width);
+            app::hint(
+                ui,
+                "1–16 位字母、数字或下划线；离线身份不能用于需要正版认证的服务器。",
+            );
+            ui.add_space(10.0);
+            ui.checkbox(&mut app.settings.demo_mode, "以 Minecraft 试玩模式启动");
             ui.add_space(26.0);
             if app::primary_button(ui, "保存设置") {
                 if let Ok(memory) = app.memory_input.trim().parse::<u32>()
                     && (1024..=32768).contains(&memory)
                 {
+                    if let Err(error) = app.settings.source.base() {
+                        app.save_status = error;
+                        return;
+                    }
+                    if let Err(error) =
+                        crate::minecraft::validate_player_name(&app.settings.player_name)
+                    {
+                        app.save_status = error;
+                        return;
+                    }
                     app.settings.memory = memory;
                     app.settings.java_path = app.settings.java_path.trim().to_owned();
                     app.save_status = match crate::store::save(&app.settings) {
-                        Ok(()) => "设置已保存在本机；游戏启动功能接入后生效。".to_owned(),
+                        Ok(()) => {
+                            app.service.refresh(&app.settings);
+                            app.service.versions.clear();
+                            app.service.notice.clear();
+                            "设置已保存，新任务将使用当前下载源和游戏目录。".to_owned()
+                        }
                         Err(e) => e,
                     };
                 } else {
@@ -482,6 +608,147 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
             }
         });
     });
+}
+
+fn settings_input(ui: &mut Ui, label: &str, value: &mut String, width: f32) {
+    ui.label(label);
+    ui.add_space(10.0);
+    let response = ui.add(
+        egui::TextEdit::singleline(value)
+            .font(FontId::proportional(14.0))
+            .frame(input_frame())
+            .desired_width(width),
+    );
+    input_focus(ui, &response);
+    ui.add_space(10.0);
+}
+
+fn vanilla_downloads(ui: &mut Ui, app: &mut NsclApp) {
+    ui.add_space(16.0);
+    ui.horizontal(|ui| {
+        ui.label(format!("当前源：{}", app.settings.source.kind.label()));
+        if ui.button("更改下载源").clicked() {
+            app.page = Page::Settings;
+        }
+        ui.add_enabled_ui(!app.service.busy(), |ui| {
+            if app::secondary_button(ui, "刷新版本列表", true) {
+                app.service.load_versions(&app.settings, ui.ctx());
+            }
+        });
+    });
+    task_status(ui, app);
+    ui.add_space(16.0);
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::TextEdit::singleline(&mut app.service.search)
+                .hint_text("搜索版本，例如 1.20.1")
+                .desired_width(240.0),
+        );
+        ui.checkbox(&mut app.service.snapshots, "显示快照及历史测试版");
+    });
+    ui.add_space(12.0);
+    if app.service.versions.is_empty() {
+        app::body(
+            ui,
+            if app.service.busy() {
+                "正在获取版本列表……"
+            } else {
+                "点击刷新版本列表，选择原版客户端进行安装。"
+            },
+        );
+        return;
+    }
+    let query = app.service.search.trim().to_ascii_lowercase();
+    let versions: Vec<_> = app
+        .service
+        .versions
+        .iter()
+        .filter(|version| {
+            (app.service.snapshots || version.kind == "release")
+                && version.id.to_ascii_lowercase().contains(&query)
+        })
+        .cloned()
+        .collect();
+    let mut install = None;
+    if versions.is_empty() {
+        app::body(ui, "没有匹配的版本，请调整搜索词或启用快照显示。");
+        return;
+    }
+    egui::ScrollArea::vertical()
+        .id_salt("vanilla-versions")
+        .max_height(350.0)
+        .show_rows(ui, 44.0, versions.len(), |ui, range| {
+            for index in range {
+                let version = &versions[index];
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(&version.id).size(15.0).color(theme::HEADING));
+                    ui.label(
+                        RichText::new(format!(
+                            "{} · {}",
+                            version.kind,
+                            version.release_time.get(..10).unwrap_or("")
+                        ))
+                        .size(11.0)
+                        .color(theme::MUTED),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let installed = app
+                            .service
+                            .installed
+                            .iter()
+                            .any(|entry| entry.id == version.id);
+                        ui.add_enabled_ui(!app.service.busy(), |ui| {
+                            if app::secondary_button(
+                                ui,
+                                if installed {
+                                    "校验 / 修复"
+                                } else {
+                                    "安装"
+                                },
+                                true,
+                            ) {
+                                install = Some(version.clone());
+                            }
+                        });
+                    });
+                });
+            }
+        });
+    if let Some(version) = install {
+        app.service.install(version, &app.settings, ui.ctx());
+    }
+}
+
+fn task_status(ui: &mut Ui, app: &mut NsclApp) {
+    if app.service.busy() {
+        ui.add_space(16.0);
+        app::body(ui, &app.service.progress.stage);
+        let progress = &app.service.progress;
+        if progress.total > 0 {
+            ui.add(
+                egui::ProgressBar::new(progress.completed as f32 / progress.total as f32)
+                    .text(format!(
+                        "{} / {} 个文件 · {:.1} MiB",
+                        progress.completed,
+                        progress.total,
+                        progress.bytes_downloaded as f64 / 1048576.0
+                    ))
+                    .desired_width(ui.available_width()),
+            );
+        } else {
+            ui.spinner();
+        }
+        if matches!(
+            app.service.task,
+            crate::service::Task::Install | crate::service::Task::Manifest
+        ) && ui.button("取消任务").clicked()
+        {
+            app.service.cancel();
+        }
+    } else if !app.service.notice.is_empty() {
+        ui.add_space(12.0);
+        ui.label(RichText::new(&app.service.notice).color(theme::ACCENT));
+    }
 }
 
 fn input_frame() -> egui::Frame {
@@ -526,7 +793,7 @@ pub fn about(ui: &mut Ui) {
         ui.add_space(10.0);
         app::body(
             ui,
-            "已提供导航、页面框架和本地设置保存。游戏安装与启动、账号认证、模组下载及皮肤渲染尚未实现。",
+            "已提供原版版本列表、镜像切换、文件校验与修复、独立实例安装、Java 检测和离线测试启动。账号认证、模组下载及皮肤渲染尚未实现。",
         );
         ui.add_space(22.0);
         ui.label(
