@@ -27,7 +27,6 @@ pub const DASHED_BORDER: Color32 = Color32::from_rgb(0x51, 0x66, 0x74);
 pub fn dashed_bg() -> Color32 {
     Color32::from_rgba_unmultiplied(0x0d, 0x16, 0x21, 0x55)
 }
-pub const LANDSCAPE_BASE: Color32 = Color32::from_rgb(0x1c, 0x3d, 0x4d);
 pub const MOUNTAIN_BACK: Color32 = Color32::from_rgb(0x24, 0x50, 0x64);
 pub const MOUNTAIN_FRONT: Color32 = Color32::from_rgb(0x16, 0x2e, 0x40);
 pub const STAR: Color32 = Color32::from_rgb(0xa3, 0xf5, 0xdb);

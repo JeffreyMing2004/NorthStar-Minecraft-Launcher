@@ -5,7 +5,7 @@ use egui::{Color32, RichText, Ui, Vec2};
 pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     let wide = ui.available_width() >= 980.0;
     let aside = |ui: &mut Ui, app: &mut NsclApp| {
-        theme::card(24).show(ui, |ui| {
+        theme::card(25).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new("我的角色")
@@ -17,24 +17,20 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                     app::badge_muted(ui, "未登录")
                 });
             });
-            ui.add_space(16.0);
+            ui.add_space(14.0);
             let (rect, _) = ui
-                .allocate_exact_size(Vec2::new(ui.available_width(), 250.0), egui::Sense::hover());
+                .allocate_exact_size(Vec2::new(ui.available_width(), 265.0), egui::Sense::hover());
             let painter = ui.painter().with_clip_rect(rect);
-            painter.circle_filled(
-                rect.center(),
-                92.0,
-                Color32::from_rgba_unmultiplied(0x35, 0x59, 0x66, 0x30),
-            );
+            radial_glow(&painter, rect.center(), 135.0, (0x35, 0x59, 0x66), 0.30);
             painter.text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "◇",
-                egui::FontId::proportional(66.0),
+                egui::FontId::proportional(64.0),
                 Color32::from_rgb(0x54, 0x7b, 0x88),
             );
             ui.vertical_centered(|ui| {
-                ui.add_space(rect.height() as i32 as f32 * 0.28);
+                ui.add_space(rect.height() * 0.30);
                 ui.label(
                     RichText::new("你的角色，即将登场")
                         .size(13.0)
@@ -47,7 +43,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                         .color(theme::MUTED),
                 );
             });
-            ui.add_space(16.0);
+            ui.add_space(18.0);
             ui.label(
                 RichText::new("添加你的 Minecraft 账号")
                     .size(16.0)
@@ -71,10 +67,10 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             landscape(ui);
             egui::Frame::default()
                 .inner_margin(egui::Margin {
-                    left: 28,
-                    right: 28,
-                    top: 24,
-                    bottom: 26,
+                    left: 30,
+                    right: 30,
+                    top: 27,
+                    bottom: 27,
                 })
                 .show(ui, |ui| {
                     app::eyebrow(ui, "你的游戏空间");
@@ -87,38 +83,40 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                     );
                     ui.label(
                         RichText::new("安装第一个 Minecraft 实例，让冒险拥有自己的起点。")
-                            .size(13.0)
+                            .size(14.0)
                             .color(theme::MUTED),
                     );
-                    ui.add_space(20.0);
-                    egui::Frame::default()
-                        .stroke(egui::Stroke::new(1.0, theme::DASHED_BORDER))
-                        .fill(theme::dashed_bg())
-                        .corner_radius(9.0)
-                        .inner_margin(egui::Margin::symmetric(18, 15))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    RichText::new("◇")
-                                        .size(24.0)
-                                        .color(Color32::from_rgb(0x7e, 0xa4, 0xba)),
-                                );
-                                ui.add_space(8.0);
-                                ui.vertical(|ui| {
-                                    ui.label(
-                                        RichText::new("暂无游戏实例")
-                                            .size(14.0)
-                                            .strong()
-                                            .color(theme::HEADING),
-                                    );
-                                    ui.label(
-                                        RichText::new("原版 · Forge · Fabric · NeoForge")
-                                            .size(12.0)
-                                            .color(theme::MUTED),
-                                    );
-                                });
-                            });
-                        });
+                    ui.add_space(25.0);
+                    let (rect, _) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), 64.0),
+                        egui::Sense::hover(),
+                    );
+                    let painter = ui.painter().with_clip_rect(rect);
+                    painter.rect_filled(rect, egui::CornerRadius::same(9), theme::dashed_bg());
+                    dashed_rect(&painter, rect, theme::DASHED_BORDER);
+                    let cy = rect.center().y;
+                    painter.text(
+                        egui::pos2(rect.left() + 18.0, cy),
+                        egui::Align2::LEFT_CENTER,
+                        "◇",
+                        egui::FontId::proportional(28.0),
+                        Color32::from_rgb(0x7e, 0xa4, 0xba),
+                    );
+                    let text_x = rect.left() + 58.0;
+                    painter.text(
+                        egui::pos2(text_x, cy - 11.0),
+                        egui::Align2::LEFT_CENTER,
+                        "暂无游戏实例",
+                        egui::FontId::proportional(14.0),
+                        theme::HEADING,
+                    );
+                    painter.text(
+                        egui::pos2(text_x, cy + 12.0),
+                        egui::Align2::LEFT_CENTER,
+                        "原版 · Forge · Fabric · NeoForge",
+                        egui::FontId::proportional(12.0),
+                        theme::MUTED,
+                    );
                     ui.add_space(18.0);
                     if app::primary_button(ui, "＋  安装 Minecraft     →") {
                         app.page = Page::Downloads;
@@ -130,91 +128,174 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     };
 
     if wide {
-        let width = (ui.available_width() * 0.26).clamp(300.0, 380.0);
+        // 原设计为 1.85fr / 1fr 双栏，右侧约占 33%，栏间距 22px
+        let width = (ui.available_width() * 0.33).clamp(300.0, 410.0);
         egui::Panel::right("home-aside")
-            .exact_size(width)
+            .exact_size(width + 22.0)
             .resizable(false)
             .show_separator_line(false)
-            .frame(egui::Frame::NONE)
+            .frame(egui::Frame::NONE.inner_margin(egui::Margin {
+                left: 22,
+                right: 0,
+                top: 0,
+                bottom: 0,
+            }))
             .show(ui, |ui| aside(ui, app));
         launch(ui, app);
     } else {
         launch(ui, app);
-        ui.add_space(16.0);
+        ui.add_space(22.0);
         aside(ui, app);
+    }
+}
+
+// 径向光晕：从外到内逐层叠加圆形近似渐变
+fn radial_glow(
+    painter: &egui::Painter,
+    center: egui::Pos2,
+    radius: f32,
+    rgb: (u8, u8, u8),
+    peak: f32,
+) {
+    let steps = 26;
+    for i in 0..steps {
+        let t = i as f32 / steps as f32;
+        let r = radius * (1.0 - t * 0.94);
+        let alpha = (peak * t * t * 255.0).min(255.0) as u8;
+        painter.circle_filled(
+            center,
+            r,
+            Color32::from_rgba_unmultiplied(rgb.0, rgb.1, rgb.2, alpha),
+        );
+    }
+}
+
+// 虚线矩形（近似原 CSS dashed 边框）
+fn dashed_rect(painter: &egui::Painter, rect: egui::Rect, color: Color32) {
+    let (dash, gap) = (7.0, 5.0);
+    let stroke = egui::Stroke::new(1.0, color);
+    for (y, x0, x1) in [
+        (rect.top(), rect.left(), rect.right()),
+        (rect.bottom(), rect.left(), rect.right()),
+    ] {
+        let mut x = x0;
+        while x < x1 {
+            let end = (x + dash).min(x1);
+            painter.line_segment([egui::pos2(x, y), egui::pos2(end, y)], stroke);
+            x = end + gap;
+        }
+    }
+    for (x, y0, y1) in [
+        (rect.left(), rect.top(), rect.bottom()),
+        (rect.right(), rect.top(), rect.bottom()),
+    ] {
+        let mut y = y0;
+        while y < y1 {
+            let end = (y + dash).min(y1);
+            painter.line_segment([egui::pos2(x, y), egui::pos2(x, end)], stroke);
+            y = end + gap;
+        }
     }
 }
 
 fn landscape(ui: &mut Ui) {
     let (rect, _) =
-        ui.allocate_exact_size(Vec2::new(ui.available_width(), 180.0), egui::Sense::hover());
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 190.0), egui::Sense::hover());
     let painter = ui.painter().with_clip_rect(rect);
-    painter.rect_filled(rect, egui::CornerRadius::same(0), theme::LANDSCAPE_BASE);
-    let glow = egui::pos2(rect.right() - rect.width() * 0.22, rect.top() + 40.0);
-    painter.circle_filled(
-        glow,
-        90.0,
-        Color32::from_rgba_unmultiplied(0x3c, 0x77, 0x7a, 0x45),
-    );
-    painter.circle_filled(
-        glow,
-        32.0,
-        Color32::from_rgba_unmultiplied(0x77, 0xe6, 0xc8, 0x38),
-    );
-    // 填充仅支持凸多边形，山体剪影用两组三角形叠加表现
-    let peak = |x: f32, y: f32, half: f32| {
-        vec![
-            egui::pos2(rect.left() + rect.width() * (x - half), rect.bottom() + 2.0),
-            egui::pos2(
-                rect.left() + rect.width() * x,
-                rect.top() + rect.height() * y,
-            ),
-            egui::pos2(rect.left() + rect.width() * (x + half), rect.bottom() + 2.0),
-        ]
-    };
-    for (x, y, half) in [
-        (0.16, 0.62, 0.20),
-        (0.44, 0.16, 0.24),
-        (0.72, 0.50, 0.18),
-        (0.97, 0.32, 0.22),
-    ] {
-        painter.add(egui::Shape::convex_polygon(
-            peak(x, y, half),
-            theme::MOUNTAIN_BACK,
-            egui::Stroke::NONE,
-        ));
+
+    // 140° 对角渐变 #142D40 → #214A55，密集竖条 + 每条随机微扰消除条带感
+    let from = (0x14u8, 0x2d, 0x40);
+    let to = (0x21, 0x4a, 0x55);
+    let strips = 192u32;
+    let mut noise = 0x2f5c_u32;
+    for i in 0..strips {
+        noise = noise.wrapping_mul(1664525).wrapping_add(1013904223);
+        let jitter = ((noise >> 24) as i32 - 128) as f32 * 0.35;
+        let t = i as f32 / strips as f32;
+        let x0 = egui::lerp(rect.left()..=rect.right(), t);
+        let x1 = egui::lerp(rect.left()..=rect.right(), (i + 1) as f32 / strips as f32);
+        let mix = |a: u8, b: u8| (a as f32 * (1.0 - t) + b as f32 * t + jitter) as u8;
+        painter.rect_filled(
+            egui::Rect::from_min_max(egui::pos2(x0, rect.top()), egui::pos2(x1, rect.bottom())),
+            egui::CornerRadius::same(0),
+            Color32::from_rgb(mix(from.0, to.0), mix(from.1, to.1), mix(from.2, to.2)),
+        );
     }
-    for (x, y, half) in [
-        (0.06, 0.58, 0.22),
-        (0.36, 0.46, 0.24),
-        (0.64, 0.72, 0.20),
-        (0.90, 0.60, 0.24),
-    ] {
-        painter.add(egui::Shape::convex_polygon(
-            peak(x, y, half),
-            theme::MOUNTAIN_FRONT,
-            egui::Stroke::NONE,
-        ));
-    }
+    // 天空径向光晕：72% 15% 处的椭圆青光
+    radial_glow(
+        &painter,
+        egui::pos2(
+            rect.left() + rect.width() * 0.72,
+            rect.top() + rect.height() * 0.15,
+        ),
+        rect.width() * 0.42,
+        (0x3c, 0x77, 0x7a),
+        0.45,
+    );
+
+    // 原设计的折线山体剪影（clip-path 坐标），凸填充用底角扇形三角分解
+    mountain(&painter, rect, theme::MOUNTAIN_BACK, 1.26, 0.0, 5.0);
+    mountain(&painter, rect, theme::MOUNTAIN_FRONT, 1.3, -0.12, 60.0);
+
+    // 北极星：右侧 24%、顶部 22px，带集中青绿光晕
+    let star = egui::pos2(rect.left() + rect.width() * 0.76, rect.top() + 38.0);
+    radial_glow(&painter, star, 26.0, (0x77, 0xe6, 0xc8), 0.55);
     painter.text(
-        egui::pos2(rect.left() + 28.0, rect.bottom() - 24.0),
+        star,
+        egui::Align2::CENTER_CENTER,
+        "✦",
+        egui::FontId::proportional(32.0),
+        theme::STAR,
+    );
+
+    painter.text(
+        egui::pos2(rect.left() + 30.0, rect.bottom() - 24.0),
         egui::Align2::LEFT_CENTER,
         "FIND YOUR NORTH",
         egui::FontId::proportional(11.0),
         Color32::from_rgb(0xb0, 0xdb, 0xdf),
     );
-    painter.text(
-        egui::pos2(rect.left() + rect.width() * 0.40, rect.top() + 34.0),
-        egui::Align2::RIGHT_TOP,
-        "✦",
-        egui::FontId::proportional(32.0),
-        theme::STAR,
-    );
+}
+
+fn mountain(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    color: Color32,
+    scale: f32,
+    x_shift: f32,
+    sink: f32,
+) {
+    // 原剪影归一化坐标：polygon(0 80%, 18% 26%, 28% 50%, 48% 0, 65% 56%, 78% 30%, 100% 90%)
+    let silhouette = [
+        (0.0f32, 0.80f32),
+        (0.18, 0.26),
+        (0.28, 0.50),
+        (0.48, 0.00),
+        (0.65, 0.56),
+        (0.78, 0.30),
+        (1.00, 0.90),
+        (1.00, 1.00),
+    ];
+    let height = 140.0 * scale;
+    let width = rect.width() * scale;
+    let bottom = rect.bottom() + sink;
+    let top = bottom - height;
+    let left = rect.left() + x_shift * rect.width() + (rect.width() - width) * 0.5;
+    let point = |p: (f32, f32)| egui::pos2(left + p.0 * width, top + p.1 * height);
+    let apex = egui::pos2(left, bottom);
+    let points: Vec<egui::Pos2> = silhouette.iter().map(|&p| point(p)).collect();
+    for pair in points.windows(2) {
+        painter.add(egui::Shape::convex_polygon(
+            vec![apex, pair[0], pair[1]],
+            color,
+            egui::Stroke::NONE,
+        ));
+    }
 }
 
 pub fn account(ui: &mut Ui) {
-    theme::card(30).show(ui, |ui| {
-        ui.set_min_height(440.0);
+    theme::card(32).show(ui, |ui| {
+        ui.set_min_height(450.0);
         ui.add_space(24.0);
         app::eyebrow(ui, "ACCOUNT & SKIN");
         ui.add_space(8.0);
@@ -242,8 +323,8 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
         "发现组合好的模组与全新玩法。",
         "为现有实例添加更多可能。",
     ];
-    theme::card(30).show(ui, |ui| {
-        ui.set_min_height(440.0);
+    theme::card(32).show(ui, |ui| {
+        ui.set_min_height(450.0);
         ui.add_space(18.0);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
@@ -274,9 +355,13 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
                 }
             }
         });
-        ui.add_space(14.0);
-        ui.separator();
-        ui.add_space(16.0);
+        ui.add_space(18.0);
+        let sep = ui.available_rect_before_wrap();
+        ui.painter().line_segment(
+            [sep.left_top(), egui::pos2(sep.right(), sep.top())],
+            egui::Stroke::new(1.0, theme::CARD_BORDER),
+        );
+        ui.add_space(28.0);
         let category = CATEGORIES[app.category];
         app::heading(
             ui,
@@ -327,6 +412,8 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     .size(13.0)
                     .color(theme::BODY_TEXT),
             );
+            // 参照设计的输入框更高（约 44px）
+            ui.spacing_mut().interact_size.y = 22.0;
             ui.add(
                 egui::TextEdit::singleline(&mut app.settings.java_path)
                     .hint_text("例如 C:\\Program Files\\Java\\bin\\javaw.exe")
@@ -374,7 +461,7 @@ pub fn about(ui: &mut Ui) {
     theme::card(30).show(ui, |ui| {
         ui.add_space(26.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("✦").size(44.0).color(theme::ACCENT));
+            ui.label(RichText::new("✦").size(50.0).color(theme::ACCENT));
             ui.add_space(8.0);
             ui.label(RichText::new("NorthStar Minecraft Launcher").size(21.0).strong().color(theme::HEADING));
             ui.label(RichText::new(format!("NSCL · v{} · 开发预览", env!("CARGO_PKG_VERSION"))).size(12.0).color(theme::MUTED));
@@ -412,7 +499,7 @@ fn empty_state(
                 .strong()
                 .color(theme::HEADING),
         );
-        ui.label(RichText::new(description).size(12.0).color(theme::MUTED));
+        ui.label(RichText::new(description).size(14.0).color(theme::MUTED));
         if let Some((label, enabled)) = action {
             ui.add_space(10.0);
             app::secondary_button(ui, label, enabled);

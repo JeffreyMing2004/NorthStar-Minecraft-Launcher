@@ -64,7 +64,7 @@ impl eframe::App for NsclApp {
         let ctx = ui.ctx().clone();
         self.top_bar(ui, &ctx);
         egui::Panel::bottom("footer")
-            .exact_size(38.0)
+            .exact_size(42.0)
             .show_separator_line(false)
             .frame(
                 egui::Frame::default()
@@ -101,11 +101,16 @@ impl eframe::App for NsclApp {
             .frame(
                 egui::Frame::default()
                     .fill(theme::WINDOW_BG)
-                    .inner_margin(egui::Margin::symmetric(42, 30)),
+                    .inner_margin(egui::Margin {
+                        left: 42,
+                        right: 42,
+                        top: 38,
+                        bottom: 30,
+                    }),
             )
             .show(ui, |ui| {
                 self.page_heading(ui);
-                ui.add_space(20.0);
+                ui.add_space(28.0);
                 match self.page {
                     Page::Home => pages::home(ui, self),
                     Page::Account => pages::account(ui),
@@ -135,7 +140,7 @@ impl NsclApp {
                 };
                 ui.label(
                     RichText::new(title)
-                        .size(25.0)
+                        .size(31.0)
                         .strong()
                         .color(theme::HEADING),
                 );
@@ -148,7 +153,7 @@ impl NsclApp {
 
     fn top_bar(&mut self, ui: &mut Ui, ctx: &Context) {
         egui::Panel::top("topbar")
-            .exact_size(64.0)
+            .exact_size(72.0)
             .show_separator_line(false)
             .frame(
                 egui::Frame::default()
@@ -178,8 +183,8 @@ impl NsclApp {
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
                 brand.horizontal(|ui| {
-                    ui.label(RichText::new("✦").size(24.0).color(theme::ACCENT));
-                    ui.add_space(8.0);
+                    ui.label(RichText::new("✦").size(29.0).color(theme::ACCENT));
+                    ui.add_space(10.0);
                     if use_short_name {
                         ui.label(
                             RichText::new("NSCL")
@@ -238,7 +243,8 @@ impl NsclApp {
                             self.page = item;
                         }
                         if active {
-                            let y = response.rect.bottom() - 6.0;
+                            // 原设计下划线紧贴按钮下边缘
+                            let y = response.rect.bottom() - 3.0;
                             let x = response.rect.center().x;
                             ui.painter().line_segment(
                                 [egui::pos2(x - 12.0, y), egui::pos2(x + 12.0, y)],
@@ -362,7 +368,7 @@ pub fn primary_button(ui: &mut Ui, label: &str) -> bool {
             fill: theme::ACCENT,
             hover: theme::ACCENT_HOVER,
             active: theme::ACCENT_HOVER,
-            min_size: Vec2::new(230.0, 44.0),
+            min_size: Vec2::new(240.0, 46.0),
             ..Default::default()
         },
     )
@@ -393,14 +399,14 @@ pub fn eyebrow(ui: &mut Ui, text: &str) {
 pub fn heading(ui: &mut Ui, text: &str) {
     ui.label(
         RichText::new(text)
-            .size(21.0)
+            .size(24.0)
             .strong()
             .color(theme::HEADING),
     );
 }
 
 pub fn body(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(13.0).color(theme::MUTED));
+    ui.label(RichText::new(text).size(14.0).color(theme::MUTED));
 }
 
 pub fn hint(ui: &mut Ui, text: &str) {
