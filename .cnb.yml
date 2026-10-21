@@ -1,14 +1,23 @@
 # CNB -> GitHub 自动同步
 # 依赖官方插件 tencentcom/git-sync：https://cnb.cool/cnb/plugins/tencentcom/git-sync
-# 需要提供两个环境变量（建议放在密钥仓库并从仓库设置注入）：
-#   GITHUB_USERNAME   GitHub 用户名
-#   GITHUB_TOKEN      GitHub PAT（需 repo 权限；建议 fine-grained 只给目标仓库 Contents:读写）
-# 目标地址可用环境变量 GITHUB_SYNC_URL 覆盖，默认推到同名仓库。
+#
+# 凭据来源（二选一，见 docs/github-sync.md）：
+#   1. 密钥仓库文件（推荐）：把文件地址填进下面每个 pipeline 的 CNB_SECRETS_IMPORTS
+#   2. 仓库「设置 → 环境变量」：GITHUB_USERNAME / GITHUB_TOKEN 直接生效
+# 需要注意：imports 指向不存在的文件会直接报错，没有密钥仓库时请先留空。
+#
+# 密钥仓库文件的内容照抄 docs/ci/github.yml，四条 allow_* 缺一不可：
+#   allow_slugs / allow_branches / allow_events / allow_images
+# 特别是 allow_images: tencentcom/git-sync —— 文件被第三方镜像任务引用，不写会被拒。
 $:
   # 推送即同步：覆盖所有分支的 push
   push:
-    - name: sync-to-github
+    - imports:
+        - ${CNB_SECRETS_IMPORTS}
+      name: sync-to-github
       env:
+        # 密钥仓库文件地址，例如 https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml
+        CNB_SECRETS_IMPORTS: ''
         GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
       stages:
         - name: push 当前分支到 GitHub
@@ -24,8 +33,11 @@ $:
 
   # 页面手动触发（见 .cnb/web_trigger.yml），用于补推历史或全量分支
   web_trigger_sync:
-    - name: sync-to-github-manual
+    - imports:
+        - ${CNB_SECRETS_IMPORTS}
+      name: sync-to-github-manual
       env:
+        CNB_SECRETS_IMPORTS: ''
         GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
       stages:
         - name: 全量同步分支与标签到 GitHub
@@ -40,8 +52,11 @@ $:
 
   # Tag 推送时一并同步标签
   tag_push:
-    - name: sync-tags-to-github
+    - imports:
+        - ${CNB_SECRETS_IMPORTS}
+      name: sync-tags-to-github
       env:
+        CNB_SECRETS_IMPORTS: ''
         GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
       stages:
         - name: 推送标签到 GitHub

@@ -12,31 +12,62 @@
 
 ## 二、在 CNB 存密钥
 
-推荐用**密钥仓库**（禁止本地克隆、引用有审计）：
+两条路，任选其一。**没有密钥仓库也能先用**，凑齐凭据后同步才会成功。
 
-1. 在 <https://cnb.cool/new/repos> 选「密钥仓库」新建，例如 `JeffreyMing/ci-secrets`。
-2. 在 Web 界面新建 `github.yml`：
+### 方式 A：密钥仓库（推荐）
+
+密钥仓库不是现成的入口，要自己新建一个：
+
+1. 打开 <https://cnb.cool/new/repos>，**仓库类型选「密钥仓库」**，名字随意，例如 `ci-credentials`。
+2. 建好后进入该仓库，Web 界面新建文件 `github.yml`（密钥仓库禁止 clone，只能在网页上编辑），内容照抄 [`docs/ci/github.yml`](ci/github.yml)，把 `GITHUB_TOKEN` 换成真实 token：
 
 ```yaml
 GITHUB_USERNAME: JeffreyMing
 GITHUB_TOKEN: ghp_xxxxxxxxxxxxxxxx
+
+allow_slugs: JeffreyMing/NorthStar-Minecraft-Launcher
+allow_branches: "**"
+allow_events: "push,tag_push,web_trigger_sync"
+allow_images: "tencentcom/git-sync"
 ```
 
-3. 回到本仓库 `.cnb.yml`，在需要同步的 pipeline 上加 `imports`：
+3. 打开这个文件的页面，复制地址栏 URL，形如
+   `https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml`。
+4. 在 `.cnb.yml` 里，把三个 pipeline `env` 下的 `CNB_SECRETS_IMPORTS` 都填成这个地址：
 
 ```yaml
-$:
-  push:
-    - imports:
-        - https://cnb.cool/JeffreyMing/ci-secrets/-/blob/main/github.yml
-      name: sync-to-github
-      # ...
+env:
+  CNB_SECRETS_IMPORTS: https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml
 ```
 
-不想建密钥仓库时，也可直接在仓库「设置 → 环境变量」里加这两个变量，
-但密钥仓库有引用审计，更推荐前者。
+`imports` 会把 YAML 的键值注入为环境变量。**地址留空时 `imports` 是空串，不会报错**，同步任务只是拿不到凭据而失败。
 
-## 三、行为说明
+### 方式 B：仓库环境变量（最省事）
+
+在 CNB 仓库页 `设置 → 环境变量` 里直接加 `GITHUB_USERNAME`、`GITHUB_TOKEN`，不用改 `.cnb.yml`。
+
+密钥仓库的优势是引用有审计日志、可跨仓库复用，因此长期看更推荐 A。
+
+## 三、引用权限（最容易卡住的一步）
+
+默认**只有密钥仓库的管理员/负责人**触发的流水线才能引用里面的文件，别人推代码触发同步会直接报无权限。
+
+所以 `github.yml` 里必须声明 `allow_*` 放行规则。一旦写了 `allow_*`，平台就只按规则校验，不再看触发者角色。
+
+```yaml
+allow_slugs: JeffreyMing/NorthStar-Minecraft-Launcher   # 只允许本仓库
+allow_branches: "**"                                     # 全部分支
+allow_events: "push,tag_push,web_trigger_sync"           # 与 .cnb.yml 的触发事件对应
+allow_images: "tencentcom/git-sync"                      # 必须：文件被第三方镜像任务引用
+```
+
+三条容易漏的：
+
+- `allow_images` 必须写。`github.yml` 被 `tencentcom/git-sync` 这个**镜像任务**引用，没写平台会按「插件任务引用」直接拒绝。镜像名不带 tag，匹配的是 `tencentcom/git-sync` 或 `tencentcom/git-sync:latest`。
+- `allow_events` 必须写。`push`、`tag_push`、`web_trigger_sync` 都是用户可控事件（不可信事件），没写同样拒绝。
+- `allow_slugs` 里多级组织路径要用 `**`，`*` 不跨 `/`。
+
+## 四、行为说明
 
 | 场景 | 行为 |
 | --- | --- |
@@ -49,6 +80,6 @@ $:
 - 换目标仓库改 `.cnb.yml` 里的 `GITHUB_SYNC_URL` 即可，不必改其它地方。
 - CNB 能直连 GitHub；若推送超时，检查构建节点网络出站策略。
 
-## 四、隐私
+## 五、隐私
 
 **不建议**用这套流程同步私有仓库到公开 GitHub 仓库：会把全部提交历史、分支一起推过去。
