@@ -396,7 +396,12 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
         "发现组合好的模组与全新玩法。",
         "为现有实例添加更多可能。",
     ];
-    page_card(ui, |ui| {
+    let width = ui.available_width();
+    let height = ui.available_height();
+    theme::card(24).show(ui, |ui| {
+        ui.set_width(width - 50.0);
+        ui.set_min_height(height - 50.0);
+        ui.spacing_mut().item_spacing.y = 0.0;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             for (index, item) in CATEGORIES.iter().enumerate() {
@@ -441,32 +446,37 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
             vanilla_downloads(ui, app);
             return;
         }
-        ui.add_space(28.0);
-        app::heading(ui, CATEGORIES[app.category]);
-        ui.add_space(10.0);
-        app::body(ui, DESCRIPTIONS[app.category - 1]);
-        if app.category == 1 {
-            ui.add_space(20.0);
-            ui.horizontal(|ui| {
-                for loader in ["Forge", "Fabric", "NeoForge"] {
-                    egui::Frame::NONE
-                        .stroke(Stroke::new(1.0, theme::CARD_BORDER))
-                        .corner_radius(7.0)
-                        .inner_margin(egui::Margin::symmetric(18, 9))
-                        .show(ui, |ui| {
-                            ui.label(RichText::new(loader).size(13.0));
-                        });
+        egui::ScrollArea::vertical()
+            .id_salt("download-placeholder")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.add_space(28.0);
+                app::heading(ui, CATEGORIES[app.category]);
+                ui.add_space(10.0);
+                app::body(ui, DESCRIPTIONS[app.category - 1]);
+                if app.category == 1 {
+                    ui.add_space(20.0);
+                    ui.horizontal(|ui| {
+                        for loader in ["Forge", "Fabric", "NeoForge"] {
+                            egui::Frame::NONE
+                                .stroke(Stroke::new(1.0, theme::CARD_BORDER))
+                                .corner_radius(7.0)
+                                .inner_margin(egui::Margin::symmetric(18, 9))
+                                .show(ui, |ui| {
+                                    ui.label(RichText::new(loader).size(13.0));
+                                });
+                        }
+                    });
                 }
+                empty_state(
+                    ui,
+                    "↓",
+                    &format!("{}下载服务尚未接入", CATEGORIES[app.category]),
+                    "接入资源服务后，这里将显示可用版本和安装进度。",
+                    None,
+                );
+                ui.vertical_centered(|ui| app::badge_muted(ui, "暂无下载任务"));
             });
-        }
-        empty_state(
-            ui,
-            "↓",
-            &format!("{}下载服务尚未接入", CATEGORIES[app.category]),
-            "接入资源服务后，这里将显示可用版本和安装进度。",
-            None,
-        );
-        ui.vertical_centered(|ui| app::badge_muted(ui, "暂无下载任务"));
     });
 }
 
@@ -618,29 +628,54 @@ fn settings_input(ui: &mut Ui, label: &str, value: &mut String, width: f32) {
 
 fn vanilla_downloads(ui: &mut Ui, app: &mut NsclApp) {
     app.service.ensure_versions_loaded(&app.settings, ui.ctx());
-    task_status(ui, app);
-    if app.service.busy() || !app.service.notice.is_empty() {
-        ui.add_space(16.0);
-    }
+    let search_width = (ui.available_width() * 0.42).clamp(240.0, 400.0);
     ui.horizontal(|ui| {
-        ui.add(
+        ui.spacing_mut().item_spacing.x = 20.0;
+        let response = ui.add(
             egui::TextEdit::singleline(&mut app.service.search)
+                .font(FontId::proportional(14.0))
+                .frame(input_frame())
+                .margin(Vec2::new(14.0, 10.0))
                 .hint_text("搜索版本，例如 1.20.1")
-                .desired_width(240.0),
+                .desired_width(search_width),
         );
-        ui.checkbox(&mut app.service.snapshots, "显示快照及历史测试版");
+        input_focus(ui, &response);
+        ui.checkbox(&mut app.service.snapshots, "显示快照与历史版本");
     });
-    ui.add_space(12.0);
+    ui.add_space(20.0);
+    let status_height = if app.service.busy() {
+        88.0
+    } else if !app.service.notice.is_empty() {
+        52.0
+    } else {
+        0.0
+    };
+    let list_height = (ui.available_height() - status_height).max(80.0);
+    ui.allocate_ui_with_layout(
+        Vec2::new(ui.available_width(), list_height),
+        egui::Layout::top_down(egui::Align::Min),
+        |ui| {
+            ui.set_min_height(list_height);
+            vanilla_version_list(ui, app, list_height);
+        },
+    );
+    task_status(ui, app);
+}
+
+fn vanilla_version_list(ui: &mut Ui, app: &mut NsclApp, height: f32) {
     if app.service.versions.is_empty() {
-        if app.service.busy() {
-            app::body(ui, "正在获取版本列表……");
-        } else {
-            app::body(ui, "暂无可用版本，请重试或在设置中更换下载源。");
-            ui.add_space(12.0);
-            if app::secondary_button(ui, "重新加载", true) {
-                app.service.load_versions(&app.settings, ui.ctx());
+        ui.add_space(((height - 84.0) * 0.5).max(0.0));
+        ui.vertical_centered(|ui| {
+            if app.service.busy() {
+                app::body(ui, "正在获取版本列表……");
+            } else {
+                app::body(ui, "暂无可用版本，请重试或在设置中更换下载源。");
+                ui.add_space(16.0);
+                if download_button(ui, "重新加载", true) {
+                    app.service.load_versions(&app.settings, ui.ctx());
+                }
             }
-        }
+        });
         return;
     }
     let query = app.service.search.trim().to_ascii_lowercase();
@@ -656,47 +691,32 @@ fn vanilla_downloads(ui: &mut Ui, app: &mut NsclApp) {
         .collect();
     let mut install = None;
     if versions.is_empty() {
-        app::body(ui, "没有匹配的版本，请调整搜索词或启用快照显示。");
+        ui.add_space(((height - 24.0) * 0.5).max(0.0));
+        ui.vertical_centered(|ui| {
+            app::body(ui, "没有匹配的版本，请调整搜索词或启用快照显示。");
+        });
         return;
     }
+    ui.spacing_mut().item_spacing.y = 10.0;
     egui::ScrollArea::vertical()
         .id_salt("vanilla-versions")
-        .max_height(350.0)
-        .show_rows(ui, 44.0, versions.len(), |ui, range| {
+        .max_height(height)
+        .min_scrolled_height(0.0)
+        .auto_shrink([false, false])
+        .show_rows(ui, 72.0, versions.len(), |ui, range| {
             for index in range {
                 let version = &versions[index];
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(&version.id).size(15.0).color(theme::HEADING));
-                    ui.label(
-                        RichText::new(format!(
-                            "{} · {}",
-                            version.kind,
-                            version.release_time.get(..10).unwrap_or("")
-                        ))
-                        .size(11.0)
-                        .color(theme::MUTED),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let installed = app
-                            .service
-                            .installed
-                            .iter()
-                            .any(|entry| entry.id == version.id);
-                        ui.add_enabled_ui(!app.service.busy(), |ui| {
-                            if app::secondary_button(
-                                ui,
-                                if installed {
-                                    "校验 / 修复"
-                                } else {
-                                    "安装"
-                                },
-                                true,
-                            ) {
-                                install = Some(version.clone());
-                            }
-                        });
-                    });
+                let installed = app
+                    .service
+                    .installed
+                    .iter()
+                    .any(|entry| entry.id == version.id);
+                let clicked = ui.push_id(&version.id, |ui| {
+                    version_row(ui, version, installed, !app.service.busy())
                 });
+                if clicked.inner {
+                    install = Some(version.clone());
+                }
             }
         });
     if let Some(version) = install {
@@ -704,35 +724,167 @@ fn vanilla_downloads(ui: &mut Ui, app: &mut NsclApp) {
     }
 }
 
+fn version_row(
+    ui: &mut Ui,
+    version: &crate::minecraft::VersionEntry,
+    installed: bool,
+    enabled: bool,
+) -> bool {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 72.0), Sense::hover());
+    ui.painter().rect_filled(
+        rect,
+        10.0,
+        if ui.rect_contains_pointer(rect) {
+            theme::SECONDARY_BG
+        } else {
+            theme::TOPBAR_BG
+        },
+    );
+    ui.painter().rect_stroke(
+        rect,
+        10.0,
+        Stroke::new(1.0, theme::CARD_BORDER),
+        egui::StrokeKind::Inside,
+    );
+    let info_rect = Rect::from_min_max(
+        rect.min + Vec2::new(18.0, 12.0),
+        Pos2::new(rect.right() - 132.0, rect.bottom() - 12.0),
+    );
+    let mut info = ui.new_child(UiBuilder::new().max_rect(info_rect));
+    info.spacing_mut().item_spacing = Vec2::new(14.0, 5.0);
+    info.horizontal(|ui| {
+        ui.add(
+            egui::Label::new(
+                RichText::new(&version.id)
+                    .size(16.0)
+                    .family(theme::bold_family())
+                    .color(theme::HEADING),
+            )
+            .truncate(),
+        );
+        let kind = match version.kind.as_str() {
+            "release" => "正式版",
+            "snapshot" => "快照",
+            "old_beta" => "历史 Beta",
+            "old_alpha" => "历史 Alpha",
+            other => other,
+        };
+        ui.label(RichText::new(kind).size(11.0).color(theme::MUTED));
+        if installed {
+            ui.label(RichText::new("已安装").size(11.0).color(theme::ACCENT));
+        }
+    });
+    info.label(
+        RichText::new(version.release_time.get(..10).unwrap_or(""))
+            .size(12.0)
+            .color(theme::MUTED),
+    );
+    let mut action = ui.new_child(
+        UiBuilder::new()
+            .max_rect(Rect::from_min_size(
+                Pos2::new(rect.right() - 114.0, rect.center().y - 18.0),
+                Vec2::new(96.0, 36.0),
+            ))
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    download_button(
+        &mut action,
+        if installed {
+            "校验 / 修复"
+        } else {
+            "安装"
+        },
+        enabled,
+    )
+}
+
+fn download_button(ui: &mut Ui, label: &str, enabled: bool) -> bool {
+    ui.add_enabled_ui(enabled, |ui| {
+        app::styled_button(
+            ui,
+            RichText::new(label).size(13.0).color(theme::BODY_TEXT),
+            &app::ButtonStyle {
+                fill: theme::SECONDARY_BG,
+                hover: theme::HOVER,
+                stroke: Some(Stroke::new(1.0, theme::SECONDARY_BORDER)),
+                min_size: Vec2::new(96.0, 36.0),
+                ..Default::default()
+            },
+        )
+    })
+    .inner
+    .clicked()
+}
+
 fn task_status(ui: &mut Ui, app: &mut NsclApp) {
     if app.service.busy() {
         ui.add_space(16.0);
-        app::body(ui, &app.service.progress.stage);
+        ui.separator();
+        ui.add_space(12.0);
         let progress = &app.service.progress;
+        let detail = if progress.total > 0 {
+            format!(
+                "{} / {} 个文件 · {:.1} MiB",
+                progress.completed,
+                progress.total,
+                progress.bytes_downloaded as f64 / 1048576.0
+            )
+        } else {
+            "正在处理中……".into()
+        };
+        ui.horizontal(|ui| {
+            let info_width = (ui.available_width() - 116.0).max(0.0);
+            ui.allocate_ui_with_layout(
+                Vec2::new(info_width, 36.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_width(info_width);
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&progress.stage)
+                                .size(13.0)
+                                .color(theme::BODY_TEXT),
+                        )
+                        .truncate(),
+                    );
+                    ui.add_space(4.0);
+                    app::hint(ui, &detail);
+                },
+            );
+            if matches!(
+                app.service.task,
+                crate::service::Task::Install | crate::service::Task::Manifest
+            ) && download_button(ui, "取消任务", true)
+            {
+                app.service.cancel();
+            }
+        });
+        ui.add_space(8.0);
         if progress.total > 0 {
             ui.add(
                 egui::ProgressBar::new(progress.completed as f32 / progress.total as f32)
-                    .text(format!(
-                        "{} / {} 个文件 · {:.1} MiB",
-                        progress.completed,
-                        progress.total,
-                        progress.bytes_downloaded as f64 / 1048576.0
-                    ))
+                    .desired_height(4.0)
                     .desired_width(ui.available_width()),
             );
         } else {
-            ui.spinner();
-        }
-        if matches!(
-            app.service.task,
-            crate::service::Task::Install | crate::service::Task::Manifest
-        ) && ui.button("取消任务").clicked()
-        {
-            app.service.cancel();
+            ui.add(
+                egui::ProgressBar::new(0.0)
+                    .animate(true)
+                    .desired_height(4.0),
+            );
         }
     } else if !app.service.notice.is_empty() {
+        ui.add_space(16.0);
+        ui.separator();
         ui.add_space(12.0);
-        ui.label(RichText::new(&app.service.notice).color(theme::ACCENT));
+        ui.add(
+            egui::Label::new(
+                RichText::new(&app.service.notice)
+                    .size(13.0)
+                    .color(theme::ACCENT),
+            )
+            .truncate(),
+        );
     }
 }
 

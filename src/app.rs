@@ -129,7 +129,12 @@ impl eframe::App for NsclApp {
             }
         }
         #[cfg(debug_assertions)]
-        if self.screenshot_pending {
+        if self.screenshot_pending
+            && (self.page != Page::Downloads
+                || !self.service.versions.is_empty()
+                || self.service.error.is_some()
+                || !self.service.notice.is_empty())
+        {
             self.screenshot_pending = false;
             ctx.request_screenshot(move |image| save_screenshot(&image));
         }
@@ -183,20 +188,25 @@ impl eframe::App for NsclApp {
                     .inner_margin(egui::Margin {
                         left: 42,
                         right: 42,
-                        top: 38,
-                        bottom: 30,
+                        top: if self.page == Page::Downloads { 28 } else { 38 },
+                        bottom: if self.page == Page::Downloads { 24 } else { 30 },
                     }),
             )
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 self.page_heading(ui);
+                if self.page == Page::Downloads {
+                    ui.add_space(20.0);
+                    pages::downloads(ui, self);
+                    return;
+                }
                 ui.add_space(28.0);
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| match self.page {
                         Page::Home => pages::home(ui, self),
                         Page::Account => pages::account(ui),
-                        Page::Downloads => pages::downloads(ui, self),
+                        Page::Downloads => unreachable!(),
                         Page::Settings => pages::settings(ui, self),
                         Page::About => pages::about(ui),
                     });
@@ -225,8 +235,13 @@ impl NsclApp {
     }
 
     fn page_heading(&mut self, ui: &mut Ui) {
+        let height = if self.page == Page::Downloads {
+            64.0
+        } else {
+            68.0
+        };
         let (rect, _) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), 68.0), Sense::hover());
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
         theme::spaced_text(
             ui.painter(),
             rect.left_top(),
