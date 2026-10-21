@@ -39,6 +39,36 @@ pub fn card(padding: i8) -> Frame {
         .inner_margin(egui::Margin::same(padding))
 }
 
+// 微软雅黑粗体注册为独立字体族（见 main.rs），标题文字经此使用真实粗体字重
+pub fn bold_family() -> egui::FontFamily {
+    egui::FontFamily::Name(std::sync::Arc::from("cjk-bold"))
+}
+
+// 四角星：参照图中的 ✦ 为细长四角星，字体回退字形不一致，改为手绘
+pub fn star4(painter: &egui::Painter, center: egui::Pos2, radius: f32, color: Color32) {
+    let ratio = 0.13;
+    let points = [
+        (0.0f32, -1.0f32),
+        (ratio, -ratio),
+        (1.0, 0.0),
+        (ratio, ratio),
+        (0.0, 1.0),
+        (-ratio, ratio),
+        (-1.0, 0.0),
+        (-ratio, -ratio),
+    ];
+    let screen = |(x, y): (f32, f32)| egui::pos2(center.x + x * radius, center.y + y * radius);
+    let vertices: Vec<egui::Pos2> = points.iter().map(|&p| screen(p)).collect();
+    for i in 0..vertices.len() {
+        let next = vertices[(i + 1) % vertices.len()];
+        painter.add(egui::Shape::convex_polygon(
+            vec![center, vertices[i], next],
+            color,
+            egui::Stroke::NONE,
+        ));
+    }
+}
+
 pub fn apply(ctx: &Context) {
     ctx.all_styles_mut(|style| {
         style.visuals = egui::Visuals::dark();
@@ -50,5 +80,6 @@ pub fn apply(ctx: &Context) {
         style.visuals.widgets.active.bg_fill = HOVER;
         style.spacing.item_spacing = egui::vec2(8.0, 8.0);
         style.spacing.button_padding = egui::vec2(12.0, 8.0);
+        style.spacing.slider_rail_height = 3.0;
     });
 }

@@ -87,8 +87,12 @@ impl eframe::App for NsclApp {
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(20.0);
+                            ui.label(RichText::new("NSCL").size(10.0).color(theme::FOOTER_TEXT));
+                            let (rect, _) =
+                                ui.allocate_exact_size(Vec2::new(16.0, 12.0), egui::Sense::hover());
+                            theme::star4(ui.painter(), rect.center(), 5.0, theme::FOOTER_TEXT);
                             ui.label(
-                                RichText::new("JAVA EDITION  ✦  NSCL")
+                                RichText::new("JAVA EDITION")
                                     .size(10.0)
                                     .color(theme::FOOTER_TEXT),
                             );
@@ -130,7 +134,7 @@ impl NsclApp {
                     RichText::new(self.page.eyebrow())
                         .size(10.0)
                         .color(theme::EYEBROW)
-                        .strong(),
+                        .family(theme::bold_family()),
                 );
                 ui.add_space(6.0);
                 let title = if self.page == Page::Home {
@@ -140,8 +144,8 @@ impl NsclApp {
                 };
                 ui.label(
                     RichText::new(title)
-                        .size(31.0)
-                        .strong()
+                        .size(33.0)
+                        .family(theme::bold_family())
                         .color(theme::HEADING),
                 );
             });
@@ -183,21 +187,23 @@ impl NsclApp {
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
                 brand.horizontal(|ui| {
-                    ui.label(RichText::new("✦").size(29.0).color(theme::ACCENT));
+                    let (star_rect, _) =
+                        ui.allocate_exact_size(Vec2::new(26.0, 26.0), egui::Sense::hover());
+                    theme::star4(ui.painter(), star_rect.center(), 13.0, theme::ACCENT);
                     ui.add_space(10.0);
                     if use_short_name {
                         ui.label(
                             RichText::new("NSCL")
                                 .size(13.0)
                                 .color(theme::BODY_TEXT)
-                                .strong(),
+                                .family(theme::bold_family()),
                         );
                     } else {
                         ui.label(
                             RichText::new("NorthStar Minecraft Launcher")
                                 .size(13.0)
                                 .color(theme::BODY_TEXT)
-                                .strong(),
+                                .family(theme::bold_family()),
                         );
                     }
                     ui.label(
@@ -243,11 +249,11 @@ impl NsclApp {
                             self.page = item;
                         }
                         if active {
-                            // 原设计下划线紧贴按钮下边缘
-                            let y = response.rect.bottom() - 3.0;
+                            // 原设计下划线悬于按钮下方数像素处
+                            let y = response.rect.bottom() + 2.0;
                             let x = response.rect.center().x;
                             ui.painter().line_segment(
-                                [egui::pos2(x - 12.0, y), egui::pos2(x + 12.0, y)],
+                                [egui::pos2(x - 10.0, y), egui::pos2(x + 10.0, y)],
                                 egui::Stroke::new(2.0, theme::ACCENT),
                             );
                         }
@@ -362,7 +368,7 @@ pub fn primary_button(ui: &mut Ui, label: &str) -> bool {
         ui,
         RichText::new(label)
             .size(14.0)
-            .strong()
+            .family(theme::bold_family())
             .color(theme::ON_ACCENT),
         &ButtonStyle {
             fill: theme::ACCENT,
@@ -392,15 +398,15 @@ pub fn eyebrow(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(10.0)
             .color(theme::EYEBROW)
-            .strong(),
+            .family(theme::bold_family()),
     );
 }
 
 pub fn heading(ui: &mut Ui, text: &str) {
     ui.label(
         RichText::new(text)
-            .size(24.0)
-            .strong()
+            .size(25.0)
+            .family(theme::bold_family())
             .color(theme::HEADING),
     );
 }

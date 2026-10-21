@@ -10,7 +10,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                 ui.label(
                     RichText::new("我的角色")
                         .size(16.0)
-                        .strong()
+                        .family(crate::theme::bold_family())
                         .color(theme::HEADING),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -35,7 +35,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                     RichText::new("你的角色，即将登场")
                         .size(13.0)
                         .color(Color32::from_rgb(0xa6, 0xbb, 0xc9))
-                        .strong(),
+                        .family(crate::theme::bold_family()),
                 );
                 ui.label(
                     RichText::new("3D 皮肤预览尚未接入")
@@ -47,7 +47,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             ui.label(
                 RichText::new("添加你的 Minecraft 账号")
                     .size(16.0)
-                    .strong()
+                    .family(crate::theme::bold_family())
                     .color(theme::HEADING),
             );
             ui.label(
@@ -78,7 +78,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                     ui.label(
                         RichText::new("准备好探索新世界了吗？")
                             .size(21.0)
-                            .strong()
+                            .family(crate::theme::bold_family())
                             .color(theme::HEADING),
                     );
                     ui.label(
@@ -107,7 +107,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                         egui::pos2(text_x, cy - 11.0),
                         egui::Align2::LEFT_CENTER,
                         "暂无游戏实例",
-                        egui::FontId::proportional(14.0),
+                        egui::FontId::new(14.0, theme::bold_family()),
                         theme::HEADING,
                     );
                     painter.text(
@@ -234,19 +234,13 @@ fn landscape(ui: &mut Ui) {
     );
 
     // 原设计的折线山体剪影（clip-path 坐标），凸填充用底角扇形三角分解
-    mountain(&painter, rect, theme::MOUNTAIN_BACK, 1.26, 0.0, 5.0);
-    mountain(&painter, rect, theme::MOUNTAIN_FRONT, 1.3, -0.12, 60.0);
+    mountain(&painter, rect, theme::MOUNTAIN_BACK, 1.36, 0.0, 5.0);
+    mountain(&painter, rect, theme::MOUNTAIN_FRONT, 1.3, -0.12, 45.0);
 
     // 北极星：右侧 24%、顶部 22px，带集中青绿光晕
     let star = egui::pos2(rect.left() + rect.width() * 0.76, rect.top() + 38.0);
     radial_glow(&painter, star, 26.0, (0x77, 0xe6, 0xc8), 0.55);
-    painter.text(
-        star,
-        egui::Align2::CENTER_CENTER,
-        "✦",
-        egui::FontId::proportional(32.0),
-        theme::STAR,
-    );
+    theme::star4(&painter, star, 15.0, theme::STAR);
 
     painter.text(
         egui::pos2(rect.left() + 30.0, rect.bottom() - 24.0),
@@ -327,7 +321,7 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
         ui.set_min_height(450.0);
         ui.add_space(18.0);
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
+            ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
             for (index, item) in CATEGORIES.iter().enumerate() {
                 let selected = app.category == index;
                 let fill = if selected {
@@ -461,19 +455,20 @@ pub fn about(ui: &mut Ui) {
     theme::card(30).show(ui, |ui| {
         ui.add_space(26.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("✦").size(50.0).color(theme::ACCENT));
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 46.0), egui::Sense::hover());
+            theme::star4(ui.painter(), rect.center(), 23.0, theme::ACCENT);
             ui.add_space(8.0);
-            ui.label(RichText::new("NorthStar Minecraft Launcher").size(21.0).strong().color(theme::HEADING));
+            ui.label(RichText::new("NorthStar Minecraft Launcher").size(21.0).family(crate::theme::bold_family()).color(theme::HEADING));
             ui.label(RichText::new(format!("NSCL · v{} · 开发预览", env!("CARGO_PKG_VERSION"))).size(12.0).color(theme::MUTED));
             ui.label(RichText::new("一个以 Rust 为核心的 Minecraft Java Edition 启动器。").size(13.0).color(theme::MUTED));
         });
         ui.add_space(24.0);
         ui.separator();
         ui.add_space(16.0);
-        ui.label(RichText::new("本版本").size(14.0).strong().color(theme::HEADING));
+        ui.label(RichText::new("本版本").size(14.0).family(crate::theme::bold_family()).color(theme::HEADING));
         ui.label(RichText::new("已提供导航、页面框架和本地设置保存。游戏安装与启动、账号认证、模组下载及皮肤渲染尚未实现。").size(13.0).color(theme::MUTED));
         ui.add_space(12.0);
-        ui.label(RichText::new("项目声明").size(14.0).strong().color(theme::HEADING));
+        ui.label(RichText::new("项目声明").size(14.0).family(crate::theme::bold_family()).color(theme::HEADING));
         ui.label(RichText::new("本项目与 Mojang Studios 或 Microsoft 无隶属或背书关系。").size(13.0).color(theme::MUTED));
     });
 }
@@ -489,20 +484,28 @@ fn empty_state(
         ui.add_space(22.0);
         ui.label(
             RichText::new(glyph)
-                .size(36.0)
+                .size(46.0)
                 .color(Color32::from_rgb(0x71, 0xb9, 0xbc)),
         );
         ui.add_space(8.0);
         ui.label(
             RichText::new(title)
                 .size(17.0)
-                .strong()
+                .family(crate::theme::bold_family())
                 .color(theme::HEADING),
         );
         ui.label(RichText::new(description).size(14.0).color(theme::MUTED));
         if let Some((label, enabled)) = action {
             ui.add_space(10.0);
-            app::secondary_button(ui, label, enabled);
+            // 原设计的禁用按钮明显更宽
+            ui.add_enabled(
+                enabled,
+                egui::Button::new(RichText::new(label).size(13.0).color(theme::BODY_TEXT))
+                    .fill(theme::SECONDARY_BG)
+                    .stroke(egui::Stroke::new(1.0, theme::SECONDARY_BORDER))
+                    .corner_radius(8.0)
+                    .min_size(Vec2::new(230.0, 40.0)),
+            );
         }
         ui.add_space(18.0);
     });
