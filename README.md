@@ -84,18 +84,18 @@ CNB 为主仓库，GitHub 为镜像。
 
 ```powershell
 npm ci
-npm run dev
+npm start
 ```
 
-浏览器打开终端显示的本地地址可预览界面。设置保存在当前环境的本地存储中，浏览器预览与桌面应用的设置互相独立；不会存储账号令牌。
+`npm start` 会打开独立的 Tauri 桌面窗口，需要先安装下述桌面依赖；脚本会自动查找用户目录下的 Rust 工具链。若只需浏览器预览，可运行 `npm run dev`。设置保存在当前环境的本地存储中，浏览器预览与桌面应用的设置互相独立；不会存储账号令牌。
 
 ```powershell
 npm run build       # TypeScript 检查和前端生产构建
-npm run tauri dev   # 启动 Tauri 桌面开发窗口
-npm run tauri build # 构建桌面程序（当前未开启安装包打包）
+npm start          # 启动 Tauri 桌面开发窗口
+npm run desktop:build # 构建桌面程序（当前未开启安装包打包）
 ```
 
-桌面开发额外需要 Rust 工具链及系统依赖。Windows 需要 Microsoft C++ Build Tools 与 WebView2，其他平台请参阅 [Tauri 开发前置要求](https://tauri.app/start/prerequisites/)。当前开发环境缺少 Rust 工具链，桌面编译与窗口控制尚未完成实机验证。
+桌面开发额外需要 Rust 工具链及系统依赖。Windows 需要 Microsoft C++ Build Tools 与 WebView2，其他平台请参阅 [Tauri 开发前置要求](https://tauri.app/start/prerequisites/)。首次编译需要下载 Rust 依赖并完成本地编译，耗时较长。
 
 项目结构：`src/` 为 Vue 界面，`src-tauri/` 为 Rust 桌面入口及权限配置，`docs/` 为设计文档。应用版本从根目录 `package.json` 读取。
 
