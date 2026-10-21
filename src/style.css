@@ -7,6 +7,10 @@
   color-scheme:dark}
 * {
   box-sizing:border-box}
+html {
+  scrollbar-width:none}
+html::-webkit-scrollbar,body::-webkit-scrollbar {
+  width:0;height:0;display:none}
 body {
   margin:0}
 button,input {
