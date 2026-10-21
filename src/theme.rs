@@ -23,7 +23,7 @@ pub const SECONDARY_BORDER: Color32 = Color32::from_rgb(0x3a, 0x4c, 0x5e);
 pub const BADGE_TEXT: Color32 = Color32::from_rgb(0x8d, 0xd3, 0xc9);
 pub const BADGE_BORDER: Color32 = Color32::from_rgb(0x4a, 0x8a, 0x82);
 pub const FOOTER_TEXT: Color32 = Color32::from_rgb(0x74, 0x87, 0x9d);
-pub const DASHED_BORDER: Color32 = Color32::from_rgb(0x51, 0x66, 0x74);
+pub const DASHED_BORDER: Color32 = Color32::from_rgb(0x2d, 0x40, 0x4f);
 pub fn dashed_bg() -> Color32 {
     Color32::from_rgba_unmultiplied(0x0d, 0x16, 0x21, 0x55)
 }
@@ -46,7 +46,7 @@ pub fn bold_family() -> egui::FontFamily {
 
 // 四角星：参照图中的 ✦ 为细长四角星，字体回退字形不一致，改为手绘
 pub fn star4(painter: &egui::Painter, center: egui::Pos2, radius: f32, color: Color32) {
-    let ratio = 0.13;
+    let ratio = 0.25;
     let points = [
         (0.0f32, -1.0f32),
         (ratio, -ratio),
@@ -81,5 +81,28 @@ pub fn apply(ctx: &Context) {
         style.spacing.item_spacing = egui::vec2(8.0, 8.0);
         style.spacing.button_padding = egui::vec2(12.0, 8.0);
         style.spacing.slider_rail_height = 3.0;
+        style.visuals.override_text_color = Some(BODY_TEXT);
+        style.visuals.extreme_bg_color = Color32::from_rgb(0x0c, 0x16, 0x22);
     });
+}
+
+pub fn spaced_text(
+    painter: &egui::Painter,
+    position: egui::Pos2,
+    text: &str,
+    size: f32,
+    spacing: f32,
+    color: Color32,
+) {
+    let job = egui::text::LayoutJob::single_section(
+        text.to_owned(),
+        egui::TextFormat {
+            font_id: egui::FontId::proportional(size),
+            color,
+            extra_letter_spacing: spacing,
+            ..Default::default()
+        },
+    );
+    let galley = painter.layout_job(job);
+    painter.galley(position, galley, color);
 }
