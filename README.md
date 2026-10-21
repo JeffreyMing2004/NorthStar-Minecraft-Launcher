@@ -6,24 +6,24 @@ NorthStar Minecraft Launcher，简称 **NSCL**，是一款使用 **Rust** 编写
 
 ## 项目状态
 
-**当前处于项目初始化与功能规划阶段。** 仓库暂未包含启动器代码、可运行程序或安装包，本文中的功能均为开发目标。
+**当前处于基础界面开发阶段。** 已建立 Tauri + Vue 工程，提供五个导航页面和本地设置保存。游戏安装、启动、认证、资源下载及皮肤渲染尚未实现，暂无正式安装包。
 
-- 已完成：项目介绍与初步功能规划。
-- 待确定：UI 框架的最终选型、首批支持的平台以及资源下载服务。
+- 已完成：基础工程、顶部导航、页面空状态和本地设置保存。
+- UI 方案：Tauri 2 + Vue 3 + TypeScript；首批支持的平台和资源下载服务仍待确定。
 - 构建、运行与安装说明将在对应功能实现后补充。
 
 项目仓库：[CNB · NorthStar Minecraft Launcher](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)
 
 ## 技术栈
 
-- **编写语言**：Rust
-- **UI 框架**：Tauri / egui（具体方案待确定）
+- **核心语言**：Rust；前端使用 TypeScript、HTML 和 CSS
+- **UI 框架**：Tauri 2 + Vue 3（Vite）
 
 ## UI 方案草案
 
-建议采用 **Tauri 2 + Vue 3 + TypeScript**，由 Rust 承担启动器核心逻辑。顶部左侧展示 `NorthStar Minecraft Launcher (v{version})` 或 `NSCL (v{version})`，中间依次为 **开始 / 账号 / 下载 / 设置 / 更多**，右侧为窗口控制按钮。
+采用 **Tauri 2 + Vue 3 + TypeScript**，由 Rust 承担启动器核心逻辑。顶部左侧展示 `NorthStar Minecraft Launcher (v{version})` 或 `NSCL (v{version})`，中间依次为 **开始 / 账号 / 下载 / 设置 / 更多**，右侧为窗口控制按钮。
 
-首页以实例选择和启动游戏为主要操作，右侧提供账号摘要与角色皮肤预览。详细的框架取舍、页面职责、布局及交互状态见 [UI 方案草案](docs/ui-design.md)。此方案尚未实现，最终技术选型待确认。
+首页以实例选择和启动游戏为主要操作，右侧提供账号摘要与角色皮肤预览。详细的框架取舍、页面职责、布局及交互状态见 [UI 方案草案](docs/ui-design.md)。基础页面已实现，后端功能将分阶段接入。
 
 ## 规划功能
 
@@ -70,7 +70,7 @@ CNB 为主仓库，GitHub 为镜像。
 以下为初步开发顺序，不代表发布日期承诺：
 
 - [x] 建立仓库并编写项目 README。
-- [ ] 确定 UI 方案，搭建 Rust 工程与基础界面。
+- [x] 确定 UI 方案，搭建 Rust 工程与基础界面。
 - [ ] 实现原版客户端下载、安装与启动流程。
 - [ ] 完善账号登录、Java 配置与实例管理。
 - [ ] 接入 Forge、Fabric 和 NeoForge 安装流程。
@@ -80,11 +80,24 @@ CNB 为主仓库，GitHub 为镜像。
 
 ## 使用与开发
 
-当前尚无可用版本，暂不提供安装或构建命令。工程初始化后，将在此补充：
+需要 Node.js 22.12+（或兼容的更新 LTS 版本）及 npm。
 
-- 支持的操作系统与运行环境要求。
-- 开发依赖、环境配置与本地运行方法。
-- 构建打包步骤及正式版本下载方式。
+```powershell
+npm ci
+npm run dev
+```
+
+浏览器打开终端显示的本地地址可预览界面。设置保存在当前环境的本地存储中，浏览器预览与桌面应用的设置互相独立；不会存储账号令牌。
+
+```powershell
+npm run build       # TypeScript 检查和前端生产构建
+npm run tauri dev   # 启动 Tauri 桌面开发窗口
+npm run tauri build # 构建桌面程序（当前未开启安装包打包）
+```
+
+桌面开发额外需要 Rust 工具链及系统依赖。Windows 需要 Microsoft C++ Build Tools 与 WebView2，其他平台请参阅 [Tauri 开发前置要求](https://tauri.app/start/prerequisites/)。当前开发环境缺少 Rust 工具链，桌面编译与窗口控制尚未完成实机验证。
+
+项目结构：`src/` 为 Vue 界面，`src-tauri/` 为 Rust 桌面入口及权限配置，`docs/` 为设计文档。应用版本从根目录 `package.json` 读取。
 
 ## 参与贡献
 
