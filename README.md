@@ -52,7 +52,7 @@ CNB 为主仓库，GitHub 为镜像。
 - 主仓库：[CNB · NorthStar Minecraft Launcher](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)
 - 镜像：[GitHub · NorthStar Minecraft Launcher](https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher)
 - CNB 上任意分支 `push`、推 `tag` 都会自动同步到 GitHub；提交记录请以 CNB 为源
-- 需要先在 CNB 配置 `GITHUB_USERNAME`、`GITHUB_TOKEN`：用密钥仓库，或在仓库「设置 → 环境变量」直接加；配置方式见 [CNB → GitHub 自动同步](docs/github-sync.md)
+- 需要先在 CNB 配置 `GITHUB_USERNAME`、`GITHUB_TOKEN`：用密钥仓库，或在仓库「设置 → 环境变量」直接加；密钥文件模板见 [`docs/ci/github.yml`](docs/ci/github.yml)，配置步骤见 [CNB → GitHub 自动同步](docs/github-sync.md)
 
 ## 配套功能规划
 

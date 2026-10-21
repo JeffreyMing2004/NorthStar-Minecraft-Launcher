@@ -6,10 +6,9 @@
 #   2. 仓库「设置 → 环境变量」：GITHUB_USERNAME / GITHUB_TOKEN 直接生效
 # 需要注意：imports 指向不存在的文件会直接报错，没有密钥仓库时请先留空。
 #
-# 密钥仓库里的文件建议带上 allow_* 规则，否则只有密钥仓库管理员/负责人触发的流水线能引用：
-#   allow_slugs: JeffreyMing/NorthStar-Minecraft-Launcher
-#   allow_branches: "**"
-#   allow_events: "push,tag_push,web_trigger_sync"
+# 密钥仓库文件的内容照抄 docs/ci/github.yml，四条 allow_* 缺一不可：
+#   allow_slugs / allow_branches / allow_events / allow_images
+# 特别是 allow_images: tencentcom/git-sync —— 文件被第三方镜像任务引用，不写会被拒。
 $:
   # 推送即同步：覆盖所有分支的 push
   push:
@@ -17,7 +16,7 @@ $:
         - ${CNB_SECRETS_IMPORTS}
       name: sync-to-github
       env:
-        # 密钥仓库文件地址，例如 https://cnb.cool/JeffreyMing/ci-secrets/-/blob/main/github.yml
+        # 密钥仓库文件地址，例如 https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml
         CNB_SECRETS_IMPORTS: ''
         GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
       stages:

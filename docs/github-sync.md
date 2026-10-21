@@ -18,24 +18,29 @@
 
 密钥仓库不是现成的入口，要自己新建一个：
 
-1. 打开 <https://cnb.cool/new/repos>，**仓库类型选「密钥仓库」**，名字随意，例如 `ci-secrets`。
-2. 建好后进入该仓库，在 Web 界面新建文件 `github.yml`（密钥仓库禁止 clone，只能在网页上编辑）：
+1. 打开 <https://cnb.cool/new/repos>，**仓库类型选「密钥仓库」**，名字随意，例如 `ci-credentials`。
+2. 建好后进入该仓库，Web 界面新建文件 `github.yml`（密钥仓库禁止 clone，只能在网页上编辑），内容照抄 [`docs/ci/github.yml`](ci/github.yml)，把 `GITHUB_TOKEN` 换成真实 token：
 
 ```yaml
 GITHUB_USERNAME: JeffreyMing
 GITHUB_TOKEN: ghp_xxxxxxxxxxxxxxxx
+
+allow_slugs: JeffreyMing/NorthStar-Minecraft-Launcher
+allow_branches: "**"
+allow_events: "push,tag_push,web_trigger_sync"
+allow_images: "tencentcom/git-sync"
 ```
 
-3. 打开文件页面，复制地址栏里的 URL，形如
-   `https://cnb.cool/JeffreyMing/ci-secrets/-/blob/main/github.yml`。
-4. 在 `.cnb.yml` 里，把每个 pipeline `env` 下的 `CNB_SECRETS_IMPORTS` 填成这个地址：
+3. 打开这个文件的页面，复制地址栏 URL，形如
+   `https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml`。
+4. 在 `.cnb.yml` 里，把三个 pipeline `env` 下的 `CNB_SECRETS_IMPORTS` 都填成这个地址：
 
 ```yaml
 env:
-  CNB_SECRETS_IMPORTS: https://cnb.cool/JeffreyMing/ci-secrets/-/blob/main/github.yml
+  CNB_SECRETS_IMPORTS: https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml
 ```
 
-`imports` 会把这个 YAML 的键值注入为环境变量。**地址留空时 `imports` 是空串，不会报错**，同步任务只是拿不到凭据而失败。
+`imports` 会把 YAML 的键值注入为环境变量。**地址留空时 `imports` 是空串，不会报错**，同步任务只是拿不到凭据而失败。
 
 ### 方式 B：仓库环境变量（最省事）
 
@@ -43,25 +48,24 @@ env:
 
 密钥仓库的优势是引用有审计日志、可跨仓库复用，因此长期看更推荐 A。
 
-## 三、密钥仓库的引用权限（容易踩）
+## 三、引用权限（最容易卡住的一步）
 
-默认**只有密钥仓库的管理员/负责人**触发的流水线才能引用里面的文件。别人推代码触发同步时会报无权限。
+默认**只有密钥仓库的管理员/负责人**触发的流水线才能引用里面的文件，别人推代码触发同步会直接报无权限。
 
-解决办法是在 `github.yml` 里声明放行范围：
+所以 `github.yml` 里必须声明 `allow_*` 放行规则。一旦写了 `allow_*`，平台就只按规则校验，不再看触发者角色。
 
 ```yaml
-GITHUB_USERNAME: JeffreyMing
-GITHUB_TOKEN: ghp_xxxxxxxxxxxxxxxx
-allow_slugs: JeffreyMing/NorthStar-Minecraft-Launcher
-allow_branches: "**"
-allow_events: "push,tag_push,web_trigger_sync"
+allow_slugs: JeffreyMing/NorthStar-Minecraft-Launcher   # 只允许本仓库
+allow_branches: "**"                                     # 全部分支
+allow_events: "push,tag_push,web_trigger_sync"           # 与 .cnb.yml 的触发事件对应
+allow_images: "tencentcom/git-sync"                      # 必须：文件被第三方镜像任务引用
 ```
 
-- `allow_slugs`：只允许本仓库引用（多级组织路径要用 `**`）
-- `allow_branches`：允许的分支，`**` 代表全部
-- `allow_events`：允许的触发事件，对应 `.cnb.yml` 里的 `push` / `tag_push` / `web_trigger_sync`
+三条容易漏的：
 
-一旦写了 `allow_*`，平台就只按规则校验，不再看触发者角色。
+- `allow_images` 必须写。`github.yml` 被 `tencentcom/git-sync` 这个**镜像任务**引用，没写平台会按「插件任务引用」直接拒绝。镜像名不带 tag，匹配的是 `tencentcom/git-sync` 或 `tencentcom/git-sync:latest`。
+- `allow_events` 必须写。`push`、`tag_push`、`web_trigger_sync` 都是用户可控事件（不可信事件），没写同样拒绝。
+- `allow_slugs` 里多级组织路径要用 `**`，`*` 不跨 `/`。
 
 ## 四、行为说明
 
