@@ -47,6 +47,7 @@ pub struct NsclApp {
     pub save_status: String,
     pub service: crate::service::GameService,
     pub project_icons: crate::project_icons::ProjectIcons,
+    pub skin: crate::skin_ui::SkinView,
     pub log_view: Option<String>,
     pub accounts: crate::account_service::AccountService,
     pub instance_manager: bool,
@@ -85,6 +86,7 @@ impl NsclApp {
                     .with_file_name("cache")
                     .join("project-icons"),
             ),
+            skin: crate::skin_ui::SkinView::new(),
             log_view: None,
             accounts: crate::account_service::AccountService::new(),
             instance_manager: false,
@@ -115,6 +117,8 @@ impl eframe::App for NsclApp {
             self.remember_instance();
         }
         self.accounts.poll(&mut self.settings, &ctx);
+        self.skin
+            .sync(&mut self.accounts, self.settings.online_mode, &ctx);
         if let Some(session) = self.service.renewed_session.take() {
             self.accounts.accept(session);
         }

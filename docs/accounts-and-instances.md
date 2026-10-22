@@ -26,6 +26,16 @@ Windows 使用凭据管理器，macOS 使用 Keychain，保存 Microsoft 刷新�
 
 协议依据：[Microsoft 授权码与 PKCE 文档](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow)、[回调 URI 配置说明](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url)、[设备代码授权文档](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)、[Xbox 身份认证概述](https://learn.microsoft.com/en-us/gaming/gdk/docs/services/fundamentals/s2s-auth-calls/service-authentication/live-xbox-live-authentication)、[Prism Launcher 当前认证步骤](https://github.com/PrismLauncher/PrismLauncher/tree/develop/launcher/minecraft/auth/steps)。测试使用本地模拟认证服务与虚拟系统凭据；真实用户登录、Minecraft 应用许可和正版服务器连接需实际授权验证。
 
+## 皮肤管理与 3D 预览
+
+首页和账号页使用 Rust 原生绘制带纹理的 3D 角色，支持拖动旋转与双击复位、标准手臂与纤细手臂、帽子及衣物外层。登录或切换账号后自动读取当前正版皮肤；读取失败时可显示本地缓存，首次未读取到皮肤时显示启动器默认预览模型。
+
+在账号页填写或拖入 PNG 文件，选择模型后点击「预览本地皮肤」。支持 64×64 与传统 64×32 PNG，最大 1 MiB；传统皮肤仅支持标准手臂，预览时自动补齐镜像肢体。点击「上传到当前正版账号」才会修改在线皮肤；上传前重新验证当前账号身份。可点击「刷新账号皮肤」恢复在线显示。游戏中的新皮肤可能需要重新进入服务器。
+
+皮肤通过 Minecraft 官方角色服务上传，纹理从 `textures.minecraft.net` 获取，下载纹理时不携带账号令牌。缓存位于设置文件旁的 `cache/skins/`，仅包含皮肤图片与模型类型。模拟服务测试验证上传表单、身份匹配、图片格式及纹理请求不泄漏令牌；真实账号上传需用户在界面主动操作。
+
+接口参考：[Minecraft 用户服务实现](https://github.com/Voxelum/minecraft-launcher-core-node/blob/master/packages/user/mojang.ts)。
+
 ## Java 配置
 
 - 「设置 → 扫描 Java」检查 `JAVA_HOME`、`PATH`、常见发行版目录及启动器数据目录下的 `java/`，列出可用版本、架构、发行版和路径。

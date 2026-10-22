@@ -7,6 +7,7 @@ mod download_flow;
 mod pages;
 mod project_icons;
 mod service;
+mod skin_ui;
 mod theme;
 use nscl::{accounts, content, instances, java, minecraft, store};
 

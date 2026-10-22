@@ -199,26 +199,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         Color32::from_rgb(0x35, 0x59, 0x66),
         0.18,
     );
-    diamond(
-        aside.painter(),
-        center - Vec2::new(0.0, 18.0),
-        17.0,
-        Color32::from_rgb(0x54, 0x7b, 0x88),
-    );
-    aside.painter().text(
-        center + Vec2::new(0.0, 56.0),
-        egui::Align2::CENTER_CENTER,
-        "你的角色，即将登场",
-        FontId::new(13.0, theme::bold_family()),
-        Color32::from_rgb(0xa6, 0xbb, 0xc9),
-    );
-    aside.painter().text(
-        center + Vec2::new(0.0, 84.0),
-        egui::Align2::CENTER_CENTER,
-        "3D 皮肤预览尚未接入",
-        FontId::proportional(11.0),
-        theme::MUTED,
-    );
+    app.skin.paint(&mut aside, preview, "home-skin-model");
     let footer = Rect::from_min_max(
         Pos2::new(content.left(), content.bottom() - 115.0),
         content.max,
@@ -445,7 +426,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
         ui.add_space(12.0);
         app::hint(
             ui,
-            "密码只在 Microsoft 官方网页输入；启动器将刷新令牌保存在系统凭据库。皮肤管理与 3D 预览仍在开发中。",
+            "密码只在 Microsoft 官方网页输入；启动器将刷新令牌保存在系统凭据库。下方可预览和上传角色皮肤。",
         );
         if app.accounts.pending {
             ui.add_space(20.0);
@@ -614,6 +595,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
             ui,
             "离线测试玩家名和试玩选项可在设置中配置；正版启动验证失败时不会自动切换离线身份。",
         );
+        crate::skin_ui::controls(ui, app);
     });
 }
 
@@ -1753,10 +1735,7 @@ pub fn about(ui: &mut Ui) {
         ui.add_space(10.0);
         app::heading(ui, "NorthStar Minecraft Launcher");
         ui.add_space(10.0);
-        app::body(
-            ui,
-            &format!("NSCL · v{} · 开发预览", env!("CARGO_PKG_VERSION")),
-        );
+        app::body(ui, &format!("NSCL · v{}", env!("CARGO_PKG_VERSION")));
         ui.add_space(10.0);
         app::body(ui, "一个以 Rust 为核心的 Minecraft Java Edition 启动器。");
         ui.add_space(30.0);
@@ -1769,7 +1748,7 @@ pub fn about(ui: &mut Ui) {
         ui.add_space(10.0);
         app::body(
             ui,
-            "已提供原版安装启动、Microsoft 正版登录与续期、多账号切换、Java 检测和实例独立配置及归档恢复。模组下载、皮肤修改与渲染尚未实现。",
+            "支持原版与 Forge / Fabric / NeoForge 安装启动、Microsoft 正版登录、多账号与独立实例、Modrinth 模组与整合包，以及皮肤上传和可旋转的 3D 角色预览。",
         );
         ui.add_space(22.0);
         ui.label(
