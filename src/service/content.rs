@@ -13,6 +13,7 @@ use crate::{
 pub enum ContentPlan {
     Mod(ModPlan),
     Pack(PackPlan),
+    Remove(content::RemovalPlan),
 }
 
 #[derive(Default)]
@@ -27,6 +28,11 @@ pub struct ContentState {
     pub plan: Option<ContentPlan>,
     pub audit: Option<CompatibilityReport>,
     pub local_path: String,
+    pub manager_open: bool,
+    pub managed: Option<content::ManagedCatalog>,
+    pub updates: content::UpdateReport,
+    pub updates_checked: bool,
+    pub managed_selection: std::collections::BTreeSet<String>,
 }
 
 pub(super) enum ContentEvent {
@@ -35,6 +41,7 @@ pub(super) enum ContentEvent {
     Plan(Box<ContentPlan>),
     Audit(CompatibilityReport),
     Installed(Instance, String),
+    Managed(Box<content::ManagedCatalog>, Option<content::UpdateReport>),
 }
 
 impl GameService {
@@ -270,6 +277,12 @@ impl GameService {
                 .and_then(|d| match plan {
                     ContentPlan::Mod(plan) => content::install_mods(&root, &plan, &d)
                         .map(|i| (i, format!("{} 个模组及依赖安装完成。", plan.versions.len()))),
+                    ContentPlan::Remove(plan) => content::remove_mods(&root, &plan, &d).map(|i| {
+                        (
+                            i,
+                            format!("已卸载 {} 个模组，存档与配置已保留。", plan.entries.len()),
+                        )
+                    }),
                     ContentPlan::Pack(plan) => content::install_pack(&root, &plan, &settings, &d)
                         .map(|i| {
                             (
@@ -283,6 +296,89 @@ impl GameService {
                 &ctx,
                 match result {
                     Ok((i, message)) => Event::Content(ContentEvent::Installed(i, message)),
+                    Err(e) => Event::Failed(e),
+                },
+            );
+        });
+    }
+
+    pub fn content_manage(&mut self, settings: &Settings, ctx: &egui::Context, updates: bool) {
+        if self.busy() {
+            return;
+        }
+        let target = match self.content_target(settings) {
+            Ok(t) => t,
+            Err(e) => {
+                self.error = Some(e);
+                return;
+            }
+        };
+        self.content.manager_open = true;
+        self.begin(Task::Content);
+        let (settings, sender, cancel, ctx) = (
+            settings.clone(),
+            self.sender.clone(),
+            self.cancel.clone(),
+            ctx.clone(),
+        );
+        std::thread::spawn(move || {
+            let root = store::game_directory(&settings);
+            let result = Downloader::new(settings.source, cancel, reporter(&sender, &ctx))
+                .and_then(|d| {
+                    d.phase("读取已安装模组并检查文件", 0);
+                    let catalog = content::list_managed(&root, &target, &d)?;
+                    let report = if updates {
+                        Some(content::check_updates(&catalog, &Modrinth::new(d))?)
+                    } else {
+                        None
+                    };
+                    Ok((catalog, report))
+                });
+            send(
+                &sender,
+                &ctx,
+                match result {
+                    Ok((list, report)) => {
+                        Event::Content(ContentEvent::Managed(Box::new(list), report))
+                    }
+                    Err(e) => Event::Failed(e),
+                },
+            );
+        });
+    }
+
+    pub fn content_remove_preview(&mut self, settings: &Settings, ctx: &egui::Context) {
+        if self.busy() {
+            return;
+        }
+        let target = match self.content_target(settings) {
+            Ok(t) => t,
+            Err(e) => {
+                self.error = Some(e);
+                return;
+            }
+        };
+        let (root, projects) = (
+            store::game_directory(settings),
+            self.content.managed_selection.clone(),
+        );
+        self.begin(Task::Content);
+        let (sender, ctx, cancel) = (self.sender.clone(), ctx.clone(), self.cancel.clone());
+        std::thread::spawn(move || {
+            let result = content::plan_removal(&root, &target, &projects).and_then(|plan| {
+                if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                    Err("操作已取消。".into())
+                } else {
+                    Ok(plan)
+                }
+            });
+            send(
+                &sender,
+                &ctx,
+                match result {
+                    Ok(plan) => {
+                        Event::Content(ContentEvent::Plan(Box::new(ContentPlan::Remove(plan))))
+                    }
                     Err(e) => Event::Failed(e),
                 },
             );
@@ -336,14 +432,32 @@ impl GameService {
         match event {
             ContentEvent::Search(page) => self.content.results = page,
             ContentEvent::Versions(versions) => self.content.versions = versions,
-            ContentEvent::Plan(plan) => self.content.plan = Some(*plan),
+            ContentEvent::Plan(plan) => {
+                self.content.plan = Some(*plan);
+                self.content.manager_open = false;
+            }
             ContentEvent::Audit(report) => self.content.audit = Some(report),
             ContentEvent::Installed(instance, message) => {
                 self.content.plan = None;
+                self.content.managed = None;
+                self.content.managed_selection.clear();
+                self.content.updates = Default::default();
+                self.content.updates_checked = false;
                 self.refresh(settings);
                 self.selected = instance.id.clone();
                 self.content.target = instance.id;
                 self.notice = message;
+            }
+            ContentEvent::Managed(catalog, report) => {
+                self.content.managed_selection.retain(|id| {
+                    catalog
+                        .entries
+                        .iter()
+                        .any(|m| &m.installed.version.project_id == id)
+                });
+                self.content.managed = Some(*catalog);
+                self.content.updates_checked = report.is_some();
+                self.content.updates = report.unwrap_or_default();
             }
         }
     }

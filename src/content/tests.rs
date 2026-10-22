@@ -38,7 +38,7 @@ fn project_logos_allow_missing_null_and_empty_urls() {
     }
 }
 
-struct Server {
+pub(super) struct Server {
     base: String,
     routes: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
     requests: Arc<Mutex<Vec<String>>>,
@@ -46,7 +46,7 @@ struct Server {
     thread: Option<std::thread::JoinHandle<()>>,
 }
 impl Server {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let base = format!("http://{}", server.server_addr());
         let routes = Arc::new(Mutex::new(BTreeMap::<String, Vec<u8>>::new()));
@@ -82,7 +82,7 @@ impl Server {
     fn put(&self, path: &str, bytes: Vec<u8>) {
         self.routes.lock().unwrap().insert(path.into(), bytes);
     }
-    fn json(&self, path: &str, value: serde_json::Value) {
+    pub(super) fn json(&self, path: &str, value: serde_json::Value) {
         self.put(path, serde_json::to_vec(&value).unwrap());
     }
     fn downloader(&self) -> Downloader {
@@ -97,7 +97,7 @@ impl Server {
         )
         .unwrap()
     }
-    fn api(&self) -> Modrinth {
+    pub(super) fn api(&self) -> Modrinth {
         Modrinth::with_base(self.downloader(), format!("{}/api", self.base))
     }
 }
@@ -110,7 +110,7 @@ impl Drop for Server {
     }
 }
 
-fn temporary() -> tempfile::TempDir {
+pub(super) fn temporary() -> tempfile::TempDir {
     let parent = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/test-work");
     fs::create_dir_all(&parent).unwrap();
     tempfile::tempdir_in(parent).unwrap()
@@ -121,7 +121,7 @@ fn hashes(bytes: &[u8]) -> BTreeMap<String, String> {
         ("sha512".into(), format!("{:x}", Sha512::digest(bytes))),
     ])
 }
-fn version(
+pub(super) fn version(
     server: &Server,
     project: &str,
     id: &str,
@@ -141,7 +141,7 @@ fn version(
     );
     serde_json::from_value(value).unwrap()
 }
-fn target(root: &Path) -> Target {
+pub(super) fn target(root: &Path) -> Target {
     let loader = LoaderVersion {
         kind: LoaderKind::Fabric,
         minecraft: "test-1".into(),

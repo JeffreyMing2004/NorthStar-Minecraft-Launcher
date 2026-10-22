@@ -31,7 +31,12 @@ pub(super) fn fixture() -> (tempfile::TempDir, NsclApp, Context) {
     (root, app, ctx)
 }
 
-fn frame(ctx: &Context, app: &mut NsclApp, size: Vec2, events: Vec<egui::Event>) -> FullOutput {
+pub(super) fn frame(
+    ctx: &Context,
+    app: &mut NsclApp,
+    size: Vec2,
+    events: Vec<egui::Event>,
+) -> FullOutput {
     ctx.run_ui(
         RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
@@ -42,7 +47,7 @@ fn frame(ctx: &Context, app: &mut NsclApp, size: Vec2, events: Vec<egui::Event>)
     )
 }
 
-fn text_rect(output: &FullOutput, label: &str) -> Rect {
+pub(super) fn text_rect(output: &FullOutput, label: &str) -> Rect {
     output
         .shapes
         .iter()
@@ -207,6 +212,9 @@ fn resource_catalog_and_versions_fit_small_windows_without_starting_tasks() {
             let search = text_rect(&output, "搜索");
             let next = text_rect(&output, "下一页");
             assert!(search.max.x < size.x && next.max.y < size.y);
+            if category == 2 {
+                assert!(text_rect(&output, "管理已装模组").max.x < size.x);
+            }
             if task == Task::Idle {
                 let title = text_rect(&output, "Test resource");
                 let placeholder = text_rect(&output, "T");

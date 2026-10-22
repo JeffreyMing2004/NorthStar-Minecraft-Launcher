@@ -35,7 +35,7 @@ fn matches_dependency(dep: &Dependency, versions: &BTreeMap<String, ContentVersi
     })
 }
 
-fn dependency_issues(versions: &BTreeMap<String, ContentVersion>) -> Vec<String> {
+pub(super) fn dependency_issues(versions: &BTreeMap<String, ContentVersion>) -> Vec<String> {
     let mut issues = Vec::new();
     for version in versions.values() {
         for dep in &version.dependencies {
@@ -65,7 +65,7 @@ fn dependency_issues(versions: &BTreeMap<String, ContentVersion>) -> Vec<String>
     issues
 }
 
-fn unmanaged(directory: &Path, record: &Registry) -> Result<Vec<String>> {
+pub(super) fn unmanaged(directory: &Path, record: &Registry) -> Result<Vec<String>> {
     let mods = files::safe_path(directory, "mods")?;
     let known: BTreeSet<_> = record
         .mods
@@ -88,7 +88,7 @@ fn unmanaged(directory: &Path, record: &Registry) -> Result<Vec<String>> {
     Ok(result)
 }
 
-fn current_target(root: &Path, target: &Target) -> Result<Target> {
+pub(super) fn current_target(root: &Path, target: &Target) -> Result<Target> {
     let instance = instances::list(root)
         .into_iter()
         .find(|i| i.id == target.instance.id)

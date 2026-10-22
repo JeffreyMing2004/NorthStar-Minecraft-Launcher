@@ -17,6 +17,8 @@ use std::{
 mod content;
 #[cfg(test)]
 mod java_tests;
+#[cfg(test)]
+mod managed_tests;
 pub use content::{ContentPlan, ContentState};
 
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -21,6 +21,7 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
         catalog(ui, app, kind);
     }
     audit(ui.ctx(), app);
+    crate::manager_ui::show(ui.ctx(), app);
 }
 
 fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
@@ -53,9 +54,16 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
                     app.service.content.results = Default::default();
                     app.service.content.searched = false;
                     app.service.content.audit = None;
+                    app.service.content.managed = None;
+                    app.service.content.managed_selection.clear();
+                    app.service.content.updates = Default::default();
+                    app.service.content.updates_checked = false;
                 }
                 if download_button(ui, "检查兼容性", !app.service.instances.is_empty()) {
                     app.service.content_check(&app.settings, ui.ctx());
+                }
+                if download_button(ui, "管理已装模组", !app.service.instances.is_empty()) {
+                    app.service.content_manage(&app.settings, ui.ctx(), false);
                 }
             });
         });
@@ -306,6 +314,7 @@ fn versions(ui: &mut Ui, app: &mut NsclApp) {
 
 pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
     let mut back = false;
+    let removal = matches!(app.service.content.plan, Some(ContentPlan::Remove(_)));
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
         back = download_button(ui, "返回资源", !app.service.busy());
@@ -314,10 +323,18 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
             let (rect, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
             logo.paint(ui, rect, &project.title);
         }
-        app::heading(ui, "确认安装方案");
+        app::heading(
+            ui,
+            if removal {
+                "确认卸载方案"
+            } else {
+                "确认安装方案"
+            },
+        );
     });
     if back {
         app.service.content.plan = None;
+        app.service.content.manager_open = removal;
         return;
     }
     ui.add_space(16.0);
@@ -346,6 +363,13 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
                     app::body(ui,&format!("{} 个下载文件 · {} 个配置及附带文件",plan.download_count(),plan.override_count()));
                     app::hint(ui,"仅安装客户端需要的文件；不会覆盖现有实例。兼容性依据整合包清单，启动时仍可能受到第三方模组组合影响。");
                 }
+                Some(ContentPlan::Remove(plan))=>{
+                    app::body(ui,&plan.target.label());
+                    app::body(ui,&format!("将卸载 {} 个已登记模组：",plan.entries.len()));
+                    for entry in &plan.entries {ui.label(RichText::new(format!("{} · {}",entry.version.name,entry.version.version_number)).color(theme::HEADING));app::hint(ui,&entry.file.path);}
+                    app::hint(ui,"仅移除以上 JAR 和对应安装记录；存档、配置与未选择的依赖保留。手动修改的文件会阻止卸载。");
+                    if plan.unmanaged_count>0 {app::hint(ui,&format!("另有 {} 个未独立登记的 JAR，无法核验其依赖，请确认它们不依赖所选模组。",plan.unmanaged_count));}
+                }
                 None=>{}
             }
         });
@@ -354,13 +378,15 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
     ui.separator();
     ui.add_space(12.0);
     if app.service.game.is_some() {
-        app::hint(ui, "请先退出当前游戏，再安装资源。");
+        app::hint(ui, "请先退出当前游戏，再修改资源。");
     }
     let pack = matches!(app.service.content.plan, Some(ContentPlan::Pack(_)));
     ui.add_enabled_ui(!busy && app.service.game.is_none(), |ui| {
         if app::primary_button(
             ui,
-            if pack {
+            if removal {
+                "确认卸载所选模组"
+            } else if pack {
                 "安装整合包"
             } else {
                 "安装模组及依赖"

@@ -4,6 +4,7 @@ mod account_service;
 mod app;
 mod content_page;
 mod download_flow;
+mod manager_ui;
 mod pages;
 mod project_icons;
 mod service;
