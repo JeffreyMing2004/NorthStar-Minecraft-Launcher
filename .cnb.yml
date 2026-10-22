@@ -18,7 +18,7 @@ $:
       env:
         # 密钥仓库文件地址，例如 https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml
         CNB_SECRETS_IMPORTS: 'https://cnb.cool/JeffreyMing/ci-github/-/blob/main/github.yml'
-        GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
+        GITHUB_SYNC_URL: https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher.git
       stages:
         - name: push 当前分支到 GitHub
           image: tencentcom/git-sync
@@ -29,7 +29,7 @@ $:
             password: $GITHUB_TOKEN
             # 指定分支时只推这一个分支，不加则推全部远端跟踪分支
             branch: $CNB_BRANCH
-            force: true
+            force: false
 
   # 页面手动触发（见 .cnb/web_trigger.yml），用于补推历史或全量分支
   web_trigger_sync:
@@ -38,7 +38,7 @@ $:
       name: sync-to-github-manual
       env:
         CNB_SECRETS_IMPORTS: 'https://cnb.cool/JeffreyMing/ci-github/-/blob/main/github.yml'
-        GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
+        GITHUB_SYNC_URL: https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher.git
       stages:
         - name: 全量同步分支与标签到 GitHub
           image: tencentcom/git-sync
@@ -47,7 +47,7 @@ $:
             auth_type: https
             username: $GITHUB_USERNAME
             password: $GITHUB_TOKEN
-            force: true
+            force: false
             push_tags: true
 
   # Tag 推送时一并同步标签
@@ -57,7 +57,7 @@ $:
       name: sync-tags-to-github
       env:
         CNB_SECRETS_IMPORTS: 'https://cnb.cool/JeffreyMing/ci-github/-/blob/main/github.yml'
-        GITHUB_SYNC_URL: https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git
+        GITHUB_SYNC_URL: https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher.git
       stages:
         - name: 推送标签到 GitHub
           image: tencentcom/git-sync

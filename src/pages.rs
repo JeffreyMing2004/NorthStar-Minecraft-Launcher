@@ -3,6 +3,15 @@ use crate::theme;
 use egui::{Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
 
 pub fn home(ui: &mut Ui, app: &mut NsclApp) {
+    app::hint(
+        ui,
+        "拖入 .mrpack 或 Modrinth 整合包 ZIP，自动识别并安装到独立实例；可选客户端文件默认不安装。",
+    );
+    ui.add_space(10.0);
+    if app.service.busy() {
+        task_status(ui, app);
+        ui.add_space(10.0);
+    }
     let width = ui.available_width();
     let wide = width >= 800.0;
     let height = ui.available_height().clamp(480.0, 554.0);
@@ -830,7 +839,27 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 app::hint(ui, "范围 1024–32768 MiB；实例的单独配置优先于此处设置。");
             }
             ui.add_space(24.0);
-            settings_input(ui, "游戏文件目录", &mut app.settings.game_directory, width);
+            ui.label("Minecraft 游戏目录");
+            ui.add_space(10.0);
+            egui::ComboBox::from_id_salt("game-directories").width(width)
+                .selected_text(if app.settings.game_directory.trim().is_empty() { "默认：启动器所在目录" } else { &app.settings.game_directory })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut app.settings.game_directory, String::new(), "默认：启动器所在目录");
+                    for path in app.settings.game_directories.clone() {
+                        ui.selectable_value(&mut app.settings.game_directory, path.clone(), &path);
+                    }
+                });
+            ui.add_space(10.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut app.new_game_directory).hint_text("添加 MC 路径，例如 D:\\Minecraft 或已有 .minecraft 目录").desired_width((width - 100.0).max(180.0)));
+                if ui.button("添加路径").clicked() {
+                    match crate::store::add_game_directory(&mut app.settings, &app.new_game_directory) {
+                        Ok(()) => { app.new_game_directory.clear(); app.save_status = "目录已添加并选中，保存设置后应用。".into(); }
+                        Err(error) => app.save_status = error,
+                    }
+                }
+            });
+            app::hint(ui, "不同目录分别保存游戏和实例，切换路径不会移动或删除已有文件。默认目录随启动器 EXE 所在位置确定。");
             app::hint(
                 ui,
                 &format!(
@@ -1796,7 +1825,7 @@ pub(crate) fn input_focus(ui: &Ui, response: &egui::Response) {
     }
 }
 
-pub fn about(ui: &mut Ui) {
+pub fn about(ui: &mut Ui, app: &mut NsclApp) {
     page_card(ui, |ui| {
         let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 50.0), Sense::hover());
         theme::star4(ui.painter(), rect.center(), 23.0, theme::ACCENT);
@@ -1804,6 +1833,76 @@ pub fn about(ui: &mut Ui) {
         app::heading(ui, "NorthStar Minecraft Launcher");
         ui.add_space(10.0);
         app::body(ui, &format!("NSCL · v{}", env!("CARGO_PKG_VERSION")));
+        ui.add_space(16.0);
+        ui.label("启动器更新 · GitHub Releases");
+        let before = app.settings.check_updates;
+        ui.checkbox(&mut app.settings.check_updates, "启动时检查更新");
+        if before != app.settings.check_updates {
+            let (mut saved, _) = crate::store::load();
+            saved.check_updates = app.settings.check_updates;
+            if let Err(error) = crate::store::save(&saved) {
+                app.updates.status = error;
+            }
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(!app.updates.busy, egui::Button::new("检查更新"))
+                .clicked()
+            {
+                app.updates.check(ui.ctx());
+            }
+            if ui.button("打开 GitHub Releases ↗").clicked()
+                && let Err(error) = nscl::browser::open(nscl::updater::RELEASES_URL)
+            {
+                app.updates.status = error;
+            }
+            if ui
+                .add_enabled(
+                    !app.updates.busy && app.updates.available() && app.updates.ready.is_none(),
+                    egui::Button::new("下载更新"),
+                )
+                .clicked()
+            {
+                app.updates.download(ui.ctx());
+            }
+            if app.updates.downloading && ui.button("取消更新下载").clicked() {
+                app.updates.cancel();
+            }
+            if let Some(payload) = &app.updates.ready {
+                let can_restart = !app.updates.busy
+                    && !app.service.busy()
+                    && app.service.game.is_none()
+                    && !app.accounts.pending
+                    && !app.skin.pending;
+                if ui
+                    .add_enabled(can_restart, egui::Button::new("重启并更新"))
+                    .clicked()
+                {
+                    match nscl::updater::restart_with_update(payload) {
+                        Ok(()) => {
+                            app.updates.busy = true;
+                            app.updates.status = "正在重启并更新……".into();
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                        Err(error) => app.updates.status = error,
+                    }
+                }
+            }
+        });
+        app::hint(ui, &app.updates.status);
+        if let Some(release) = &app.updates.release {
+            egui::CollapsingHeader::new(format!("{} 更新说明", release.tag_name)).show(ui, |ui| {
+                ui.label(
+                    release
+                        .body
+                        .as_deref()
+                        .unwrap_or("此版本未填写更新说明。")
+                        .chars()
+                        .take(8000)
+                        .collect::<String>(),
+                );
+            });
+        }
         ui.add_space(10.0);
         app::body(ui, "一个以 Rust 为核心的 Minecraft Java Edition 启动器。");
         ui.add_space(30.0);

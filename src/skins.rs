@@ -115,28 +115,8 @@ pub fn read(path: &Path, model: Model) -> Result<(Vec<u8>, Skin)> {
 }
 
 pub fn default_skin() -> Skin {
-    let mut pixels = RgbaImage::new(64, 64);
-    for (x, y, w, h, color) in [
-        (0, 0, 32, 16, [177, 131, 101, 255]),
-        (0, 16, 16, 16, [51, 63, 83, 255]),
-        (16, 16, 24, 16, [45, 139, 143, 255]),
-        (40, 16, 16, 16, [177, 131, 101, 255]),
-        (16, 48, 16, 16, [51, 63, 83, 255]),
-        (32, 48, 16, 16, [177, 131, 101, 255]),
-        (8, 0, 8, 10, [63, 49, 42, 255]),
-        (9, 11, 2, 1, [43, 61, 75, 255]),
-        (13, 11, 2, 1, [43, 61, 75, 255]),
-    ] {
-        for yy in y..y + h {
-            for xx in x..x + w {
-                pixels.put_pixel(xx, yy, image::Rgba(color));
-            }
-        }
-    }
-    Skin {
-        pixels,
-        model: Model::Classic,
-    }
+    png(include_bytes!("../assets/steve.png"), Model::Classic)
+        .expect("embedded Steve texture must be valid")
 }
 
 #[derive(Deserialize)]

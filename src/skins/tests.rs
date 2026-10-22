@@ -1,6 +1,17 @@
 use super::*;
 use crate::accounts::{Account, RefreshCredential};
 
+#[test]
+fn default_is_embedded_classic_steve_with_transparent_outer_layer() {
+    let skin = default_skin();
+    assert_eq!(skin.model, Model::Classic);
+    assert_eq!(skin.pixels.dimensions(), (64, 64));
+    let shirt = skin.pixels.get_pixel(22, 23).0;
+    assert!(shirt[1] > shirt[0] && shirt[2] > shirt[0]);
+    assert_eq!(skin.pixels.get_pixel(10, 10).0[3], 255);
+    assert_eq!(skin.pixels.get_pixel(40, 8).0[3], 0);
+}
+
 fn bytes(width: u32, height: u32) -> Vec<u8> {
     let pixels = RgbaImage::from_pixel(width, height, image::Rgba([20, 60, 100, 255]));
     let mut data = Cursor::new(Vec::new());

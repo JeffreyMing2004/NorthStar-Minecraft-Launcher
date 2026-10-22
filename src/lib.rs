@@ -7,3 +7,4 @@ pub mod memory;
 pub mod minecraft;
 pub mod skins;
 pub mod store;
+pub mod updater;

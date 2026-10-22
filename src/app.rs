@@ -43,6 +43,7 @@ pub struct NsclApp {
     pub category: usize,
     pub account_tab: u8,
     pub offline_name: String,
+    pub new_game_directory: String,
     pub download: crate::download_flow::DownloadFlow,
     pub settings: Settings,
     pub memory_input: String,
@@ -50,6 +51,7 @@ pub struct NsclApp {
     pub service: crate::service::GameService,
     pub project_icons: crate::project_icons::ProjectIcons,
     pub skin: crate::skin_ui::SkinView,
+    pub updates: crate::update_service::UpdateService,
     pub log_view: Option<String>,
     pub accounts: crate::account_service::AccountService,
     pub instance_manager: bool,
@@ -83,6 +85,7 @@ impl NsclApp {
             category: 0,
             account_tab: 0,
             offline_name: String::new(),
+            new_game_directory: String::new(),
             download: crate::download_flow::DownloadFlow::default(),
             memory_input: settings.memory.to_string(),
             settings,
@@ -94,6 +97,7 @@ impl NsclApp {
                     .join("project-icons"),
             ),
             skin: crate::skin_ui::SkinView::new(),
+            updates: crate::update_service::UpdateService::new(),
             log_view: None,
             accounts,
             instance_manager: false,
@@ -112,6 +116,11 @@ impl NsclApp {
 impl eframe::App for NsclApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.updates.poll();
+        if self.settings.check_updates && !self.updates.started {
+            self.updates.check(&ctx);
+        }
+        self.handle_pack_drop(&ctx);
         #[cfg(debug_assertions)]
         if std::env::var_os("NSCL_SCREENSHOT").is_some()
             && ctx.input(|input| input.key_pressed(egui::Key::F12))
@@ -206,6 +215,8 @@ impl eframe::App for NsclApp {
                                 self.service.progress.stage.as_str()
                             } else if self.service.game.is_some() {
                                 "游戏正在运行"
+                            } else if self.updates.available() {
+                                "发现启动器新版本，请前往「更多」更新"
                             } else {
                                 "启动器 · 准备就绪"
                             })
@@ -255,13 +266,50 @@ impl eframe::App for NsclApp {
                         Page::Account => pages::account(ui, self),
                         Page::Downloads => unreachable!(),
                         Page::Settings => pages::settings(ui, self),
-                        Page::About => pages::about(ui),
+                        Page::About => pages::about(ui, self),
                     });
             });
     }
 }
 
 impl NsclApp {
+    pub(crate) fn handle_pack_drop(&mut self, ctx: &egui::Context) {
+        if !matches!(self.page, Page::Home | Page::Downloads) {
+            return;
+        }
+        let files: Vec<_> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .filter(|p| {
+                    p.extension().is_some_and(|e| {
+                        e.eq_ignore_ascii_case("mrpack") || e.eq_ignore_ascii_case("zip")
+                    })
+                })
+                .collect()
+        });
+        if files.is_empty() {
+            return;
+        }
+        // A drop belongs to one task, even if egui requests another layout pass.
+        ctx.input_mut(|i| i.raw.dropped_files.clear());
+        if files.len() != 1 {
+            self.service.error = Some("请每次拖入一个整合包。".into());
+            return;
+        }
+        if self.service.busy() || self.service.game.is_some() {
+            self.service.error =
+                Some("请先完成或取消当前任务，并退出正在运行的游戏，再拖入整合包。".into());
+            return;
+        }
+        if self.page == Page::Downloads {
+            self.category = 1;
+        }
+        self.service
+            .content_drop_install(&files[0], &self.settings, ctx);
+    }
+
     pub fn remember_instance(&mut self) {
         self.settings.selected_instance = self.service.selected.clone();
         let (mut saved, _) = crate::store::load();

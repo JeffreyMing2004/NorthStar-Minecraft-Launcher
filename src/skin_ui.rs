@@ -41,7 +41,7 @@ impl SkinView {
             texture: None,
             path: String::new(),
             model: Model::Classic,
-            status: "登录后自动显示账号皮肤，也可预览本地 PNG。".into(),
+            status: "默认 Steve；登录后自动显示账号皮肤，也可预览本地 PNG。".into(),
             pending: false,
             local: false,
             account: None,
@@ -65,7 +65,8 @@ impl SkinView {
             self.local = false;
             self.image = skins::default_skin();
             self.texture = None;
-            self.status = "默认预览模型".into();
+            self.model = Model::Classic;
+            self.status = "默认 Steve".into();
             if self.account.is_some() {
                 self.remote(accounts, false, ctx);
             }

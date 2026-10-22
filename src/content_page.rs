@@ -110,7 +110,7 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
                         .font(FontId::proportional(13.0))
                         .frame(input_frame())
                         .margin(Vec2::new(14.0, 8.0))
-                        .hint_text("本地 .mrpack 文件路径，也可将文件拖到此页")
+                        .hint_text("本地 .mrpack / Modrinth ZIP 路径；也可拖到开始页自动安装")
                         .desired_width((ui.available_width() - 132.0).max(180.0)),
                 );
                 input_focus(ui, &response);
@@ -123,21 +123,6 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
                 }
             });
         });
-        if !app.service.busy()
-            && let Some(path) = ui.ctx().input(|i| {
-                i.raw
-                    .dropped_files
-                    .iter()
-                    .map(|f| f.path().to_path_buf())
-                    .find(|p| {
-                        p.extension()
-                            .is_some_and(|e| e.eq_ignore_ascii_case("mrpack"))
-                    })
-            })
-        {
-            app.service.content.local_path = path.to_string_lossy().into_owned();
-            app.service.content_import(&app.settings, ui.ctx());
-        }
     }
     ui.add_space(14.0);
     let height = (ui.available_height() - download_status_height(app) - 46.0).max(0.0);

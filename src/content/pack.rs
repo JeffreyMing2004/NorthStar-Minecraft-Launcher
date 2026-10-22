@@ -130,6 +130,14 @@ pub fn inspect_pack(root: &Path, path: &Path) -> Result<PackPlan> {
     let hash = files::record(path, String::new())?;
     let mut archive = ZipArchive::new(fs::File::open(path).map_err(|e| e.to_string())?)
         .map_err(|e| format!("无效的 .mrpack 压缩包：{e}"))?;
+    if archive.by_name("modrinth.index.json").is_err() {
+        return Err(if archive.by_name("manifest.json").is_ok() {
+            "这是 CurseForge 格式的整合包，当前只支持 Modrinth .mrpack / ZIP，无法自动安装。"
+        } else {
+            "未检测到 modrinth.index.json，请拖入有效的 Modrinth 整合包。"
+        }
+        .into());
+    }
     if archive.len() > 20000 {
         return Err("整合包包含过多压缩条目。".into());
     }

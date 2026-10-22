@@ -10,11 +10,18 @@ mod project_icons;
 mod service;
 mod skin_ui;
 mod theme;
+mod update_service;
 use nscl::{accounts, content, instances, java, minecraft, store};
 
 use app::NsclApp;
 
 fn main() -> eframe::Result {
+    if let Some(result) = nscl::updater::run_helper() {
+        if let Err(error) = result {
+            eprintln!("{error}");
+        }
+        return Ok(());
+    }
     let viewport = egui::ViewportBuilder::default()
         .with_title("NorthStar Minecraft Launcher")
         .with_inner_size([1200.0, 760.0])

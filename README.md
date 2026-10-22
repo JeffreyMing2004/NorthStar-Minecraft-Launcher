@@ -2,7 +2,7 @@
 
 **NSCL** 是面向 **Minecraft Java Edition** 的桌面启动器，使用 **Rust** 与 **eframe/egui** 构建原生窗口，提供游戏安装与启动、Microsoft 账号登录、独立实例管理，以及模组和整合包下载。
 
-[CNB 主仓库](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher) · [GitHub 镜像](https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher) · [使用文档](#使用文档)
+[CNB 仓库](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher) · [GitHub 仓库](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher) · [下载正式版本](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases) · [使用文档](#使用文档)
 
 ## 功能
 
@@ -11,11 +11,13 @@
 | 游戏安装与启动 | 下载 Minecraft 原版客户端，浏览正式版、快照和历史版本，校验与修复安装文件 |
 | 模组加载器 | 为所选 Minecraft 版本安装 Forge、Fabric 或 NeoForge，并创建对应实例 |
 | 账号管理 | Microsoft 浏览器授权、离线账号创建、多账号切换、正版身份检查与登录续期 |
-| 皮肤与角色 | 读取正版角色皮肤，预览并上传本地 PNG，支持标准/纤细手臂及可旋转的 3D 预览 |
+| 皮肤与角色 | 默认显示内置 Steve，读取正版角色皮肤，预览并上传本地 PNG，支持标准/纤细手臂及可旋转的 3D 预览 |
 | 独立实例 | 分别管理存档、模组和配置，支持重命名、归档与恢复 |
 | Java 与内存 | 默认按游戏版本自动选择 Java、按可用物理内存自动分配游戏内存，支持下载 Java 及实例单独配置 |
 | 模组下载与管理 | 搜索 Modrinth，显示 Logo，安装必需依赖，检查兼容更新并按方案更新或批量卸载 |
-| 整合包 | 下载 Modrinth 整合包，导入或拖入本地 `.mrpack`，自动准备游戏与加载器 |
+| 整合包 | 下载 Modrinth 整合包，在开始页或下载页拖入 `.mrpack` / Modrinth ZIP 后自动识别、安装游戏与加载器 |
+| 游戏目录 | 默认使用启动器所在目录，可添加并切换多个 MC 路径，分别管理游戏与实例 |
+| 启动器更新 | 从 GitHub Releases 检查正式版本，下载并校验更新，在游戏退出后重启替换并保留旧版备份 |
 | 下载源 | Mojang 官方源、BMCLAPI、明叔镜像和自定义镜像，可配置失败时回退官方源 |
 | 进度与诊断 | 后台下载、文件完整性校验、取消任务、兼容性检查与启动日志查看 |
 
@@ -28,7 +30,7 @@
 
 ## 获取与构建
 
-当前仓库提供源码构建方式。在 Windows 上准备 Git、Rust stable 的 MSVC 工具链，以及 Microsoft C++ Build Tools 的「使用 C++ 的桌面开发」组件，然后运行：
+正式便携包发布在 [GitHub Releases](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases)，下载后解压到可写目录并运行 `NSCL.exe`；尚未发布版本时可从源码构建。在 Windows 上准备 Git、Rust stable 的 MSVC 工具链，以及 Microsoft C++ Build Tools 的「使用 C++ 的桌面开发」组件，然后运行：
 
 ```powershell
 git clone https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher
@@ -37,7 +39,7 @@ cargo build --release --locked --bin nscl
 .\target\release\nscl.exe
 ```
 
-发布构建产物为 `target/release/nscl.exe`。使用普通用户权限运行，配置与默认游戏数据保存在当前用户的数据目录；无需将游戏文件放在源码目录中。
+发布构建产物为 `target/release/nscl.exe`。使用普通用户权限运行，配置保存在当前用户的数据目录。新安装默认把游戏文件放在启动器 EXE 所在目录；也可在设置中添加其他 MC 路径。升级时保留旧版已使用的游戏目录。
 
 ## 快速开始
 
@@ -54,13 +56,19 @@ cargo build --release --locked --bin nscl
 
 ### 安装整合包
 
-打开「下载 → 整合包」，搜索并选择发布版本，或填写、拖入本地 `.mrpack` 文件。确认所需游戏版本、加载器与可选客户端文件后，点击「安装整合包」。启动器会创建新的独立实例，完成后可从开始页选择启动。
+将本地 `.mrpack` 或包含 `modrinth.index.json` 的 ZIP 拖入「开始」或「下载」页面，即可自动识别并安装到新的独立实例，显示进度并支持取消，可选客户端文件默认跳过。普通 ZIP 和 CurseForge 包会提示格式不支持，不会创建实例。
+
+也可打开「下载 → 整合包」，搜索并选择发布版本，或填写本地路径后点击「导入整合包」。这种方式先显示安装方案，允许选择可选客户端文件，再点击「安装整合包」。完成后可从开始页选择启动。
 
 模组和整合包列表、版本页及安装确认页显示项目 Logo。图片在后台加载并缓存，缺图或加载失败时使用占位图。
 
 ### 管理角色皮肤
 
-在首页点击「更换皮肤」，或进入「账号 → 皮肤与预览」。支持拖动旋转角色、双击复位，选择标准或纤细手臂，并预览本地 PNG。点击「上传到当前正版账号」后才会修改在线皮肤；「刷新账号皮肤」可重新读取当前账号的显示。登录与切换账号时会自动更新角色预览。
+未登录或使用离线账号时默认显示程序内置的 Steve，无需联网。在首页点击「更换皮肤」，或进入「账号 → 皮肤与预览」。支持拖动旋转角色、双击复位，选择标准或纤细手臂，并预览本地 PNG。点击「上传到当前正版账号」后才会修改在线皮肤；「刷新账号皮肤」可重新读取当前账号的显示。登录与切换账号时会自动更新角色预览。
+
+### 更新启动器
+
+在「更多」中检查 GitHub Releases、查看更新说明并下载更新；默认在启动时自动检查。更新只接受官方仓库的稳定版本和当前架构的 Windows 便携包，验证 SHA-256 后才允许「重启并更新」。退出游戏并完成后台任务后操作，启动器会保留旧版 EXE 备份，设置与游戏数据继续使用。暂无 Release、网络失败或没有兼容资产时会显示原因，也可打开发布页手动获取。发布与回退说明见[启动器更新](docs/launcher-updates.md)。
 
 ## 下载源
 
@@ -88,7 +96,9 @@ Windows 发布构建默认使用 `%LOCALAPPDATA%\cool.cnb.jeffreyming.nscl\`：
 | `cache/project-icons/` | 模组与整合包 Logo 缩略图缓存 |
 | `cache/skins/` | 角色皮肤与模型类型缓存 |
 | `java/` | 自动安装的 Java 运行时与下载缓存 |
-| `minecraft/` | 默认游戏文件目录，可在设置中更改 |
+| `cache/updates/` | 启动器更新下载、校验文件与失败诊断 |
+
+游戏文件目录默认是启动器 EXE 所在目录；「设置 → Minecraft 游戏目录」可添加并记住其他路径，保存后重新加载该目录下的 NSCL 实例。切换目录不会移动或删除原文件。旧版已经在用户数据目录 `minecraft/` 安装游戏的配置会保留该路径。
 
 游戏文件目录中的 `versions/`、`libraries/` 和 `assets/` 保存共享游戏文件；`instances/<实例 ID>/` 分别保存各实例的存档、模组与配置。归档的实例移入 `archived-instances/`，可在「管理实例」中恢复。归档保存在同一游戏文件目录，重要存档仍需单独备份。
 
@@ -109,10 +119,10 @@ Windows 登录刷新令牌保存在系统凭据管理器中，不写入设置或
 
 ## 当前支持范围
 
-- 模组与整合包资源目前接入 Modrinth，支持 `.mrpack`；尚未接入 CurseForge、Quilt。已登记模组支持检查较新兼容正式版、确认后更新和依赖检查后卸载。
+- 模组与整合包资源目前接入 Modrinth，支持 `.mrpack` 及同格式 ZIP；尚未接入 CurseForge、Quilt。已登记模组支持检查较新兼容正式版、确认后更新和依赖检查后卸载。
 - 兼容性检查依据资源发布信息、依赖与整合包清单，不保证所有第三方模组组合都能正常运行。
 - 皮肤上传需使用当前正版账号；本地预览不修改服务器上的皮肤，离线身份不提供在线皮肤同步。
-- Java 自动安装目前支持 Windows；暂未集成安装向导或启动器自动更新。
+- Java 自动安装及启动器重启更新目前支持 Windows，暂未集成安装向导；其他系统可访问发布页手动更新。
 - 离线账号可创建、切换和移除，不能访问要求正版认证的服务器；正版身份验证失败不会自动切换为离线账号。
 
 ## 使用文档
@@ -123,6 +133,7 @@ Windows 登录刷新令牌保存在系统凭据管理器中，不写入设置或
 | [Forge、Fabric 与 NeoForge](docs/loaders.md) | 加载器安装、Java 要求和安装日志 |
 | [账号、Java 与实例管理](docs/accounts-and-instances.md) | 登录、凭据保存、Java 配置和实例归档 |
 | [模组与整合包](docs/mods-and-modpacks.md) | 资源下载、Logo、依赖解析、整合包格式与兼容性范围 |
+| [启动器更新](docs/launcher-updates.md) | GitHub Releases、校验、重启替换、备份与发布构建 |
 
 ## 开发与贡献
 
@@ -138,7 +149,7 @@ cargo test --locked --all-targets
 
 浏览器授权、系统凭据库及真实资源下载等集成测试需按需显式运行，具体说明见对应功能文档。
 
-欢迎在 [CNB 主仓库](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)反馈问题、提出建议或提交改进。CNB 为主仓库，GitHub 为同步镜像；同步配置见 [CNB → GitHub 自动同步](docs/github-sync.md)。
+欢迎在 [CNB 仓库](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)或 [GitHub 仓库](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher)反馈问题、提出建议或提交改进。每次完成项目改动并检查后，通过 GitHub CLI 配置的凭据提交推送到 GitHub，同时推送 CNB；配置见[双仓库推送](docs/github-sync.md)。
 
 ## 项目声明与许可证
 

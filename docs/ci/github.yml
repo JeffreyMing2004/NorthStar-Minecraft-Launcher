@@ -4,7 +4,7 @@
 # 三个 allow_* 缺一不可：
 #   - github.yml 被第三方镜像插件任务引用，没 allow_images 平台会直接拒绝
 #   - push / tag_push / web_trigger_sync 都是用户可控事件，没 allow_events 也会拒绝
-GITHUB_USERNAME: JeffreyMing
+GITHUB_USERNAME: JeffreyMing2004
 GITHUB_TOKEN: REPLACE_WITH_YOUR_TOKEN
 
 allow_slugs: JeffreyMing/NorthStar-Minecraft-Launcher

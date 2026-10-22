@@ -222,9 +222,9 @@ impl GameService {
         let path = std::path::PathBuf::from(self.content.local_path.trim().trim_matches('"'));
         if !path
             .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("mrpack"))
+            .is_some_and(|e| e.eq_ignore_ascii_case("mrpack") || e.eq_ignore_ascii_case("zip"))
         {
-            self.error = Some("请选择扩展名为 .mrpack 的整合包。".into());
+            self.error = Some("请选择 .mrpack 或 Modrinth 格式的 ZIP 整合包。".into());
             return;
         }
         self.begin(Task::Content);
@@ -248,6 +248,55 @@ impl GameService {
                 match result {
                     Ok(p) => Event::Content(ContentEvent::Plan(Box::new(ContentPlan::Pack(p)))),
                     Err(e) => Event::Failed(e),
+                },
+            );
+        });
+    }
+
+    pub fn content_drop_install(
+        &mut self,
+        path: &std::path::Path,
+        settings: &Settings,
+        ctx: &egui::Context,
+    ) {
+        if self.busy() || self.game.is_some() {
+            return;
+        }
+        self.content = ContentState {
+            kind: ContentKind::Modpack,
+            local_path: path.to_string_lossy().into_owned(),
+            ..Default::default()
+        };
+        self.begin(Task::Content);
+        self.progress.stage = "正在识别拖入的整合包".into();
+        let (path, settings, ctx, sender, cancel) = (
+            path.to_path_buf(),
+            settings.clone(),
+            ctx.clone(),
+            self.sender.clone(),
+            self.cancel.clone(),
+        );
+        std::thread::spawn(move || {
+            let root = store::game_directory(&settings);
+            let result = Downloader::new(settings.source.clone(), cancel, reporter(&sender, &ctx))
+                .and_then(|d| {
+                    d.check_cancelled()?;
+                    let plan = content::inspect_pack(&root, &path)?;
+                    d.check_cancelled()?;
+                    let instance = content::install_pack(&root, &plan, &settings, &d)?;
+                    Ok((
+                        instance,
+                        format!("整合包 {} 安装完成，可在开始页启动。", plan.name),
+                    ))
+                });
+            send(
+                &sender,
+                &ctx,
+                match result {
+                    Ok((instance, message)) => {
+                        Event::Content(ContentEvent::Installed(instance, message))
+                    }
+                    Err(error) => Event::Failed(error),
                 },
             );
         });
