@@ -10,19 +10,50 @@ use std::{
 
 const CONFIG: &str = "nscl-instance.json";
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Isolation {
+    #[default]
+    Isolated,
+    Shared,
+}
+impl Isolation {
+    pub const ALL: [Self; 2] = [Self::Isolated, Self::Shared];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Isolated => "启用隔离：独立实例目录",
+            Self::Shared => "关闭隔离：共享游戏目录",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Instance {
     pub id: String,
     pub name: String,
     pub version_id: String,
+    pub isolation: Isolation,
     pub java_path: Option<String>,
     pub memory: Option<u32>,
     pub last_played: Option<u64>,
 }
 impl Instance {
+    /// Metadata always stays here, including when game data uses the shared root.
     pub fn directory(&self, root: &Path) -> Result<PathBuf> {
         managed_path(root, &self.id)
+    }
+    pub fn requires_isolation(&self) -> bool {
+        // Imported/downloaded packs have always used this reserved ID prefix.
+        self.id.starts_with("pack-")
+    }
+    pub fn game_directory(&self, root: &Path) -> Result<PathBuf> {
+        self.validate()?;
+        let directory = self.directory(root)?;
+        match self.isolation {
+            Isolation::Isolated => Ok(directory),
+            Isolation::Shared => Ok(root.to_path_buf()),
+        }
     }
     pub fn effective_settings(&self, settings: &Settings) -> Settings {
         let mut result = settings.clone();
@@ -39,6 +70,9 @@ impl Instance {
     pub fn validate(&self) -> Result<()> {
         minecraft::validate_id(&self.id)?;
         minecraft::validate_id(&self.version_id)?;
+        if self.requires_isolation() && self.isolation != Isolation::Isolated {
+            return Err("整合包必须启用版本隔离，避免模组与配置混用。".into());
+        }
         if self.name.trim().is_empty()
             || self.name.chars().count() > 64
             || self.name.chars().any(char::is_control)
@@ -125,6 +159,15 @@ pub fn save(root: &Path, instance: &Instance) -> Result<()> {
 }
 
 pub fn create(root: &Path, version_id: &str, name: &str) -> Result<Instance> {
+    create_with_isolation(root, version_id, name, Isolation::Isolated)
+}
+
+pub fn create_with_isolation(
+    root: &Path,
+    version_id: &str,
+    name: &str,
+    isolation: Isolation,
+) -> Result<Instance> {
     if !minecraft::installed_versions(root)
         .iter()
         .any(|v| v.id == version_id)
@@ -134,6 +177,7 @@ pub fn create(root: &Path, version_id: &str, name: &str) -> Result<Instance> {
     let instance = Instance {
         id: format!("instance-{}", uuid::Uuid::new_v4().simple()),
         version_id: version_id.into(),
+        isolation,
         name: name.trim().into(),
         ..Default::default()
     };
@@ -141,7 +185,28 @@ pub fn create(root: &Path, version_id: &str, name: &str) -> Result<Instance> {
     Ok(instance)
 }
 
-/// Move the whole game directory to a recoverable archive; shared versions/assets are retained.
+/// Persist a newly installed version's default without changing existing game data.
+pub fn ensure_default(root: &Path, version_id: &str, isolation: Isolation) -> Result<Instance> {
+    if let Some(mut instance) = list(root).into_iter().find(|i| i.version_id == version_id) {
+        let metadata = instance.directory(root)?;
+        if !metadata.join(CONFIG).exists() {
+            // Legacy installations with saves/mods retain their isolated directory.
+            if !metadata.exists() {
+                instance.isolation = isolation;
+            }
+            save(root, &instance)?;
+        }
+        return Ok(instance);
+    }
+    create_with_isolation(
+        root,
+        version_id,
+        &format!("Minecraft {version_id}"),
+        isolation,
+    )
+}
+
+/// Archive owned instance data. Shared game data in the root is never moved.
 pub fn archive(root: &Path, instance: &Instance) -> Result<PathBuf> {
     instance.validate()?;
     let source = instance.directory(root)?;
@@ -300,6 +365,91 @@ mod tests {
             ..instance
         };
         assert!(instance.validate().is_err());
+    }
+
+    #[test]
+    fn isolation_switch_keeps_metadata_and_both_sets_of_game_data() {
+        let root = root();
+        installed(root.path());
+        let mut instance = create(root.path(), "1.20.1", "Survival").unwrap();
+        let independent = instance.directory(root.path()).unwrap();
+        fs::create_dir_all(independent.join("saves/world")).unwrap();
+        fs::write(independent.join("saves/world/level.dat"), b"isolated world").unwrap();
+        fs::create_dir_all(root.path().join("saves/shared")).unwrap();
+        fs::write(root.path().join("saves/shared/level.dat"), b"shared world").unwrap();
+        assert_eq!(instance.game_directory(root.path()).unwrap(), independent);
+        instance.isolation = Isolation::Shared;
+        save(root.path(), &instance).unwrap();
+        assert_eq!(instance.game_directory(root.path()).unwrap(), root.path());
+        assert!(independent.join(CONFIG).is_file());
+        assert!(!root.path().join(CONFIG).exists());
+        assert_eq!(
+            list(root.path())
+                .into_iter()
+                .find(|i| i.id == instance.id)
+                .unwrap()
+                .isolation,
+            Isolation::Shared
+        );
+        let archive = archive(root.path(), &instance).unwrap();
+        assert_eq!(
+            fs::read(root.path().join("saves/shared/level.dat")).unwrap(),
+            b"shared world"
+        );
+        assert_eq!(
+            fs::read(archive.join("saves/world/level.dat")).unwrap(),
+            b"isolated world"
+        );
+        let mut restored =
+            restore(root.path(), archive.file_name().unwrap().to_str().unwrap()).unwrap();
+        assert_eq!(restored.game_directory(root.path()).unwrap(), root.path());
+        restored.isolation = Isolation::Isolated;
+        save(root.path(), &restored).unwrap();
+        assert_eq!(
+            fs::read(
+                restored
+                    .game_directory(root.path())
+                    .unwrap()
+                    .join("saves/world/level.dat")
+            )
+            .unwrap(),
+            b"isolated world"
+        );
+    }
+
+    #[test]
+    fn new_defaults_apply_once_and_legacy_instances_and_packs_remain_isolated() {
+        let root = root();
+        installed(root.path());
+        let first = ensure_default(root.path(), "1.20.1", Isolation::Shared).unwrap();
+        assert_eq!(first.isolation, Isolation::Shared);
+        assert_eq!(
+            ensure_default(root.path(), "1.20.1", Isolation::Isolated)
+                .unwrap()
+                .isolation,
+            Isolation::Shared
+        );
+        let old: Instance =
+            serde_json::from_str(r#"{"id":"legacy","name":"Legacy","version_id":"1.20.1"}"#)
+                .unwrap();
+        assert_eq!(old.isolation, Isolation::Isolated);
+        let mut pack = old.clone();
+        pack.id = "pack-test".into();
+        pack.isolation = Isolation::Shared;
+        assert!(save(root.path(), &pack).unwrap_err().contains("整合包"));
+        assert!(pack.game_directory(root.path()).is_err());
+        pack.isolation = Isolation::Isolated;
+        assert!(
+            pack.game_directory(root.path())
+                .unwrap()
+                .ends_with("instances/pack-test")
+        );
+
+        let legacy = super::tests::root();
+        installed(legacy.path());
+        fs::create_dir_all(legacy.path().join("instances/1.20.1/saves")).unwrap();
+        let retained = ensure_default(legacy.path(), "1.20.1", Isolation::Shared).unwrap();
+        assert_eq!(retained.isolation, Isolation::Isolated);
     }
 
     #[test]

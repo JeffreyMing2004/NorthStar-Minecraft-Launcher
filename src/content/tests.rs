@@ -447,11 +447,16 @@ fn mrpack_installs_exact_loader_and_client_files_into_a_new_instance() {
     let instance = install_pack(
         root.path(),
         &plan,
-        &crate::store::Settings::default(),
+        &crate::store::Settings {
+            default_isolation: crate::instances::Isolation::Shared,
+            ..Default::default()
+        },
         &server.downloader(),
     )
     .unwrap();
     let directory = instance.directory(root.path()).unwrap();
+    assert_eq!(instance.isolation, crate::instances::Isolation::Isolated);
+    assert_eq!(instance.game_directory(root.path()).unwrap(), directory);
     assert!(directory.join("mods/client.jar").is_file());
     assert!(!directory.join("mods/server.jar").exists());
     assert!(!directory.join("mods/optional.jar").exists());

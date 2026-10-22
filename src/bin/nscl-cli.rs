@@ -267,6 +267,7 @@ fn run() -> Result<(), String> {
             .iter()
             .find(|entry| entry.id == id)
             .ok_or("版本列表中没有该版本")?;
+        let previous_instances = instances::list(&root);
         let installed = if let Some(kind) = loader {
             let versions = minecraft::loader_versions(&id, kind, &downloader)?;
             let selection = match loader_version {
@@ -291,6 +292,12 @@ fn run() -> Result<(), String> {
         } else {
             minecraft::install(&root, entry, &downloader)?
         };
+        let isolation = previous_instances
+            .iter()
+            .find(|i| i.version_id == installed.id)
+            .map(|i| i.isolation)
+            .unwrap_or(settings.default_isolation);
+        instances::ensure_default(&root, &installed.id, isolation)?;
         println!(
             "已安装 {}，需要 Java {}",
             installed.id, installed.java_major

@@ -98,8 +98,9 @@ pub(super) fn current_target(root: &Path, target: &Target) -> Result<Target> {
         || current.loader != target.loader
         || current.loader_version != target.loader_version
         || current.instance.version_id != target.instance.version_id
+        || current.instance.isolation != target.instance.isolation
     {
-        return Err("实例游戏版本或加载器已经改变，请重新检查安装方案。".into());
+        return Err("实例游戏版本、加载器或隔离模式已经改变，请重新检查安装方案。".into());
     }
     Ok(current)
 }
@@ -112,7 +113,7 @@ pub fn plan_mod(
 ) -> Result<ModPlan> {
     let target = current_target(root, &target)?;
     target.check(&selected)?;
-    let directory = target.instance.directory(root)?;
+    let directory = target.instance.game_directory(root)?;
     let previous = registry(&directory)?;
     let mut chosen = BTreeMap::<String, ContentVersion>::new();
     let mut queue = VecDeque::from([selected]);
@@ -225,7 +226,7 @@ pub fn install_mods(
     downloader: &Downloader,
 ) -> Result<instances::Instance> {
     let target = current_target(root, &plan.target)?;
-    let directory = target.instance.directory(root)?;
+    let directory = target.instance.game_directory(root)?;
     if registry(&directory)? != plan.previous {
         return Err("实例模组记录已改变，请重新生成安装方案。".into());
     }
@@ -332,7 +333,7 @@ pub fn check_instance(
     downloader: &Downloader,
 ) -> Result<CompatibilityReport> {
     let target = Target::from_instance(root, instance)?;
-    let directory = instance.directory(root)?;
+    let directory = instance.game_directory(root)?;
     let record = registry(&directory)?;
     let mut report = CompatibilityReport::default();
     let versions: BTreeMap<_, _> = record

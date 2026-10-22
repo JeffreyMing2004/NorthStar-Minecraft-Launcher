@@ -16,6 +16,8 @@ use std::{
 
 mod content;
 #[cfg(test)]
+mod isolation_tests;
+#[cfg(test)]
 mod java_tests;
 #[cfg(test)]
 mod managed_tests;
@@ -160,25 +162,21 @@ impl GameService {
                     self.notice.clear();
                 }
                 Event::Installed(version) => {
-                    self.selected = version.id.clone();
-                    self.refresh(settings);
-                    if let Some(instance) =
-                        self.instances.iter().find(|i| i.version_id == version.id)
-                    {
-                        self.selected = instance.id.clone();
-                    } else {
-                        match crate::instances::create(
-                            &store::game_directory(settings),
-                            &version.id,
-                            &format!("Minecraft {}", version.id),
-                        ) {
-                            Ok(instance) => {
-                                self.selected = instance.id;
-                                self.refresh(settings);
-                            }
-                            Err(error) => self.error = Some(error),
-                        }
+                    let isolation = self
+                        .instances
+                        .iter()
+                        .find(|i| i.version_id == version.id)
+                        .map(|i| i.isolation)
+                        .unwrap_or(settings.default_isolation);
+                    match crate::instances::ensure_default(
+                        &store::game_directory(settings),
+                        &version.id,
+                        isolation,
+                    ) {
+                        Ok(instance) => self.selected = instance.id,
+                        Err(error) => self.error = Some(error),
                     }
+                    self.refresh(settings);
                     self.task = Task::Idle;
                     self.notice = format!(
                         "{} 安装完成，可在开始页启动。",

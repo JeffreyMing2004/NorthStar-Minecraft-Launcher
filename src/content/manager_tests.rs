@@ -4,6 +4,60 @@ use serde_json::json;
 use std::{collections::BTreeSet, fs, sync::atomic::Ordering};
 
 #[test]
+fn shared_mod_management_uses_the_launch_directory_and_rejects_stale_isolation_plans() {
+    let root = temporary();
+    let server = Server::new();
+    let api = server.api();
+    let mut target = target(root.path());
+    target.instance.isolation = crate::instances::Isolation::Shared;
+    crate::instances::save(root.path(), &target.instance).unwrap();
+    let selected = version(&server, "example", "v1", json!([]));
+    let plan = plan_mod(root.path(), target.clone(), selected.clone(), &api).unwrap();
+    install_mods(root.path(), &plan, &api.downloader).unwrap();
+    assert!(root.path().join("mods/example-v1.jar").is_file());
+    assert!(
+        !target
+            .instance
+            .directory(root.path())
+            .unwrap()
+            .join("mods/example-v1.jar")
+            .exists()
+    );
+    assert_eq!(
+        list_managed(root.path(), &target, &api.downloader)
+            .unwrap()
+            .entries
+            .len(),
+        1
+    );
+    assert!(
+        check_instance(root.path(), &target.instance, &api.downloader)
+            .unwrap()
+            .errors
+            .is_empty()
+    );
+    let removal = plan_removal(root.path(), &target, &BTreeSet::from(["example".into()])).unwrap();
+    let new_plan = plan_mod(root.path(), target.clone(), selected, &api).unwrap();
+    let mut changed = target.instance.clone();
+    changed.isolation = crate::instances::Isolation::Isolated;
+    crate::instances::save(root.path(), &changed).unwrap();
+    assert!(
+        install_mods(root.path(), &new_plan, &api.downloader)
+            .unwrap_err()
+            .contains("隔离模式")
+    );
+    assert!(
+        remove_mods(root.path(), &removal, &api.downloader)
+            .unwrap_err()
+            .contains("隔离模式")
+    );
+    assert!(root.path().join("mods/example-v1.jar").exists());
+    crate::instances::save(root.path(), &target.instance).unwrap();
+    remove_mods(root.path(), &removal, &api.downloader).unwrap();
+    assert!(!root.path().join("mods/example-v1.jar").exists());
+}
+
+#[test]
 fn removal_checks_dependents_and_preserves_worlds_config_and_unmanaged_files() {
     let root = temporary();
     let server = Server::new();

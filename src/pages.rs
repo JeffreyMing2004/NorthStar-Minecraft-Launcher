@@ -109,11 +109,25 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         }
         app::hint(
             &mut selection,
-            if app.settings.online_mode {
-                "独立游戏目录 · Microsoft 正版身份"
-            } else {
-                "独立游戏目录 · 离线账号"
-            },
+            &format!(
+                "{} · {}",
+                if app
+                    .service
+                    .instances
+                    .iter()
+                    .find(|i| i.id == app.service.selected)
+                    .is_some_and(|i| i.isolation == crate::instances::Isolation::Shared)
+                {
+                    "共享游戏目录"
+                } else {
+                    "版本隔离"
+                },
+                if app.settings.online_mode {
+                    "Microsoft 正版身份"
+                } else {
+                    "离线账号"
+                }
+            ),
         );
     }
     launch.add_space(20.0);
@@ -867,6 +881,16 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     crate::store::game_directory(&app.settings).display()
                 ),
             );
+            ui.add_space(20.0);
+            ui.label("新实例默认隔离模式");
+            egui::ComboBox::from_id_salt("default-isolation")
+                .selected_text(app.settings.default_isolation.label())
+                .show_ui(ui, |ui| {
+                    for mode in crate::instances::Isolation::ALL {
+                        ui.selectable_value(&mut app.settings.default_isolation, mode, mode.label());
+                    }
+                });
+            app::hint(ui, "仅用于新安装版本与新建实例。隔离模式分别保存存档、模组、配置和截图；共享模式共用当前游戏根目录。已有实例可在「管理实例 → 配置」修改，整合包始终隔离。");
             ui.add_space(24.0);
             ui.label("下载源");
             ui.add_space(10.0);
@@ -949,7 +973,7 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                 ui.spacing_mut().item_spacing.y = 12.0;
                 app::body(
                     ui,
-                    "每个实例拥有独立存档与配置，同一版本共享客户端、资源和依赖文件。",
+                    "可为每个实例选择独立或共享游戏目录；客户端、资源和依赖文件始终复用。",
                 );
                 if !editable {
                     app::hint(ui, "游戏或任务运行中，实例配置暂时锁定。");
@@ -1007,7 +1031,7 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                                             }
                                         });
                                         if ui.button("打开目录").clicked() {
-                                            match instance.directory(&root).and_then(|path| {
+                                            match instance.game_directory(&root).and_then(|path| {
                                                 std::fs::create_dir_all(&path)
                                                     .map_err(|e| e.to_string())?;
                                                 open::that_detached(path).map_err(|e| e.to_string())
@@ -1020,7 +1044,8 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                                     app::hint(
                                         ui,
                                         &format!(
-                                            "Java：{} · 内存：{}",
+                                            "{} · Java：{} · 内存：{}",
+                                            instance.isolation.label(),
                                             instance
                                                 .java_path
                                                 .as_deref()
@@ -1100,17 +1125,19 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                                 }
                             });
                         if ui.button("创建").clicked() {
-                            match crate::instances::create(
+                            match crate::instances::create_with_isolation(
                                 &root,
                                 &app.new_instance_version,
                                 &app.new_instance_name,
+                                app.settings.default_isolation,
                             ) {
                                 Ok(instance) => {
                                     app.service.refresh(&app.settings);
                                     app.service.selected = instance.id;
                                     app.remember_instance();
                                     app.new_instance_name.clear();
-                                    app.instance_status = "已创建独立实例，可在开始页启动。".into();
+                                    app.instance_status =
+                                        "实例已创建，可在配置中查看隔离模式与游戏目录。".into();
                                 }
                                 Err(error) => app.service.error = Some(error),
                             }
@@ -1129,6 +1156,8 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
         egui::Window::new("实例配置")
             .open(&mut open)
             .default_width(530.0)
+            .max_height((ctx.content_rect().height() - 120.0).max(220.0))
+            .vscroll(true)
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 12.0;
                 ui.add_enabled_ui(editable, |ui| {
@@ -1144,6 +1173,30 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                     ));
                     ui.label("实例名称");
                     ui.text_edit_singleline(&mut instance.name);
+                    ui.label("版本隔离");
+                    ui.add_enabled_ui(!instance.requires_isolation(), |ui| {
+                        egui::ComboBox::from_id_salt("instance-isolation")
+                            .selected_text(instance.isolation.label())
+                            .show_ui(ui, |ui| {
+                                for mode in crate::instances::Isolation::ALL {
+                                    ui.selectable_value(&mut instance.isolation, mode, mode.label());
+                                }
+                            });
+                    });
+                    if instance.requires_isolation() {
+                        app::hint(ui, "整合包始终使用独立目录，避免模组与配置混用。");
+                    } else {
+                        app::hint(ui, "切换后从所选目录读取存档、模组、配置和截图；原目录文件保留，不自动搬移。共享模式下不同版本会使用同一份游戏数据。");
+                    }
+                    if let Ok(path) = instance.game_directory(&root) {
+                        app::hint(ui, &format!("游戏目录：{}", path.display()));
+                    }
+                    if instance.isolation == crate::instances::Isolation::Shared
+                        && ui.button("打开保留的独立目录").clicked()
+                        && let Err(error) = instance.directory(&root).and_then(|p| open::that_detached(p).map_err(|e| e.to_string()))
+                    {
+                        app.service.error = Some(error);
+                    }
                     let mut override_java = instance.java_path.is_some();
                     if ui
                         .checkbox(&mut override_java, "为此实例单独选择 Java")
@@ -1202,6 +1255,11 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                             Ok(()) => {
                                 saved = true;
                                 app.service.refresh(&app.settings);
+                                app.service.content.plan = None;
+                                app.service.content.managed = None;
+                                app.service.content.managed_selection.clear();
+                                app.service.content.updates = Default::default();
+                                app.service.content.updates_checked = false;
                                 app.instance_status = "实例配置已保存。".into();
                             }
                             Err(error) => app.service.error = Some(error),
@@ -1219,7 +1277,11 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.label(format!("将「{}」移入归档？", instance.name));
-                ui.label("存档、模组和配置会一起保留，可在管理实例的归档列表中恢复。");
+                ui.label(if instance.isolation == crate::instances::Isolation::Shared {
+                    "只归档该实例配置及保留的独立目录；共享游戏目录的存档、模组和配置留在原处，供其他版本继续使用。"
+                } else {
+                    "存档、模组和配置会一起保留，可在管理实例的归档列表中恢复。"
+                });
                 ui.horizontal(|ui| {
                     if ui
                         .add_enabled(editable, egui::Button::new("确认归档"))

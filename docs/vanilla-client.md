@@ -50,13 +50,20 @@ HTTP 请求使用系统 TLS 校验和系统代理设置；本地回环镜像直�
   assets/objects/
   assets/log_configs/
   assets/virtual/                 # 部分旧版需要
-  instances/<instance-id>/       # 实例独立的存档、模组与配置目录
+  instances/<instance-id>/       # 实例元数据；隔离模式也在这里保存游戏数据
   instances/<instance-id>/nscl-instance.json
   instances/<instance-id>/logs/nscl-launch.log
   archived-instances/<archive-id>/ # 可恢复的完整实例归档
+  saves/                         # 关闭隔离的实例共享这里的游戏数据
+  mods/
+  config/
+  screenshots/
+  logs/nscl-launch.log            # 共享模式启动日志
 ```
 
 仅在全部文件校验和准备工作成功后写入 `nscl-instance.json` 完成标记。未完成的首次安装不会出现在首页。
+
+默认启用版本隔离，可在设置中选择新实例的默认模式，在「管理实例 → 配置」修改单个实例。关闭隔离时，`--gameDir`、进程工作目录及模组管理使用游戏根目录；实例配置仍保存在 `instances/<实例 ID>/`。切换模式保留原文件，不自动迁移。整合包始终隔离，详细规则见[版本隔离与实例目录](accounts-and-instances.md#版本隔离与实例目录)。
 
 文件先写入 `.part`，校验通过后再替换目标文件。重试安装会复用已通过 SHA-1 校验的文件，损坏或缺失的文件会重新下载。「校验 / 修复」使用相同流程，不删除存档或配置。目前不支持单个未完成文件的字节断点续传；中断的文件会从头下载。
 

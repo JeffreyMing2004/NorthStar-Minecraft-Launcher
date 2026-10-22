@@ -615,6 +615,45 @@ fn damaged_install_is_rejected_before_executing_java() {
 }
 
 #[test]
+#[ignore = "requires a locally installed Java 17; validates complete launch preparation"]
+fn real_java_launch_preparation_respects_isolation_without_duplicating_shared_assets() {
+    use crate::instances::{self, Isolation};
+    let fixture = Fixture::new();
+    install(&fixture.root, &fixture.entry, &fixture.server.downloader()).unwrap();
+    let java = crate::java::find("", 17).unwrap();
+    let settings = crate::store::Settings {
+        auto_java: false,
+        java_path: java.to_string_lossy().into_owned(),
+        auto_memory: false,
+        ..Default::default()
+    };
+    let root = absolute_root(&fixture.root).unwrap();
+    let identity = LaunchIdentity::offline("IsolationTest");
+    let mut instance = instances::create(&fixture.root, "test-1", "Launch isolation").unwrap();
+    let mut classpaths = Vec::new();
+    for mode in Isolation::ALL {
+        instance.isolation = mode;
+        instances::save(&fixture.root, &instance).unwrap();
+        let plan = prepare_instance_launch(&fixture.root, &instance, &settings, &identity).unwrap();
+        let expected = if mode == Isolation::Shared {
+            root.clone()
+        } else {
+            instance.directory(&root).unwrap()
+        };
+        assert_eq!(plan.game_directory, expected);
+        assert_eq!(plan.log_path, expected.join("logs/nscl-launch.log"));
+        let game_dir = plan
+            .arguments
+            .windows(2)
+            .find(|a| a[0] == "--gameDir")
+            .unwrap();
+        assert_eq!(std::path::Path::new(&game_dir[1]), expected);
+        classpaths.push(plan.arguments.windows(2).find(|a| a[0] == "-cp").unwrap()[1].clone());
+    }
+    assert_eq!(classpaths[0], classpaths[1]);
+}
+
+#[test]
 #[ignore = "invoked by the process lifecycle test"]
 fn child_process_fixture() {
     println!("test game stdout");

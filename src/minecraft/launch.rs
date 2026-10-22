@@ -157,7 +157,7 @@ pub fn prepare_instance_launch(
         settings.memory =
             crate::memory::automatic(version.java_major(), installed.loader.is_some())?;
     }
-    let game_directory = instance.directory(&root)?;
+    let game_directory = instance.game_directory(&root)?;
     fs::create_dir_all(game_directory.join("logs")).map_err(|e| e.to_string())?;
     let log_path = game_directory.join("logs/nscl-launch.log");
     let arguments = launch_arguments_for(

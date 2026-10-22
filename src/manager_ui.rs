@@ -93,7 +93,7 @@ fn open_mods(app: &mut NsclApp, catalog: &crate::content::ManagedCatalog) {
     let result = catalog
         .target
         .instance
-        .directory(&crate::store::game_directory(&app.settings))
+        .game_directory(&crate::store::game_directory(&app.settings))
         .and_then(|directory| {
             let path = directory.join("mods");
             std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;

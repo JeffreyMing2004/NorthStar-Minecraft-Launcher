@@ -113,7 +113,7 @@ pub struct Target {
 impl Target {
     pub fn from_instance(root: &Path, instance: &Instance) -> Result<Self> {
         instance.validate()?;
-        instance.directory(root)?;
+        instance.game_directory(root)?;
         let installed = minecraft::installed_versions(root)
             .into_iter()
             .find(|v| v.id == instance.version_id)

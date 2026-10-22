@@ -14,6 +14,7 @@ pub struct Settings {
     pub check_updates: bool,
     pub game_directory: String,
     pub game_directories: Vec<String>,
+    pub default_isolation: crate::instances::Isolation,
     #[serde(default)]
     pub game_directory_layout: u8,
     pub source: crate::minecraft::Source,
@@ -37,6 +38,7 @@ impl Default for Settings {
             check_updates: true,
             game_directory: String::new(),
             game_directories: Vec::new(),
+            default_isolation: crate::instances::Isolation::Isolated,
             game_directory_layout: 1,
             source: crate::minecraft::Source::default(),
             player_name: "NSCLPlayer".into(),

@@ -45,7 +45,7 @@ pub fn list_managed(
     downloader: &Downloader,
 ) -> Result<ManagedCatalog> {
     let target = current_target(root, target)?;
-    let directory = target.instance.directory(root)?;
+    let directory = target.instance.game_directory(root)?;
     let record = registry(&directory)?;
     let mut entries = Vec::new();
     for entry in record.mods.values() {
@@ -123,8 +123,8 @@ pub fn plan_removal(
         return Err("请先选择要卸载的模组。".into());
     }
     let target = current_target(root, target)?;
-    let previous = registry(&target.instance.directory(root)?)?;
-    let unmanaged_count = unmanaged(&target.instance.directory(root)?, &previous)?.len();
+    let previous = registry(&target.instance.game_directory(root)?)?;
+    let unmanaged_count = unmanaged(&target.instance.game_directory(root)?, &previous)?.len();
     let mut entries = Vec::new();
     for project in projects {
         entries.push(
@@ -162,7 +162,7 @@ pub fn remove_mods(
     downloader: &Downloader,
 ) -> Result<crate::instances::Instance> {
     let target = current_target(root, &plan.target)?;
-    let directory = target.instance.directory(root)?;
+    let directory = target.instance.game_directory(root)?;
     if registry(&directory)? != plan.previous {
         return Err("实例模组记录已改变，请重新生成卸载方案。".into());
     }
