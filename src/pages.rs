@@ -83,7 +83,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         );
     } else {
         let mut selection =
-            launch.new_child(UiBuilder::new().max_rect(instance.shrink2(Vec2::new(50.0, 14.0))));
+            launch.new_child(UiBuilder::new().max_rect(instance.shrink2(Vec2::new(50.0, 26.0))));
         let previous = app.service.selected.clone();
         let selected_name = app
             .service
@@ -107,28 +107,6 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         if previous != app.service.selected {
             app.remember_instance();
         }
-        app::hint(
-            &mut selection,
-            &format!(
-                "{} · {}",
-                if app
-                    .service
-                    .instances
-                    .iter()
-                    .find(|i| i.id == app.service.selected)
-                    .is_some_and(|i| i.isolation == crate::instances::Isolation::Shared)
-                {
-                    "共享游戏目录"
-                } else {
-                    "版本隔离"
-                },
-                if app.settings.online_mode {
-                    "Microsoft 正版身份"
-                } else {
-                    "离线账号"
-                }
-            ),
-        );
     }
     launch.add_space(20.0);
     if app.service.instances.is_empty() {
