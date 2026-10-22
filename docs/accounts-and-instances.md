@@ -3,11 +3,15 @@
 ## Microsoft 正版登录
 
 1. 在「设置」确认 Microsoft 应用 Client ID，默认使用 NSCL 的 `0c342b6c-38ee-414d-8f83-8df917817e2b`。
-2. 在「账号」点击「登录 Microsoft 账号」，点击官方授权链接并输入启动器显示的设备代码。密码、多因素认证和授权确认由用户在 Microsoft 官方网页完成。
+2. 确认「Microsoft 登录回调 URI」与应用注册一致，默认使用 `http://localhost:29111/auth-response`。在「账号」点击「登录 Microsoft 账号」，启动器会打开系统浏览器。密码、多因素认证和授权确认由用户在 Microsoft 官方网页完成；若浏览器未能自动打开，可点击启动器中的授权链接。
 3. 授权后，启动器依次验证 Xbox Live、XSTS、Minecraft Java 授权和玩家档案，添加账号并选择正版身份。
 4. 已添加的账号可以切换或移除；启动时检查身份，过期时自动续期。失败会提示重新登录，不会自动使用离线身份。
 
-应用注册须支持个人 Microsoft 账号，并允许公共客户端设备代码流程；另外需要 Minecraft Java API 的访问许可。Client ID 是公开应用标识，不是 Client Secret，本应用不使用或保存 Client Secret。应用权限未获批时，Minecraft 服务可能返回 HTTP 403，需由应用所有者处理。Xbox 档案、家庭授权或首次角色设置问题会显示对应提示。
+应用注册须支持个人 Microsoft 账号，本机回调需要登记在「移动和桌面应用程序」平台。NSCL 使用授权码 + PKCE（S256）与随机 state 校验，不使用或保存 Client Secret。仅配置重定向 URI 并不会启用设备代码流程，因此默认按钮使用浏览器登录；需要设备代码时，在「其他登录方式」中选择，并确保应用允许该流程。另外仍需 Minecraft Java API 的访问许可；权限未获批时，Minecraft 服务可能返回 HTTP 403，需由应用所有者处理。Xbox 档案、家庭授权或首次角色设置问题会显示对应提示。
+
+默认回调端口被占用时，启动器会尝试已经为 NSCL 登记的 `29112–29115`，路径均为 `/auth-response`。如填写其他回调地址，仅使用填写的端口与路径。监听器只绑定本机回环地址，检查回调路径、Host 与 state，忽略无关请求，在收到授权码、取消或十分钟超时后关闭；兑换令牌时使用完全相同的回调 URI 与 PKCE verifier。
+
+排查应用配置时，错误提示会保留 AADSTS 数字编号并给出对应说明，不回显含令牌等信息的原始响应。例如 `AADSTS50011` 表示回调不匹配，`AADSTS700016` 可用于排查应用标识或账号范围，`AADSTS7000218` 提示检查回调的平台类型。不要为桌面启动器添加或提供 Client Secret。
 
 认证只连接 Microsoft、Xbox 和 Minecraft 官方服务，不经过客户端下载镜像。遵守设备代码轮询间隔、`slow_down`、有效期与取消操作；网络请求具有超时限制。优先使用当前 `/launcher/login` 和 `/entitlements/license` 接口；仅在接口返回 404/405 时兼容旧接口，认证拒绝不会触发接口回退。
 
@@ -15,7 +19,7 @@ Windows 使用凭据管理器，macOS 使用 Keychain，保存 Microsoft 刷新�
 
 `nscl-accounts.json` 与设置文件相邻，仅包含玩家名、UUID、XUID、公开 Client ID 和当前账号选择，不包含令牌。诊断输出隐藏启动令牌，认证错误不回显原始响应。不要向他人分享 Java 进程完整命令行，游戏需要通过参数接收 access token。
 
-协议依据：[Microsoft 设备代码授权文档](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)、[Xbox 身份认证概述](https://learn.microsoft.com/en-us/gaming/gdk/docs/services/fundamentals/s2s-auth-calls/service-authentication/live-xbox-live-authentication)、[Prism Launcher 当前认证步骤](https://github.com/PrismLauncher/PrismLauncher/tree/develop/launcher/minecraft/auth/steps)。实现通过本地模拟协议和 Windows 虚拟凭据读写测试；真实用户登录、Minecraft 应用许可和正版服务器连接需实际授权验证。
+协议依据：[Microsoft 授权码与 PKCE 文档](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow)、[回调 URI 配置说明](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url)、[设备代码授权文档](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)、[Xbox 身份认证概述](https://learn.microsoft.com/en-us/gaming/gdk/docs/services/fundamentals/s2s-auth-calls/service-authentication/live-xbox-live-authentication)、[Prism Launcher 当前认证步骤](https://github.com/PrismLauncher/PrismLauncher/tree/develop/launcher/minecraft/auth/steps)。测试使用本地模拟认证服务与虚拟系统凭据；真实用户登录、Minecraft 应用许可和正版服务器连接需实际授权验证。
 
 ## Java 配置
 

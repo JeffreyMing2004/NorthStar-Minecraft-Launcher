@@ -427,9 +427,18 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
         let editable = !app.accounts.pending && !app.service.busy() && app.service.game.is_none();
         ui.add_enabled_ui(editable, |ui| {
             if app::primary_button(ui, "＋  登录 Microsoft 账号") {
-                app.accounts
-                    .login(&app.settings.microsoft_client_id, ui.ctx());
+                app.accounts.login(
+                    &app.settings.microsoft_client_id,
+                    &app.settings.microsoft_redirect_uri,
+                    ui.ctx(),
+                );
             }
+            egui::CollapsingHeader::new("其他登录方式").show(ui, |ui| {
+                if ui.button("设备代码登录（需应用启用对应流程）").clicked() {
+                    app.accounts
+                        .login_device(&app.settings.microsoft_client_id, ui.ctx());
+                }
+            });
         });
         ui.add_space(12.0);
         app::hint(
@@ -438,6 +447,29 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
         );
         if app.accounts.pending {
             ui.add_space(20.0);
+            if let Some(prompt) = &app.accounts.browser_prompt {
+                egui::Frame::NONE
+                    .fill(theme::TOPBAR_BG)
+                    .corner_radius(10.0)
+                    .inner_margin(20)
+                    .show(ui, |ui| {
+                        app::body(ui, "在 Microsoft 官方网页完成登录与授权，然后返回启动器。");
+                        ui.add_space(12.0);
+                        ui.hyperlink_to("打开 Microsoft 登录页面 ↗", &prompt.url);
+                        ui.add_space(10.0);
+                        app::hint(ui, &format!("当前本地回调：{}", prompt.redirect_uri));
+                        let remaining = prompt
+                            .expires
+                            .saturating_duration_since(std::time::Instant::now())
+                            .as_secs();
+                        app::hint(
+                            ui,
+                            &format!("剩余等待时间 {} 分 {} 秒", remaining / 60, remaining % 60),
+                        );
+                        ui.ctx()
+                            .request_repaint_after(std::time::Duration::from_secs(1));
+                    });
+            }
             if let Some(prompt) = &app.accounts.prompt {
                 egui::Frame::NONE
                     .fill(theme::TOPBAR_BG)
@@ -778,8 +810,11 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
             );
             app::hint(
                 ui,
-                "NSCL 的公共应用标识；应用需允许个人账号、设备代码登录及 Minecraft Java API 访问。",
+                "NSCL 的公共应用标识；应用需支持个人账号，回调平台选择移动和桌面应用程序。",
             );
+            ui.add_space(24.0);
+            settings_input(ui, "Microsoft 登录回调 URI", &mut app.settings.microsoft_redirect_uri, width);
+            app::hint(ui, "与应用注册一致；默认 http://localhost:29111/auth-response，端口占用时尝试已登记的 29112–29115。浏览器登录使用 PKCE，无需 Client Secret。");
             ui.add_space(24.0);
             settings_input(ui, "离线测试玩家名", &mut app.settings.player_name, width);
             app::hint(
@@ -803,6 +838,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                         app.save_status = error;
                         return;
                     }
+                    if let Err(error) = crate::accounts::validate_redirect_uri(app.settings.microsoft_redirect_uri.trim()) { app.save_status = error; return; }
                     if let Err(error) =
                         crate::minecraft::validate_player_name(&app.settings.player_name)
                     {
@@ -813,6 +849,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     app.settings.java_path = app.settings.java_path.trim().to_owned();
                     app.settings.microsoft_client_id =
                         app.settings.microsoft_client_id.trim().to_owned();
+                    app.settings.microsoft_redirect_uri = app.settings.microsoft_redirect_uri.trim().to_owned();
                     app.save_status = match crate::store::save(&app.settings) {
                         Ok(()) => {
                             app.service.refresh(&app.settings);

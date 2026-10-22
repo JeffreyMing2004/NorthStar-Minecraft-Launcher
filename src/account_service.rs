@@ -19,6 +19,7 @@ pub struct LoginPrompt {
 }
 enum Event {
     Prompt(LoginPrompt),
+    Browser(accounts::BrowserPrompt),
     Status(String),
     Finished(Result<(Session, Option<String>), String>),
 }
@@ -27,6 +28,7 @@ pub struct AccountService {
     pub list: AccountList,
     pub pending: bool,
     pub prompt: Option<LoginPrompt>,
+    pub browser_prompt: Option<accounts::BrowserPrompt>,
     pub status: String,
     pub error: Option<String>,
     sessions: BTreeMap<String, Session>,
@@ -45,6 +47,7 @@ impl AccountService {
             list,
             pending: false,
             prompt: None,
+            browser_prompt: None,
             status: String::new(),
             error,
             sessions: BTreeMap::new(),
@@ -67,7 +70,17 @@ impl AccountService {
         self.list = list;
         self.sessions.insert(session.account.id.clone(), session);
     }
-    pub fn login(&mut self, client_id: &str, ctx: &egui::Context) {
+    pub fn login(&mut self, client_id: &str, redirect_uri: &str, ctx: &egui::Context) {
+        if let Err(error) = accounts::validate_redirect_uri(redirect_uri.trim()) {
+            self.error = Some(error);
+            return;
+        }
+        self.start_login(client_id, Some(redirect_uri.trim().into()), ctx);
+    }
+    pub fn login_device(&mut self, client_id: &str, ctx: &egui::Context) {
+        self.start_login(client_id, None, ctx);
+    }
+    fn start_login(&mut self, client_id: &str, redirect: Option<String>, ctx: &egui::Context) {
         if self.pending {
             return;
         }
@@ -77,7 +90,13 @@ impl AccountService {
         }
         self.pending = true;
         self.prompt = None;
-        self.status = "正在申请 Microsoft 登录代码……".into();
+        self.browser_prompt = None;
+        self.status = if redirect.is_some() {
+            "正在准备 Microsoft 浏览器登录……"
+        } else {
+            "正在申请 Microsoft 设备代码……"
+        }
+        .into();
         self.cancel = Arc::new(AtomicBool::new(false));
         let (sender, ctx, cancel, client_id) = (
             self.sender.clone(),
@@ -88,23 +107,37 @@ impl AccountService {
         std::thread::spawn(move || {
             let result = AuthClient::new()
                 .and_then(|client| {
-                    client.login(
-                        &client_id,
-                        &cancel,
-                        |code| {
-                            let _ = sender.send(Event::Prompt(LoginPrompt {
-                                code: code.user_code.clone(),
-                                url: code.verification_uri.clone(),
-                                expires: Instant::now()
-                                    + std::time::Duration::from_secs(code.expires_in),
-                            }));
-                            ctx.request_repaint();
-                        },
-                        |stage| {
-                            let _ = sender.send(Event::Status(stage.into()));
-                            ctx.request_repaint();
-                        },
-                    )
+                    let stage = |stage: &str| {
+                        let _ = sender.send(Event::Status(stage.into()));
+                        ctx.request_repaint();
+                    };
+                    if let Some(redirect) = redirect {
+                        client.login_browser(
+                            &client_id,
+                            &redirect,
+                            &cancel,
+                            |prompt| {
+                                let _ = sender.send(Event::Browser(prompt.clone()));
+                                ctx.request_repaint();
+                            },
+                            stage,
+                        )
+                    } else {
+                        client.login(
+                            &client_id,
+                            &cancel,
+                            |code| {
+                                let _ = sender.send(Event::Prompt(LoginPrompt {
+                                    code: code.user_code.clone(),
+                                    url: code.verification_uri.clone(),
+                                    expires: Instant::now()
+                                        + std::time::Duration::from_secs(code.expires_in),
+                                }));
+                                ctx.request_repaint();
+                            },
+                            stage,
+                        )
+                    }
                 })
                 .and_then(|session| {
                     if cancel.load(Ordering::Relaxed) {
@@ -126,16 +159,33 @@ impl AccountService {
         while let Ok(event) = self.receiver.try_recv() {
             match event {
                 Event::Prompt(prompt) => {
+                    if self.cancel.load(Ordering::Relaxed) {
+                        continue;
+                    }
                     self.prompt = Some(prompt);
                     self.status = "请在 Microsoft 官方页面输入设备代码并完成授权。".into();
                 }
+                Event::Browser(prompt) => {
+                    if self.cancel.load(Ordering::Relaxed) {
+                        continue;
+                    }
+                    self.status = match open::that_detached(&prompt.url) {
+                        Ok(()) => {
+                            "请在浏览器中完成 Microsoft 登录，授权后会自动返回启动器。".into()
+                        }
+                        Err(_) => "无法自动打开浏览器，请点击下方的 Microsoft 登录链接。".into(),
+                    };
+                    self.browser_prompt = Some(prompt);
+                }
                 Event::Status(status) => {
                     self.prompt = None;
+                    self.browser_prompt = None;
                     self.status = status;
                 }
                 Event::Finished(result) => {
                     self.pending = false;
                     self.prompt = None;
+                    self.browser_prompt = None;
                     match result {
                         Ok((session, warning)) => {
                             self.status = format!(

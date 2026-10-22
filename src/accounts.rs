@@ -1,4 +1,8 @@
-//! Microsoft device authorization and Minecraft identity. Tokens never enter settings or diagnostics.
+//! Microsoft browser/device authorization and Minecraft identity. Tokens never enter diagnostics.
+mod browser;
+pub use browser::{
+    BrowserAuthorization, BrowserPrompt, DEFAULT_REDIRECT_URI, validate_redirect_uri,
+};
 use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -243,7 +247,7 @@ impl AuthClient {
                     interval = (interval + 5).min(120);
                     continue;
                 }
-                Some(error) => return Err(oauth_error(error)),
+                Some(_) => return Err(oauth_response_error(&body)),
                 None if !status.is_success() => {
                     return Err(format!("Microsoft 授权失败（HTTP {status}）。"));
                 }
@@ -484,7 +488,8 @@ fn decode_response<T: DeserializeOwned>(response: Response, stage: &str) -> Resu
             | "authorization_declined"),
         ) = value.get("error").and_then(Value::as_str)
         {
-            return Err(oauth_error(error));
+            let _ = error;
+            return Err(oauth_response_error(&value));
         }
         if let Some(code) = value.get("XErr").and_then(Value::as_u64) {
             return Err(xbox_error(code));
@@ -498,13 +503,43 @@ fn oauth_error(error: &str) -> String {
         "authorization_declined" | "access_denied" => "已拒绝 Microsoft 登录授权。",
         "expired_token" => "登录代码已过期，请重新登录。",
         "invalid_client" | "unauthorized_client" => {
-            "Client ID 无效或未启用个人账号 / 公共客户端设备代码登录。"
+            "Microsoft 拒绝该应用的授权请求。请检查 Client ID 和个人账号支持；配置桌面回调后请使用浏览器登录。设备代码登录需要额外启用对应流程。"
         }
         "invalid_grant" | "interaction_required" => "登录凭据已失效，请重新登录 Microsoft 账号。",
         "invalid_scope" => "应用未允许 Xbox Live / offline_access 权限，请检查应用注册。",
         _ => "Microsoft 认证失败，请检查应用权限或重新登录。",
     }
     .into()
+}
+fn oauth_response_error(value: &Value) -> String {
+    let error = value.get("error").and_then(Value::as_str).unwrap_or("");
+    let code = value
+        .get("error_codes")
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(Value::as_u64)
+        .or_else(|| {
+            let description = value.get("error_description").and_then(Value::as_str)?;
+            let digits: String = description
+                .split("AADSTS")
+                .nth(1)?
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .take(10)
+                .collect();
+            digits.parse().ok()
+        });
+    let message = match code {
+        Some(50011) => "登录回调 URI 与应用注册不匹配，请将设置中的完整地址登记为移动和桌面应用程序回调。".into(),
+        Some(700016) => "Microsoft 找不到该应用，请检查 Client ID，以及应用是否支持个人 Microsoft 账号。".into(),
+        Some(7000218 | 9002326) => "应用要求 Web/SPA 客户端认证。请将本地回调登记在移动和桌面应用程序平台，NSCL 使用 PKCE，不需要 Client Secret。".into(),
+        Some(50020 | 50194) => "该应用或账号不适用于个人 Microsoft 登录，请检查 Supported accounts 配置。".into(),
+        _ => oauth_error(error),
+    };
+    match code {
+        Some(code) => format!("{message}（AADSTS{code}）"),
+        None => message,
+    }
 }
 fn xbox_error(code: u64) -> String {
     match code {

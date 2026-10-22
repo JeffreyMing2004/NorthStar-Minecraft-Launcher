@@ -80,18 +80,37 @@ fn run() -> Result<(), String> {
         }
         return Ok(());
     }
-    if command == "login" {
-        let session = AuthClient::new()?.login(
-            &settings.microsoft_client_id,
-            &AtomicBool::new(false),
-            |code| {
-                println!(
-                    "请自行打开 {} 并输入设备代码：{}",
-                    code.verification_uri, code.user_code
-                );
-            },
-            |stage| eprintln!("{stage}"),
-        )?;
+    if command == "login" || command == "login-device" {
+        let client = AuthClient::new()?;
+        let session = if command == "login" {
+            client.login_browser(
+                &settings.microsoft_client_id,
+                &settings.microsoft_redirect_uri,
+                &AtomicBool::new(false),
+                |prompt| {
+                    println!(
+                        "请在浏览器中完成 Microsoft 授权；本地回调：{}",
+                        prompt.redirect_uri
+                    );
+                    if open::that_detached(&prompt.url).is_err() {
+                        println!("请手动打开：{}", prompt.url);
+                    }
+                },
+                |stage| eprintln!("{stage}"),
+            )?
+        } else {
+            client.login(
+                &settings.microsoft_client_id,
+                &AtomicBool::new(false),
+                |code| {
+                    println!(
+                        "请自行打开 {} 并输入设备代码：{}",
+                        code.verification_uri, code.user_code
+                    );
+                },
+                |stage| eprintln!("{stage}"),
+            )?
+        };
         SystemVault.write(&session.account.id, &session.credential)?;
         let mut list = AccountList::load()?;
         let name = session.account.name.clone();
@@ -211,6 +230,6 @@ fn run() -> Result<(), String> {
 
 fn help() {
     println!(
-        "NSCL 客户端工具\n命令：list [搜索词]、install <版本>、installed、instances、java、login、inspect <实例或版本>、launch <实例或版本>\n参数：--source official|bmclapi|minguncle|custom、--mirror URL、--no-fallback、--game-dir PATH、--java PATH、--offline、--username NAME、--demo、--limit N\nCLI 使用已选择的身份，--offline / --username 明确切换为离线测试。inspect 会隐藏正版令牌。"
+        "NSCL 客户端工具\n命令：list [搜索词]、install <版本>、installed、instances、java、login（浏览器）、login-device（设备代码）、inspect <实例或版本>、launch <实例或版本>\n参数：--source official|bmclapi|minguncle|custom、--mirror URL、--no-fallback、--game-dir PATH、--java PATH、--offline、--username NAME、--demo、--limit N\nCLI 使用已选择的身份，--offline / --username 明确切换为离线测试。inspect 会隐藏正版令牌。"
     );
 }

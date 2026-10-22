@@ -7,15 +7,15 @@ use std::{
 
 const PROFILE: &str = "0123456789abcdef0123456789abcdef";
 type Replies = BTreeMap<String, VecDeque<(u16, Value)>>;
-struct Server {
-    client: AuthClient,
+pub(super) struct Server {
+    pub(super) client: AuthClient,
     routes: Arc<Mutex<Replies>>,
-    requests: Arc<Mutex<Vec<(String, String)>>>,
+    pub(super) requests: Arc<Mutex<Vec<(String, String)>>>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
 }
 impl Server {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let base = format!("http://{}", server.server_addr().to_ip().unwrap());
         let routes = Arc::new(Mutex::new(Replies::new()));
@@ -66,7 +66,7 @@ impl Server {
             worker: Some(worker),
         }
     }
-    fn put(&self, path: &str, status: u16, value: Value) {
+    pub(super) fn put(&self, path: &str, status: u16, value: Value) {
         self.routes
             .lock()
             .unwrap()
@@ -77,7 +77,7 @@ impl Server {
     fn device(&self) {
         self.put("/ms/devicecode", 200, json!({"device_code":"private-device-code", "user_code":"USER-CODE", "verification_uri":"https://www.microsoft.com/link", "expires_in":30, "interval":1}));
     }
-    fn exchange(&self, owns: bool) {
+    pub(super) fn exchange(&self, owns: bool) {
         self.put(
             "/xbox",
             200,

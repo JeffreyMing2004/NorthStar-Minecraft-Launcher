@@ -14,6 +14,7 @@ pub struct Settings {
     pub player_name: String,
     pub demo_mode: bool,
     pub microsoft_client_id: String,
+    pub microsoft_redirect_uri: String,
     pub online_mode: bool,
     pub selected_instance: String,
 }
@@ -28,6 +29,7 @@ impl Default for Settings {
             player_name: "NSCLPlayer".into(),
             demo_mode: false,
             microsoft_client_id: crate::accounts::DEFAULT_CLIENT_ID.into(),
+            microsoft_redirect_uri: crate::accounts::DEFAULT_REDIRECT_URI.into(),
             online_mode: false,
             selected_instance: String::new(),
         }

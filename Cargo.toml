@@ -16,6 +16,9 @@ regex = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 uuid = { version = "1", features = ["v4"] }
 open = "5"
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
