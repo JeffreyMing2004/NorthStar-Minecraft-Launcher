@@ -14,6 +14,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     process::Stdio,
+    sync::{Arc, atomic::AtomicBool},
 };
 
 #[cfg(windows)]
@@ -89,6 +90,22 @@ pub fn prepare_instance_launch(
     settings: &Settings,
     identity: &LaunchIdentity,
 ) -> Result<LaunchPlan> {
+    let downloader = super::Downloader::new(
+        settings.source.clone(),
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(|_| {}),
+    )?;
+    prepare_instance_launch_with_downloader(root, instance, settings, identity, &downloader)
+}
+
+pub fn prepare_instance_launch_with_downloader(
+    root: &Path,
+    instance: &crate::instances::Instance,
+    settings: &Settings,
+    identity: &LaunchIdentity,
+    downloader: &super::Downloader,
+) -> Result<LaunchPlan> {
+    downloader.check_cancelled()?;
     instance.validate()?;
     let mut settings = instance.effective_settings(settings);
     let id = instance.version_id.as_str();
@@ -152,6 +169,8 @@ pub fn prepare_instance_launch(
         return Err("资源索引损坏，请重新安装/修复。".into());
     }
     let index: AssetIndex = read_json(&index_path)?;
+    let game_directory = instance.game_directory(&root)?;
+    super::logging::prepare(&root, &version, &client, &game_directory, downloader)?;
     let mut files = plan(&root, &version, &index, &platform)?;
     let default_client = version_dir.join(format!("{id}.jar"));
     for job in &mut files.jobs {
@@ -164,7 +183,9 @@ pub fn prepare_instance_launch(
             *path = client.clone();
         }
     }
+    downloader.phase("校验游戏文件并准备启动", 0);
     for job in &files.jobs {
+        downloader.check_cancelled()?;
         if !verified(&job.path, &job.sha1, job.size)? {
             return Err(format!(
                 "文件缺失或损坏：{}。请在下载页重新安装/修复。",
@@ -172,14 +193,13 @@ pub fn prepare_instance_launch(
             ));
         }
     }
-    let natives = extract_natives(&root, id, &platform, &files.natives, None)?;
-    materialize_assets(&root, &version, &index, None)?;
+    let natives = extract_natives(&root, id, &platform, &files.natives, Some(downloader))?;
+    materialize_assets(&root, &version, &index, Some(downloader))?;
     let java = crate::java::find(settings.configured_java(), version.java_major())?;
     if settings.auto_memory {
         settings.memory =
             crate::memory::automatic(version.java_major(), installed.loader.is_some())?;
     }
-    let game_directory = instance.game_directory(&root)?;
     fs::create_dir_all(game_directory.join("logs")).map_err(|e| e.to_string())?;
     let log_path = game_directory.join("logs/nscl-launch.log");
     let arguments = launch_arguments_for(
@@ -430,8 +450,7 @@ pub(super) fn launch_arguments_for(
         jvm.extend(["-cp".to_owned(), classpath]);
     }
     if let Some(logging) = &version.logging {
-        let path =
-            super::download::safe_join(&assets.join("log_configs"), &logging.client.file.id)?;
+        let path = safe_join(&assets.join("log_configs"), &logging.client.file.id)?;
         values.insert("path", path.to_string_lossy().into_owned());
         jvm.push(substitute(&logging.client.argument, &values)?);
     }

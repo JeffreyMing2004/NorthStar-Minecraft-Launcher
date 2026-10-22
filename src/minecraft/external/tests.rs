@@ -118,6 +118,34 @@ fn incomplete_managed_installs_corrupt_markers_unsafe_names_and_cycles_are_not_i
 }
 
 #[test]
+fn inherited_logging_without_a_hash_uses_the_existing_parent_configuration() {
+    let root = temporary();
+    let mut base = write_profile(root.path(), "base");
+    base["libraries"] = json!([]);
+    base["logging"] = json!({"client":{"argument":"-Dlog4j.configurationFile=${path}","file":{"id":"client-1.12.xml"}}});
+    let base_path = root.path().join("versions/base/base.json");
+    crate::store::write_json(&base_path, &base).unwrap();
+    let original = fs::read(&base_path).unwrap();
+    let logging = root.path().join("versions/base/downloads/log.json");
+    fs::create_dir_all(logging.parent().unwrap()).unwrap();
+    fs::write(&logging, b"existing parent logging").unwrap();
+    let dir = root.path().join("versions/child");
+    fs::create_dir_all(&dir).unwrap();
+    crate::store::write_json(
+        &dir.join("child.json"),
+        &json!({"id":"child","inheritsFrom":"base"}),
+    )
+    .unwrap();
+    let (version, _) = prepare(root.path(), "child", &Platform::current()).unwrap();
+    assert_eq!(
+        version.logging.unwrap().client.file.artifact.sha1,
+        format!("{:x}", Sha1::digest(b"existing parent logging"))
+    );
+    assert_eq!(fs::read(base_path).unwrap(), original);
+    assert!(!root.path().join("assets/log_configs").exists());
+}
+
+#[test]
 #[ignore = "reads an explicitly supplied existing Minecraft root; never writes to it"]
 fn live_existing_profile_scan_and_normalization() {
     let root =

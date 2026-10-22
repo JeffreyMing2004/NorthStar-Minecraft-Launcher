@@ -467,16 +467,12 @@ impl GameService {
         let settings = settings.clone();
         let sender = self.sender.clone();
         let context = ctx.clone();
+        let cancel = self.cancel.clone();
         std::thread::spawn(move || {
             let identity = match account {
                 Some((account, cached)) => {
                     match crate::accounts::AuthClient::new().and_then(|client| {
-                        client.resume(
-                            &account,
-                            cached,
-                            &crate::accounts::SystemVault,
-                            &AtomicBool::new(false),
-                        )
+                        client.resume(&account, cached, &crate::accounts::SystemVault, &cancel)
                     }) {
                         Ok(session) => {
                             let identity = minecraft::LaunchIdentity::microsoft(&session);
@@ -495,14 +491,30 @@ impl GameService {
                 }
                 None => offline_identity,
             };
-            let plan =
-                match minecraft::prepare_instance_launch(&root, &instance, &settings, &identity) {
-                    Ok(plan) => plan,
-                    Err(error) => {
-                        send(&sender, &context, Event::Failed(error));
-                        return;
-                    }
-                };
+            let plan = match Downloader::new(
+                settings.source.clone(),
+                cancel.clone(),
+                reporter(&sender, &context),
+            )
+            .and_then(|downloader| {
+                minecraft::prepare_instance_launch_with_downloader(
+                    &root,
+                    &instance,
+                    &settings,
+                    &identity,
+                    &downloader,
+                )
+            }) {
+                Ok(plan) => plan,
+                Err(error) => {
+                    send(&sender, &context, Event::Failed(error));
+                    return;
+                }
+            };
+            if cancel.load(Ordering::Relaxed) {
+                send(&sender, &context, Event::Failed("操作已取消。".into()));
+                return;
+            }
             let mut started = false;
             let result = minecraft::launch(&plan, |pid, path| {
                 started = true;

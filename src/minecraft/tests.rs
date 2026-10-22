@@ -615,6 +615,144 @@ fn damaged_install_is_rejected_before_executing_java() {
 }
 
 #[test]
+fn logging_reuses_verified_isolated_files_with_the_original_extension_for_java() {
+    let fixture = Fixture::new();
+    let downloader = fixture.server.downloader();
+    let version_directory = fixture.root.join("versions/test-1");
+    let game_directory = fixture.root.join("instances/isolated with spaces");
+    let client = version_directory.join("test-1.jar");
+    let identity = LaunchIdentity::offline("LogTest");
+    let settings = crate::store::Settings::default();
+    for path in [
+        version_directory.join("downloads/log.json"),
+        game_directory.join("assets/log_configs/log.xml"),
+        game_directory.join("log_configs/log.xml"),
+    ] {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"log config fixture").unwrap();
+        let resolved = super::logging::prepare(
+            &fixture.root,
+            &fixture.version,
+            &client,
+            &game_directory,
+            &downloader,
+        )
+        .unwrap()
+        .unwrap();
+        let destination = fixture.root.join("assets/log_configs/log.xml");
+        assert_eq!(resolved, destination);
+        let arguments = launch_arguments_for(
+            &fixture.root,
+            &fixture.version,
+            &fixture.index,
+            std::slice::from_ref(&client),
+            &version_directory.join("natives"),
+            &Platform::current(),
+            LaunchContext {
+                settings: &settings,
+                identity: &identity,
+                game_directory: &game_directory,
+            },
+        )
+        .unwrap();
+        let argument = arguments
+            .iter()
+            .find_map(|argument| argument.strip_prefix("-Dlog4j.configurationFile="))
+            .unwrap();
+        assert_eq!(std::path::Path::new(argument), destination);
+        assert_eq!(fs::read(&path).unwrap(), b"log config fixture");
+        assert_eq!(fs::read(&destination).unwrap(), b"log config fixture");
+        assert_eq!(fixture.server.requests.load(Ordering::Relaxed), 0);
+        fs::remove_file(destination).unwrap();
+        fs::remove_file(path).unwrap();
+    }
+}
+
+#[test]
+fn missing_or_corrupt_logging_repairs_only_the_shared_configuration() {
+    let fixture = Fixture::new();
+    let downloader = fixture.server.downloader();
+    let directory = fixture.root.join("versions/test-1");
+    fs::create_dir_all(directory.join("downloads")).unwrap();
+    let placeholder = directory.join("downloads/log.json");
+    fs::write(&placeholder, b"").unwrap();
+    let metadata = directory.join("test-1.json");
+    let world = directory.join("saves/world/level.dat");
+    fs::create_dir_all(world.parent().unwrap()).unwrap();
+    fs::write(&metadata, b"original profile").unwrap();
+    fs::write(&world, b"original world").unwrap();
+    let destination = fixture.root.join("assets/log_configs/log.xml");
+    for original in [None, Some(b"".as_slice()), Some(b"modified".as_slice())] {
+        if let Some(bytes) = original {
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::write(&destination, bytes).unwrap();
+        } else if destination.exists() {
+            fs::remove_file(&destination).unwrap();
+        }
+        let requests = fixture.server.requests.load(Ordering::Relaxed);
+        let resolved = super::logging::prepare(
+            &fixture.root,
+            &fixture.version,
+            &directory.join("test-1.jar"),
+            &directory,
+            &downloader,
+        )
+        .unwrap();
+        assert_eq!(resolved.as_ref(), Some(&destination));
+        assert_eq!(fs::read(&destination).unwrap(), b"log config fixture");
+        assert_eq!(
+            fixture.server.requests.load(Ordering::Relaxed),
+            requests + 1
+        );
+        super::logging::prepare(
+            &fixture.root,
+            &fixture.version,
+            &directory.join("test-1.jar"),
+            &directory,
+            &downloader,
+        )
+        .unwrap();
+        assert_eq!(
+            fixture.server.requests.load(Ordering::Relaxed),
+            requests + 1
+        );
+        assert!(fs::read(&placeholder).unwrap().is_empty());
+        assert_eq!(fs::read(&metadata).unwrap(), b"original profile");
+        assert_eq!(fs::read(&world).unwrap(), b"original world");
+    }
+}
+
+#[test]
+fn logging_download_failure_and_cancellation_preserve_original_files() {
+    let fixture = Fixture::new();
+    let downloader = fixture.server.downloader();
+    let destination = fixture.root.join("assets/log_configs/log.xml");
+    fs::create_dir_all(destination.parent().unwrap()).unwrap();
+    fs::write(&destination, b"previous file").unwrap();
+    fixture
+        .server
+        .put("/v1/objects/log/log.xml", b"wrong content".to_vec());
+    let prepare = || {
+        super::logging::prepare(
+            &fixture.root,
+            &fixture.version,
+            &fixture.root.join("versions/test-1/test-1.jar"),
+            &fixture.root.join("instances/test-1"),
+            &downloader,
+        )
+    };
+    let error = prepare().unwrap_err();
+    assert!(error.contains("补全启动日志配置失败"), "{error}");
+    assert!(error.contains("SHA-1"), "{error}");
+    assert_eq!(fs::read(&destination).unwrap(), b"previous file");
+    assert!(!destination.with_file_name("log.xml.part").exists());
+    let requests = fixture.server.requests.load(Ordering::Relaxed);
+    downloader.cancel.store(true, Ordering::Relaxed);
+    assert_eq!(prepare().unwrap_err(), "操作已取消。");
+    assert_eq!(fixture.server.requests.load(Ordering::Relaxed), requests);
+}
+
+#[test]
 #[ignore = "requires a locally installed Java 17; validates complete launch preparation"]
 fn real_java_launch_preparation_respects_isolation_without_duplicating_shared_assets() {
     use crate::instances::{self, Isolation};
@@ -625,6 +763,7 @@ fn real_java_launch_preparation_respects_isolation_without_duplicating_shared_as
         auto_java: false,
         java_path: java.to_string_lossy().into_owned(),
         auto_memory: false,
+        source: fixture.server.downloader().source,
         ..Default::default()
     };
     let root = absolute_root(&fixture.root).unwrap();
@@ -669,8 +808,33 @@ fn real_java_launch_preparation_respects_isolation_without_duplicating_shared_as
         .find(|i| i.version_id == imported_id)
         .unwrap();
     assert_eq!(imported.isolation, Isolation::Version);
+    let shared_logging = root.join("assets/log_configs/log.xml");
+    let isolated_logging = imported_dir.join("downloads/log.json");
+    fs::create_dir_all(isolated_logging.parent().unwrap()).unwrap();
+    fs::rename(&shared_logging, &isolated_logging).unwrap();
+    let requests = fixture.server.requests.load(Ordering::Relaxed);
     let plan = prepare_instance_launch(&root, &imported, &settings, &identity).unwrap();
     assert_eq!(plan.game_directory, imported_dir);
+    let logging_argument = |plan: &LaunchPlan| {
+        PathBuf::from(
+            plan.arguments
+                .iter()
+                .find_map(|argument| argument.strip_prefix("-Dlog4j.configurationFile="))
+                .unwrap(),
+        )
+    };
+    assert_eq!(logging_argument(&plan), shared_logging);
+    assert_eq!(fixture.server.requests.load(Ordering::Relaxed), requests);
+    assert_eq!(fs::read(&shared_logging).unwrap(), b"log config fixture");
+    fs::remove_file(&shared_logging).unwrap();
+    fs::write(&isolated_logging, b"").unwrap();
+    let plan = prepare_instance_launch(&root, &imported, &settings, &identity).unwrap();
+    assert_eq!(logging_argument(&plan), shared_logging);
+    assert_eq!(
+        fixture.server.requests.load(Ordering::Relaxed),
+        requests + 1
+    );
+    assert!(fs::read(&isolated_logging).unwrap().is_empty());
     assert_eq!(
         fs::read(imported_dir.join(format!("{imported_id}.json"))).unwrap(),
         original

@@ -1797,6 +1797,7 @@ pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
             if matches!(
                 app.service.task,
                 crate::service::Task::Install
+                    | crate::service::Task::Launch
                     | crate::service::Task::Manifest
                     | crate::service::Task::LoaderVersions
                     | crate::service::Task::Content

@@ -337,11 +337,18 @@ pub fn prepare(root: &Path, id: &str, platform: &Platform) -> Result<(Version, P
     }
     if value["logging"]["client"]["file"].is_object() {
         let file = &mut value["logging"]["client"]["file"];
-        let path = safe_join(
-            &root.join("assets/log_configs"),
+        let candidates = super::logging::paths(
+            root,
+            id,
+            &client,
+            None,
             file["id"].as_str().ok_or("日志配置缺少名称。")?,
         )?;
-        artifact(file, &path)?;
+        let path = candidates
+            .iter()
+            .find(|path| fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() > 0))
+            .unwrap_or(&candidates[0]);
+        artifact(file, path)?;
     }
     let version =
         serde_json::from_value(value).map_err(|e| format!("已有版本启动配置不兼容：{e}"))?;
