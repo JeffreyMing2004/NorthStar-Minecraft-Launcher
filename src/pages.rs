@@ -447,7 +447,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
         );
         if app.accounts.pending {
             ui.add_space(20.0);
-            if let Some(prompt) = &app.accounts.browser_prompt {
+            if let Some(prompt) = app.accounts.browser_prompt.clone() {
                 egui::Frame::NONE
                     .fill(theme::TOPBAR_BG)
                     .corner_radius(10.0)
@@ -455,7 +455,29 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                     .show(ui, |ui| {
                         app::body(ui, "在 Microsoft 官方网页完成登录与授权，然后返回启动器。");
                         ui.add_space(12.0);
-                        ui.hyperlink_to("打开 Microsoft 登录页面 ↗", &prompt.url);
+                        ui.horizontal_wrapped(|ui| {
+                            if ui
+                                .add_enabled(
+                                    !app.accounts.browser_opening,
+                                    egui::Button::new("重新打开浏览器 ↗"),
+                                )
+                                .clicked()
+                            {
+                                app.accounts.open_browser(ui.ctx());
+                            }
+                            if ui.button("复制登录链接").clicked() {
+                                app.accounts.copy_login_link(ui.ctx());
+                            }
+                        });
+                        ui.add_space(10.0);
+                        app::hint(
+                            ui,
+                            "浏览器未弹出时，可复制链接到浏览器地址栏。请保持启动器打开。",
+                        );
+                        app::hint(
+                            ui,
+                            "若 Edge 提示现有实例以管理员权限运行，请保存网页后按提示以普通权限重启 Edge。",
+                        );
                         ui.add_space(10.0);
                         app::hint(ui, &format!("当前本地回调：{}", prompt.redirect_uri));
                         let remaining = prompt
@@ -470,7 +492,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                             .request_repaint_after(std::time::Duration::from_secs(1));
                     });
             }
-            if let Some(prompt) = &app.accounts.prompt {
+            if let Some(prompt) = app.accounts.prompt.clone() {
                 egui::Frame::NONE
                     .fill(theme::TOPBAR_BG)
                     .corner_radius(10.0)
@@ -485,8 +507,19 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                                 .color(theme::ACCENT),
                         );
                         ui.add_space(10.0);
-                        ui.horizontal(|ui| {
-                            ui.hyperlink_to("打开 Microsoft 授权页面 ↗", &prompt.url);
+                        ui.horizontal_wrapped(|ui| {
+                            if ui
+                                .add_enabled(
+                                    !app.accounts.browser_opening,
+                                    egui::Button::new("打开 Microsoft 授权页面 ↗"),
+                                )
+                                .clicked()
+                            {
+                                app.accounts.open_browser(ui.ctx());
+                            }
+                            if ui.button("复制登录链接").clicked() {
+                                app.accounts.copy_login_link(ui.ctx());
+                            }
                             if ui.button("复制代码").clicked() {
                                 ui.ctx().copy_text(prompt.code.clone());
                             }

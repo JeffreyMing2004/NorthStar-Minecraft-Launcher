@@ -106,7 +106,7 @@ impl eframe::App for NsclApp {
         if previous_instance != self.service.selected {
             self.remember_instance();
         }
-        self.accounts.poll(&mut self.settings);
+        self.accounts.poll(&mut self.settings, &ctx);
         if let Some(session) = self.service.renewed_session.take() {
             self.accounts.accept(session);
         }

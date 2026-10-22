@@ -12,6 +12,7 @@ use std::{
     time::Instant,
 };
 
+#[derive(Clone)]
 pub struct LoginPrompt {
     pub code: String,
     pub url: String,
@@ -20,6 +21,10 @@ pub struct LoginPrompt {
 enum Event {
     Prompt(LoginPrompt),
     Browser(accounts::BrowserPrompt),
+    BrowserOpened {
+        login: Arc<AtomicBool>,
+        result: Result<(), String>,
+    },
     Status(String),
     Finished(Result<(Session, Option<String>), String>),
 }
@@ -29,6 +34,7 @@ pub struct AccountService {
     pub pending: bool,
     pub prompt: Option<LoginPrompt>,
     pub browser_prompt: Option<accounts::BrowserPrompt>,
+    pub browser_opening: bool,
     pub status: String,
     pub error: Option<String>,
     sessions: BTreeMap<String, Session>,
@@ -48,6 +54,7 @@ impl AccountService {
             pending: false,
             prompt: None,
             browser_prompt: None,
+            browser_opening: false,
             status: String::new(),
             error,
             sessions: BTreeMap::new(),
@@ -91,6 +98,8 @@ impl AccountService {
         self.pending = true;
         self.prompt = None;
         self.browser_prompt = None;
+        self.browser_opening = false;
+        self.error = None;
         self.status = if redirect.is_some() {
             "正在准备 Microsoft 浏览器登录……"
         } else {
@@ -155,7 +164,39 @@ impl AccountService {
     pub fn cancel(&self) {
         self.cancel.store(true, Ordering::Relaxed);
     }
-    pub fn poll(&mut self, settings: &mut Settings) {
+    pub fn open_browser(&mut self, ctx: &egui::Context) {
+        if !self.pending || self.browser_opening || self.cancel.load(Ordering::Relaxed) {
+            return;
+        }
+        let Some(url) = self.login_url() else {
+            return;
+        };
+        let url = url.to_owned();
+        self.browser_opening = true;
+        self.status = "正在打开系统默认浏览器……".into();
+        let (sender, login, ctx) = (self.sender.clone(), self.cancel.clone(), ctx.clone());
+        std::thread::spawn(move || {
+            if login.load(Ordering::Relaxed) {
+                return;
+            }
+            let result = nscl::browser::open(&url);
+            let _ = sender.send(Event::BrowserOpened { login, result });
+            ctx.request_repaint();
+        });
+    }
+    pub fn copy_login_link(&mut self, ctx: &egui::Context) {
+        if let Some(url) = self.login_url() {
+            ctx.copy_text(url.to_owned());
+            self.status = "登录链接已复制，请粘贴到浏览器地址栏，完成授权后返回启动器。".into();
+        }
+    }
+    fn login_url(&self) -> Option<&str> {
+        self.browser_prompt
+            .as_ref()
+            .map(|prompt| prompt.url.as_str())
+            .or_else(|| self.prompt.as_ref().map(|prompt| prompt.url.as_str()))
+    }
+    pub fn poll(&mut self, settings: &mut Settings, ctx: &egui::Context) {
         while let Ok(event) = self.receiver.try_recv() {
             match event {
                 Event::Prompt(prompt) => {
@@ -169,23 +210,36 @@ impl AccountService {
                     if self.cancel.load(Ordering::Relaxed) {
                         continue;
                     }
-                    self.status = match open::that_detached(&prompt.url) {
-                        Ok(()) => {
-                            "请在浏览器中完成 Microsoft 登录，授权后会自动返回启动器。".into()
-                        }
-                        Err(_) => "无法自动打开浏览器，请点击下方的 Microsoft 登录链接。".into(),
-                    };
                     self.browser_prompt = Some(prompt);
+                    self.open_browser(ctx);
+                }
+                Event::BrowserOpened { login, result } => {
+                    // A handler can finish after cancellation, code exchange, or a new
+                    // login. It must not replace that operation's progress or result.
+                    if !Arc::ptr_eq(&login, &self.cancel)
+                        || login.load(Ordering::Relaxed)
+                        || !self.pending
+                        || self.login_url().is_none()
+                    {
+                        continue;
+                    }
+                    self.browser_opening = false;
+                    self.status = match result {
+                        Ok(()) => "已请求打开默认浏览器，请完成 Microsoft 授权。若未显示，可重新打开或复制登录链接。".into(),
+                        Err(error) => format!("无法自动打开浏览器：{error}"),
+                    };
                 }
                 Event::Status(status) => {
                     self.prompt = None;
                     self.browser_prompt = None;
+                    self.browser_opening = false;
                     self.status = status;
                 }
                 Event::Finished(result) => {
                     self.pending = false;
                     self.prompt = None;
                     self.browser_prompt = None;
+                    self.browser_opening = false;
                     match result {
                         Ok((session, warning)) => {
                             self.status = format!(
@@ -250,5 +304,102 @@ impl AccountService {
 impl Drop for AccountService {
     fn drop(&mut self) {
         self.cancel();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn waiting_login() -> AccountService {
+        let (sender, receiver) = mpsc::channel();
+        AccountService {
+            list: AccountList::default(),
+            pending: true,
+            prompt: None,
+            browser_prompt: Some(accounts::BrowserPrompt {
+                url: "https://login.live.com/?state=test%26state&code_challenge=abc-def".into(),
+                redirect_uri: accounts::DEFAULT_REDIRECT_URI.into(),
+                expires: Instant::now() + std::time::Duration::from_secs(600),
+            }),
+            browser_opening: true,
+            status: "正在打开系统默认浏览器……".into(),
+            error: None,
+            sessions: BTreeMap::new(),
+            cancel: Arc::new(AtomicBool::new(false)),
+            sender,
+            receiver,
+        }
+    }
+
+    #[test]
+    fn browser_failure_keeps_login_and_exact_link_for_clipboard_recovery() {
+        let mut service = waiting_login();
+        let url = service.login_url().unwrap().to_owned();
+        service
+            .sender
+            .send(Event::BrowserOpened {
+                login: service.cancel.clone(),
+                result: Err("系统错误 1155；请复制登录链接到浏览器中打开。".into()),
+            })
+            .unwrap();
+        let ctx = egui::Context::default();
+        service.poll(&mut Settings::default(), &ctx);
+        assert!(service.pending);
+        assert!(!service.browser_opening);
+        assert!(service.status.contains("1155"));
+        assert_eq!(service.login_url(), Some(url.as_str()));
+        let output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            service.copy_login_link(ui.ctx())
+        });
+        assert!(
+            output.platform_output.commands.iter().any(
+                |command| matches!(command, egui::OutputCommand::CopyText(text) if text.as_str() == url.as_str())
+            )
+        );
+        output.drop_without_applying_deltas();
+    }
+
+    #[test]
+    fn late_browser_result_cannot_replace_token_exchange_progress() {
+        let mut service = waiting_login();
+        service
+            .sender
+            .send(Event::Status("正在验证 Xbox 身份……".into()))
+            .unwrap();
+        service
+            .sender
+            .send(Event::BrowserOpened {
+                login: service.cancel.clone(),
+                result: Err("迟到的浏览器错误".into()),
+            })
+            .unwrap();
+        service.poll(&mut Settings::default(), &egui::Context::default());
+        assert_eq!(service.status, "正在验证 Xbox 身份……");
+        assert!(service.login_url().is_none());
+        assert!(!service.browser_opening);
+    }
+
+    #[test]
+    fn browser_results_from_cancelled_or_previous_login_are_ignored() {
+        for cancelled in [true, false] {
+            let mut service = waiting_login();
+            let login = service.cancel.clone();
+            if cancelled {
+                service.cancel();
+            } else {
+                service.cancel = Arc::new(AtomicBool::new(false));
+            }
+            service
+                .sender
+                .send(Event::BrowserOpened {
+                    login,
+                    result: Err("不属于当前登录的错误".into()),
+                })
+                .unwrap();
+            service.poll(&mut Settings::default(), &egui::Context::default());
+            assert_eq!(service.status, "正在打开系统默认浏览器……");
+            assert!(service.browser_opening);
+        }
     }
 }

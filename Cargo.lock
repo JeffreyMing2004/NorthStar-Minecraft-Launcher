@@ -2258,6 +2258,8 @@ dependencies = [
  "tempfile",
  "tiny_http",
  "uuid",
+ "webbrowser",
+ "windows-sys 0.60.2",
  "zip",
 ]
 

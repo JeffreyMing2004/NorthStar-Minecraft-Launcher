@@ -92,8 +92,9 @@ fn run() -> Result<(), String> {
                         "请在浏览器中完成 Microsoft 授权；本地回调：{}",
                         prompt.redirect_uri
                     );
-                    if open::that_detached(&prompt.url).is_err() {
-                        println!("请手动打开：{}", prompt.url);
+                    println!("如果浏览器未弹出，可手动打开：{}", prompt.url);
+                    if let Err(error) = nscl::browser::open(&prompt.url) {
+                        eprintln!("无法自动打开浏览器：{error}");
                     }
                 },
                 |stage| eprintln!("{stage}"),
