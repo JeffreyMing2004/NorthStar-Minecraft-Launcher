@@ -2,7 +2,7 @@ use super::*;
 use crate::{app::NsclApp, pages};
 use egui::{Context, FullOutput, Pos2, RawInput, Rect, Vec2};
 
-fn fixture() -> (tempfile::TempDir, NsclApp, Context) {
+pub(super) fn fixture() -> (tempfile::TempDir, NsclApp, Context) {
     let parent = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/test-work");
     std::fs::create_dir_all(&parent).unwrap();
     let root = tempfile::tempdir_in(parent).unwrap();

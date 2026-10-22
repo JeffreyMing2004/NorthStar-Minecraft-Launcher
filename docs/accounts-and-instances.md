@@ -42,7 +42,9 @@ Windows 使用凭据管理器，macOS 使用 Keychain，保存 Microsoft 刷新�
 - 可填写 `java` / `javaw` 可执行文件或 Java 安装目录，点击「检测当前路径」验证。单次检测最多等待约 6 秒，不阻塞界面。
 - 全局路径留空时，按 Minecraft 元数据自动选择同主版本、同架构的 Java。手动指定不匹配的版本会提示错误，不会偷偷换用其他 Java。
 - 实例可继承全局配置，或单独配置 Java 和 1024–32768 MiB 内存。实例 Java 覆盖开启且路径留空表示此实例使用自动匹配。
-- 本次不包含 JRE 自动下载，需先安装所需 Java。
+- Windows 可在设置中选择 Java 8、11、17、21、25，点击「下载并安装」自动获取 Eclipse Temurin JRE；「按当前实例选择」可选中已安装实例要求的主版本。运行时下载完成并验证 SHA-256 后解压，执行版本和架构检测，全部通过才发布到设置文件旁的 `java/temurin-<主版本>-<架构>-<校验前缀>/`，自动扫描与匹配会识别它。其他系统可继续手动指定 Java。
+- 下载时显示字节进度并支持取消，下载包在 `java/.downloads/` 缓存并复核；未通过校验、解压失败或取消不会发布半完成运行时。不会修改系统 Java、注册表或 `JAVA_HOME`，手动指定的 Java 仍优先使用。
+- Java 来自 [Adoptium 官方 API](https://github.com/adoptium/api.adoptium.net/blob/main/docs/cookbook.adoc) 和 Adoptium GitHub 发布资产，不经过 Minecraft 下载镜像。缺少 Java 时可先在设置中安装，再重试游戏或加载器安装。
 
 ## 实例管理
 

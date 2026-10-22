@@ -60,7 +60,7 @@ HTTP 请求使用系统 TLS 校验和系统代理设置；本地回环镜像直�
 
 ## Java 与版本兼容性
 
-- 按版本 JSON 的 `javaVersion.majorVersion` 选择相同主版本的 Java；未声明的历史版本按 Java 8 处理。当前不会自动下载 JRE。
+- 按版本 JSON 的 `javaVersion.majorVersion` 选择相同主版本的 Java；未声明的历史版本按 Java 8 处理。Windows 可先在设置中自动下载并安装对应 Eclipse Temurin JRE，再安装加载器或启动游戏。
 - 设置页可扫描系统 Java、检测手动路径并查看发行版及架构；实例可覆盖全局 Java 与内存，也可以单独启用自动匹配。检测在后台运行，单个探测有超时限制。
 - 支持现代 `arguments.jvm/game`，以及旧式 `minecraftArguments`。按顺序应用操作系统、架构、系统版本和功能规则。
 - 支持旧版分类器原生库解压、`virtual` / `map_to_resources` 资源布局，以及官方日志参数。

@@ -20,6 +20,7 @@ pub struct Progress {
     pub completed: usize,
     pub total: usize,
     pub bytes_downloaded: u64,
+    pub total_bytes: Option<u64>,
 }
 
 pub type Reporter = Arc<dyn Fn(Progress) + Send + Sync>;
@@ -80,9 +81,19 @@ impl Downloader {
             state.0.stage = stage.into();
             state.0.completed = 0;
             state.0.total = total;
+            state.0.total_bytes = None;
             state.0.clone()
         };
         (self.reporter)(event);
+    }
+
+    pub(crate) fn byte_progress(&self, stage: &str, downloaded: u64, total: u64) {
+        (self.reporter)(Progress {
+            stage: stage.into(),
+            bytes_downloaded: downloaded,
+            total_bytes: Some(total),
+            ..Default::default()
+        });
     }
 
     pub(crate) fn complete(&self, stage: &str) {

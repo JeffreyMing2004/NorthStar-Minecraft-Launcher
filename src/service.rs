@@ -15,6 +15,8 @@ use std::{
 };
 
 mod content;
+#[cfg(test)]
+mod java_tests;
 pub use content::{ContentPlan, ContentState};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -38,6 +40,7 @@ enum Event {
     Session(crate::accounts::Session),
     Java(Vec<crate::java::JavaRuntime>),
     JavaChecked(Result<crate::java::JavaRuntime, String>),
+    JavaInstalled(crate::java::JavaRuntime),
     Content(content::ContentEvent),
 }
 
@@ -60,6 +63,7 @@ pub struct GameService {
     pub java_runtimes: Vec<crate::java::JavaRuntime>,
     pub java_busy: bool,
     pub java_status: String,
+    pub java_install_major: u32,
     pub content: ContentState,
     versions_requested: bool,
     loaders_requested: Option<(String, LoaderKind)>,
@@ -98,6 +102,7 @@ impl GameService {
             java_runtimes: Vec::new(),
             java_busy: false,
             java_status: String::new(),
+            java_install_major: 21,
             content: ContentState::default(),
             versions_requested: false,
             loaders_requested: None,
@@ -223,6 +228,13 @@ impl GameService {
                         }
                         Err(error) => self.java_status = error,
                     }
+                }
+                Event::JavaInstalled(runtime) => {
+                    self.task = Task::Idle;
+                    self.java_status = format!("已安装：{}，自动匹配可直接使用。", runtime.label());
+                    self.notice = self.java_status.clone();
+                    self.java_runtimes.retain(|r| r.path != runtime.path);
+                    self.java_runtimes.push(runtime);
                 }
                 Event::Content(event) => self.apply_content(event, settings),
             }
@@ -371,6 +383,31 @@ impl GameService {
                 &context,
                 match result {
                     Ok(version) => Event::Installed(version),
+                    Err(error) => Event::Failed(error),
+                },
+            );
+        });
+    }
+
+    pub fn install_java(&mut self, ctx: &egui::Context) {
+        if self.busy() || self.java_busy {
+            return;
+        }
+        self.begin(Task::Install);
+        let (major, sender, cancel, ctx) = (
+            self.java_install_major,
+            self.sender.clone(),
+            self.cancel.clone(),
+            ctx.clone(),
+        );
+        std::thread::spawn(move || {
+            let result = Downloader::new(Default::default(), cancel, reporter(&sender, &ctx))
+                .and_then(|d| crate::java::install_runtime(major, &d));
+            send(
+                &sender,
+                &ctx,
+                match result {
+                    Ok(runtime) => Event::JavaInstalled(runtime),
                     Err(error) => Event::Failed(error),
                 },
             );

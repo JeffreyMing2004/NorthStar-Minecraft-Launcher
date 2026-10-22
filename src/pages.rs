@@ -670,7 +670,8 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
     page_card(ui, |ui| {
         if app.service.busy() {
             app::hint(ui, "后台任务进行中，请等待或取消后再修改设置。");
-            ui.disable();
+            task_status(ui, app);
+            return;
         }
         app::eyebrow(ui, "PREFERENCES");
         ui.add_space(12.0);
@@ -736,6 +737,19 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                         }
                     });
             }
+            ui.add_space(14.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("自动安装 Java");
+                egui::ComboBox::from_id_salt("install-java-major")
+                    .width(110.0)
+                    .selected_text(format!("Java {}",app.service.java_install_major))
+                    .show_ui(ui,|ui| {for major in [8,11,17,21,25] {ui.selectable_value(&mut app.service.java_install_major,major,format!("Java {major}"));}});
+                if ui.add_enabled(!app.service.java_busy,egui::Button::new("下载并安装")).clicked() {app.service.install_java(ui.ctx());}
+                if ui.button("按当前实例选择").clicked()
+                    && let Some(major)=app.service.instances.iter().find(|i|i.id==app.service.selected).and_then(|i|app.service.installed.iter().find(|v|v.id==i.version_id)).map(|v|v.java_major)
+                {app.service.java_install_major=major;}
+            });
+            app::hint(ui,"下载 Eclipse Temurin JRE，校验后安装到启动器目录；Java 路径留空即可自动匹配。支持 Windows。");
             if !app.service.java_status.is_empty() {
                 ui.add_space(10.0);
                 app::body(ui, &app.service.java_status);
@@ -1640,7 +1654,13 @@ pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
         ui.separator();
         ui.add_space(12.0);
         let progress = &app.service.progress;
-        let detail = if progress.total > 0 {
+        let detail = if let Some(total) = progress.total_bytes {
+            format!(
+                "{:.1} / {:.1} MiB",
+                progress.bytes_downloaded as f64 / 1048576.0,
+                total as f64 / 1048576.0
+            )
+        } else if progress.total > 0 {
             format!(
                 "{} / {} 个文件 · {:.1} MiB",
                 progress.completed,
@@ -1681,9 +1701,13 @@ pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
             }
         });
         ui.add_space(8.0);
-        if progress.total > 0 {
+        if progress.total > 0 || progress.total_bytes.is_some() {
+            let fraction = progress
+                .total_bytes
+                .map(|total| progress.bytes_downloaded as f32 / total.max(1) as f32)
+                .unwrap_or(progress.completed as f32 / progress.total.max(1) as f32);
             ui.add(
-                egui::ProgressBar::new(progress.completed as f32 / progress.total as f32)
+                egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
                     .desired_height(4.0)
                     .desired_width(ui.available_width()),
             );

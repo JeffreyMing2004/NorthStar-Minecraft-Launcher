@@ -1,4 +1,6 @@
 use crate::minecraft::Result;
+mod install;
+pub use install::{install_runtime, runtime_directory};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
