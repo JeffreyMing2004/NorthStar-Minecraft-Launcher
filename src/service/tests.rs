@@ -117,6 +117,7 @@ fn selecting_minecraft_and_loader_waits_for_install_confirmation() {
     );
 
     app.service.installed.push(InstalledVersion {
+        external: false,
         id: "1.20.1".into(),
         kind: "release".into(),
         java_major: 17,

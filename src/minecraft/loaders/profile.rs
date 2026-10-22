@@ -3,7 +3,7 @@ use super::*;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
-pub(super) fn maven_path(coordinate: &str) -> Result<String> {
+pub(crate) fn maven_path(coordinate: &str) -> Result<String> {
     let (coordinate, extension) = coordinate.split_once('@').unwrap_or((coordinate, "jar"));
     let parts: Vec<_> = coordinate.split(':').collect();
     if !(3..=4).contains(&parts.len()) {
@@ -27,7 +27,7 @@ pub(super) fn maven_path(coordinate: &str) -> Result<String> {
     Ok(path)
 }
 
-pub(super) fn library_key(name: &str) -> String {
+pub(crate) fn library_key(name: &str) -> String {
     let (name, extension) = name.split_once('@').unwrap_or((name, "jar"));
     let parts: Vec<_> = name.split(':').collect();
     format!(

@@ -874,6 +874,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 }
             });
             app::hint(ui, "默认使用启动器所在目录；目录中已有 .minecraft 文件夹时优先使用它。可直接添加 .minecraft 路径，切换不会移动或删除已有文件。");
+            app::hint(ui, "保存后扫描 versions 目录，自动识别其他启动器安装的已有版本。");
             app::hint(
                 ui,
                 &format!(
@@ -1016,6 +1017,11 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                                             RichText::new(format!("MC {}", instance.version_id))
                                                 .color(theme::MUTED),
                                         );
+                                        if instance.is_external() {
+                                            ui.label(
+                                                RichText::new("已有版本").color(theme::ACCENT),
+                                            );
+                                        }
                                         ui.add_enabled_ui(editable, |ui| {
                                             if ui.button("配置").clicked() {
                                                 app.instance_memory = instance
@@ -1181,6 +1187,9 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                                 for mode in crate::instances::Isolation::ALL {
                                     ui.selectable_value(&mut instance.isolation, mode, mode.label());
                                 }
+                                if instance.is_external() {
+                                    ui.selectable_value(&mut instance.isolation, crate::instances::Isolation::Version, crate::instances::Isolation::Version.label());
+                                }
                             });
                     });
                     if instance.requires_isolation() {
@@ -1191,6 +1200,7 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                     if let Ok(path) = instance.game_directory(&root) {
                         app::hint(ui, &format!("游戏目录：{}", path.display()));
                     }
+                    if instance.is_external() { app::hint(ui, "已识别其他启动器的版本配置，使用现有客户端与依赖；缺少文件时会提示具体路径，不会覆盖原配置。"); }
                     if instance.isolation == crate::instances::Isolation::Shared
                         && ui.button("打开保留的独立目录").clicked()
                         && let Err(error) = instance.directory(&root).and_then(|p| open::that_detached(p).map_err(|e| e.to_string()))
@@ -1277,8 +1287,8 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.label(format!("将「{}」移入归档？", instance.name));
-                ui.label(if instance.isolation == crate::instances::Isolation::Shared {
-                    "只归档该实例配置及保留的独立目录；共享游戏目录的存档、模组和配置留在原处，供其他版本继续使用。"
+                ui.label(if instance.isolation != crate::instances::Isolation::Isolated {
+                    "只归档该实例配置及保留的独立目录；实际游戏目录中的存档、模组和配置留在原处。"
                 } else {
                     "存档、模组和配置会一起保留，可在管理实例的归档列表中恢复。"
                 });

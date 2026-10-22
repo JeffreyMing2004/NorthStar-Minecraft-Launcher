@@ -80,6 +80,7 @@ fn installation_uses_new_defaults_but_repair_preserves_a_legacy_versions_mode() 
     for existing in [false, true] {
         let (root, mut app, _ctx) = super::tests::fixture();
         let version = crate::minecraft::InstalledVersion {
+            external: false,
             id: "1.20.1".into(),
             kind: "release".into(),
             java_major: 17,

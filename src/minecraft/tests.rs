@@ -651,6 +651,34 @@ fn real_java_launch_preparation_respects_isolation_without_duplicating_shared_as
         classpaths.push(plan.arguments.windows(2).find(|a| a[0] == "-cp").unwrap()[1].clone());
     }
     assert_eq!(classpaths[0], classpaths[1]);
+    let imported_id = "已有版本 [测试 Fabric]";
+    let imported_dir = root.join("versions").join(imported_id);
+    fs::create_dir_all(imported_dir.join("saves/world")).unwrap();
+    fs::write(imported_dir.join("saves/world/level.dat"), b"keep world").unwrap();
+    fs::copy(
+        root.join("versions/test-1/test-1.jar"),
+        imported_dir.join(format!("{imported_id}.jar")),
+    )
+    .unwrap();
+    let mut metadata = serde_json::to_value(&fixture.version).unwrap();
+    metadata["id"] = imported_id.into();
+    crate::store::write_json(&imported_dir.join(format!("{imported_id}.json")), &metadata).unwrap();
+    let original = fs::read(imported_dir.join(format!("{imported_id}.json"))).unwrap();
+    let imported = instances::list(&root)
+        .into_iter()
+        .find(|i| i.version_id == imported_id)
+        .unwrap();
+    assert_eq!(imported.isolation, Isolation::Version);
+    let plan = prepare_instance_launch(&root, &imported, &settings, &identity).unwrap();
+    assert_eq!(plan.game_directory, imported_dir);
+    assert_eq!(
+        fs::read(imported_dir.join(format!("{imported_id}.json"))).unwrap(),
+        original
+    );
+    assert_eq!(
+        fs::read(imported_dir.join("saves/world/level.dat")).unwrap(),
+        b"keep world"
+    );
 }
 
 #[test]

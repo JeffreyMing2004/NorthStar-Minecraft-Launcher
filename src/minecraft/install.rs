@@ -14,6 +14,8 @@ use std::{
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InstalledVersion {
+    #[serde(default)]
+    pub external: bool,
     pub id: String,
     pub kind: String,
     pub java_major: u32,
@@ -125,6 +127,17 @@ pub fn installed_versions(root: &Path) -> Vec<InstalledVersion> {
     let mut installed = Vec::new();
     if let Ok(entries) = fs::read_dir(root.join("versions")) {
         for entry in entries.flatten() {
+            if !entry.path().join("nscl-instance.json").exists() {
+                if entry.path().join(".nscl-installing").exists() {
+                    continue;
+                }
+                if let Some(id) = entry.file_name().to_str()
+                    && let Ok(version) = super::external::describe(root, id)
+                {
+                    installed.push(version);
+                }
+                continue;
+            }
             if let Ok(bytes) = fs::read(entry.path().join("nscl-instance.json"))
                 && let Ok(version) = serde_json::from_slice::<InstalledVersion>(&bytes)
                 && validate_id(&version.id).is_ok()
@@ -149,6 +162,8 @@ pub fn install(
     fs::create_dir_all(root).map_err(|e| e.to_string())?;
     let root = fs::canonicalize(root).map_err(|e| e.to_string())?;
     let version_dir = safe_join(&root.join("versions"), &entry.id)?;
+    fs::create_dir_all(&version_dir).map_err(|e| e.to_string())?;
+    fs::write(version_dir.join(".nscl-installing"), b"NSCL").map_err(|e| e.to_string())?;
     let metadata = version_dir.join(format!("{}.json", entry.id));
     downloader.phase("下载并校验版本元数据", 0);
     downloader.download(&Job {
@@ -188,8 +203,8 @@ pub fn install(
     )?;
     materialize_assets(&root, &version, &index, Some(downloader))?;
     downloader.check_cancelled()?;
-    fs::create_dir_all(root.join("instances").join(&version.id)).map_err(|e| e.to_string())?;
     let installed = InstalledVersion {
+        external: false,
         id: version.id.clone(),
         kind: version.kind.clone(),
         java_major: version.java_major(),
@@ -200,6 +215,7 @@ pub fn install(
     };
     // The completion marker is written last. An interrupted install is never shown as playable.
     write_json(&version_dir.join("nscl-instance.json"), &installed)?;
+    let _ = fs::remove_file(version_dir.join(".nscl-installing"));
     Ok(installed)
 }
 
@@ -229,7 +245,7 @@ pub fn plan(
     index: &AssetIndex,
     platform: &Platform,
 ) -> Result<Plan> {
-    validate_id(&version.id)?;
+    super::validate_local_id(&version.id)?;
     validate_id(&version.asset_index.id)?;
     let mut jobs = BTreeMap::<PathBuf, Job>::new();
     let mut classpath = Vec::new();
@@ -318,7 +334,7 @@ pub fn extract_natives(
     natives: &[(PathBuf, Vec<String>)],
     downloader: Option<&Downloader>,
 ) -> Result<PathBuf> {
-    validate_id(id)?;
+    super::validate_local_id(id)?;
     let destination = root
         .join("versions")
         .join(id)

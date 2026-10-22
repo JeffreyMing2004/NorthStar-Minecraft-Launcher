@@ -92,7 +92,7 @@ pub fn prepare_instance_launch(
     instance.validate()?;
     let mut settings = instance.effective_settings(settings);
     let id = instance.version_id.as_str();
-    validate_id(id)?;
+    super::validate_local_id(id)?;
     validate_player_name(&identity.name)?;
     if !crate::accounts::valid_profile_id(&identity.uuid)
         || (identity.online && (identity.access_token.is_empty() || identity.access_token == "0"))
@@ -104,16 +104,27 @@ pub fn prepare_instance_launch(
     }
     let root = absolute_root(root)?;
     let version_dir = root.join("versions").join(id);
-    let installed: InstalledVersion = read_json(&version_dir.join("nscl-instance.json"))?;
     let platform = Platform::current();
-    if installed.id != id || installed.platform != platform.key() {
-        return Err("该实例未针对当前系统完成安装，请在下载页重新安装。".into());
-    }
-    let metadata = version_dir.join(format!("{id}.json"));
-    if !verified(&metadata, &installed.metadata_sha1, None)? {
-        return Err("版本元数据损坏，请重新安装/修复。".into());
-    }
-    let version: Version = read_json(&metadata)?;
+    let marker = version_dir.join("nscl-instance.json");
+    let (installed, version, client) = if marker.exists() {
+        let installed: InstalledVersion = read_json(&marker)?;
+        if installed.id != id || installed.platform != platform.key() {
+            return Err("该实例未针对当前系统完成安装，请在下载页重新安装。".into());
+        }
+        let metadata = version_dir.join(format!("{id}.json"));
+        if !verified(&metadata, &installed.metadata_sha1, None)? {
+            return Err("版本元数据损坏，请重新安装/修复。".into());
+        }
+        (
+            installed,
+            read_json::<Version>(&metadata)?,
+            version_dir.join(format!("{id}.jar")),
+        )
+    } else {
+        let installed = super::external::describe(&root, id)?;
+        let (version, client) = super::external::prepare(&root, id, &platform)?;
+        (installed, version, client)
+    };
     if version.id != id || version.inherits_from.is_some() {
         return Err("该版本尚未完成安装或版本合并，请重新安装。".into());
     }
@@ -141,7 +152,18 @@ pub fn prepare_instance_launch(
         return Err("资源索引损坏，请重新安装/修复。".into());
     }
     let index: AssetIndex = read_json(&index_path)?;
-    let files = plan(&root, &version, &index, &platform)?;
+    let mut files = plan(&root, &version, &index, &platform)?;
+    let default_client = version_dir.join(format!("{id}.jar"));
+    for job in &mut files.jobs {
+        if job.path == default_client {
+            job.path = client.clone();
+        }
+    }
+    for path in &mut files.classpath {
+        if *path == default_client {
+            *path = client.clone();
+        }
+    }
     for job in &files.jobs {
         if !verified(&job.path, &job.sha1, job.size)? {
             return Err(format!(

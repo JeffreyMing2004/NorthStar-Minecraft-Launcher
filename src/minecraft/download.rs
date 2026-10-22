@@ -366,6 +366,13 @@ pub fn validate_id(id: &str) -> Result<()> {
     }
 }
 
+pub fn validate_local_id(id: &str) -> Result<()> {
+    if id.is_empty() || id.contains('/') || id.encode_utf16().count() > 255 {
+        return Err("无效的本地版本目录名称。".into());
+    }
+    safe_join(Path::new(""), id).map(|_| ())
+}
+
 pub fn replace_file(temporary: &Path, path: &Path) -> Result<()> {
     if path.exists() {
         fs::remove_file(path).map_err(|e| e.to_string())?;

@@ -1,6 +1,7 @@
 mod catalog;
 mod processors;
 mod profile;
+pub(crate) use profile::{library_key, maven_path};
 
 use super::{
     Downloader, InstalledVersion, Result, VersionEntry,
@@ -134,6 +135,7 @@ pub fn install_loader(
     super::install(&root, entry, downloader)?;
     let directory = safe_join(&root.join("versions"), &id)?;
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    fs::write(directory.join(".nscl-installing"), b"NSCL").map_err(|e| e.to_string())?;
     let marker = directory.join("nscl-instance.json");
     if marker.exists() {
         fs::remove_file(&marker).map_err(|e| e.to_string())?;
@@ -206,6 +208,7 @@ pub fn install_loader(
     let metadata = directory.join(format!("{id}.json"));
     write_json(&metadata, &version)?;
     let installed = InstalledVersion {
+        external: false,
         id,
         kind: selection.kind.key().into(),
         java_major: version.java_major(),
@@ -220,6 +223,7 @@ pub fn install_loader(
     downloader.check_cancelled()?;
     // Publish only after processors, downloaded libraries, and generated files succeeded.
     write_json(&marker, &installed)?;
+    let _ = fs::remove_file(directory.join(".nscl-installing"));
     Ok(installed)
 }
 

@@ -16,6 +16,7 @@ pub enum Isolation {
     #[default]
     Isolated,
     Shared,
+    Version,
 }
 impl Isolation {
     pub const ALL: [Self; 2] = [Self::Isolated, Self::Shared];
@@ -23,6 +24,7 @@ impl Isolation {
         match self {
             Self::Isolated => "启用隔离：独立实例目录",
             Self::Shared => "关闭隔离：共享游戏目录",
+            Self::Version => "版本目录：沿用已有游戏数据",
         }
     }
 }
@@ -47,12 +49,19 @@ impl Instance {
         // Imported/downloaded packs have always used this reserved ID prefix.
         self.id.starts_with("pack-")
     }
+    pub fn is_external(&self) -> bool {
+        self.id.starts_with("external-")
+    }
+    fn is_default(&self) -> bool {
+        self.id == self.version_id || self.id == external_id(&self.version_id)
+    }
     pub fn game_directory(&self, root: &Path) -> Result<PathBuf> {
         self.validate()?;
         let directory = self.directory(root)?;
         match self.isolation {
             Isolation::Isolated => Ok(directory),
             Isolation::Shared => Ok(root.to_path_buf()),
+            Isolation::Version => minecraft::external::version_directory(root, &self.version_id),
         }
     }
     pub fn effective_settings(&self, settings: &Settings) -> Settings {
@@ -69,7 +78,7 @@ impl Instance {
     }
     pub fn validate(&self) -> Result<()> {
         minecraft::validate_id(&self.id)?;
-        minecraft::validate_id(&self.version_id)?;
+        minecraft::validate_local_id(&self.version_id)?;
         if self.requires_isolation() && self.isolation != Isolation::Isolated {
             return Err("整合包必须启用版本隔离，避免模组与配置混用。".into());
         }
@@ -86,7 +95,7 @@ impl Instance {
     }
 }
 
-fn reject_link(path: &Path) -> Result<()> {
+pub(crate) fn reject_link(path: &Path) -> Result<()> {
     if let Ok(meta) = fs::symlink_metadata(path) {
         #[cfg(windows)]
         {
@@ -100,6 +109,10 @@ fn reject_link(path: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+fn external_id(version: &str) -> String {
+    use sha1::{Digest, Sha1};
+    format!("external-{:x}", Sha1::digest(version.as_bytes()))
 }
 fn managed_path(root: &Path, id: &str) -> Result<PathBuf> {
     minecraft::validate_id(id)?;
@@ -134,14 +147,29 @@ pub fn list(root: &Path) -> Vec<Instance> {
     }
     // Existing installations retain their original saves and instance directory.
     for version in installed {
-        if !result.iter().any(|i| i.id == version.id)
-            && !parent.join(format!("{}.archived", version.id)).exists()
-            && managed_path(root, &version.id).is_ok()
+        let id = if version.external {
+            external_id(&version.id)
+        } else {
+            version.id.clone()
+        };
+        if !result.iter().any(|i| i.id == id)
+            && !parent.join(format!("{id}.archived")).exists()
+            && managed_path(root, &id).is_ok()
         {
+            let isolation = if version.external {
+                minecraft::external::initial_isolation(root, &version.id)
+            } else {
+                Isolation::Isolated
+            };
             result.push(Instance {
-                id: version.id.clone(),
-                name: format!("Minecraft {}", version.id),
+                id,
+                name: if version.external {
+                    version.id.chars().take(64).collect()
+                } else {
+                    format!("Minecraft {}", version.id)
+                },
                 version_id: version.id,
+                isolation,
                 ..Default::default()
             });
         }
@@ -222,11 +250,11 @@ pub fn archive(root: &Path, instance: &Instance) -> Result<PathBuf> {
     let hidden = root
         .join("instances")
         .join(format!("{}.archived", instance.id));
-    if instance.id == instance.version_id {
+    if instance.is_default() {
         crate::store::write_json(&hidden, &true)?;
     }
     if let Err(error) = fs::rename(&source, &target) {
-        if instance.id == instance.version_id {
+        if instance.is_default() {
             let _ = fs::remove_file(hidden);
         }
         return Err(format!("移入归档失败：{error}"));
@@ -271,7 +299,7 @@ pub fn restore(root: &Path, entry: &str) -> Result<Instance> {
     }
     fs::create_dir_all(root.join("instances")).map_err(|e| e.to_string())?;
     fs::rename(source, target).map_err(|e| format!("恢复实例失败：{e}"))?;
-    if instance.id == instance.version_id {
+    if instance.is_default() {
         let _ = fs::remove_file(
             root.join("instances")
                 .join(format!("{}.archived", instance.id)),
@@ -295,6 +323,7 @@ mod tests {
         crate::store::write_json(
             &dir.join(CONFIG),
             &minecraft::InstalledVersion {
+                external: false,
                 id: "1.20.1".into(),
                 kind: "release".into(),
                 java_major: 17,

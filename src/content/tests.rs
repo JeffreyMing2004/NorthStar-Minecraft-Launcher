@@ -155,6 +155,7 @@ pub(super) fn target(root: &Path) -> Target {
     crate::store::write_json(
         &directory.join("nscl-instance.json"),
         &InstalledVersion {
+            external: false,
             id: id.clone(),
             kind: "fabric".into(),
             java_major: 17,

@@ -1,4 +1,5 @@
 mod download;
+pub(crate) mod external;
 mod install;
 mod launch;
 mod loaders;
@@ -6,6 +7,7 @@ mod model;
 mod source;
 
 pub use download::validate_id;
+pub use download::validate_local_id;
 pub use download::{Downloader, Progress, Reporter};
 pub(crate) use download::{Job, safe_join};
 pub use install::hidden_command;
