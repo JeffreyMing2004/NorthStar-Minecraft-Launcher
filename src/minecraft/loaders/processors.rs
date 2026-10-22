@@ -134,7 +134,8 @@ pub(super) fn install(
         })
         .collect();
     if !processors.is_empty() {
-        let java = crate::java::find(java_path, base.java_major())?;
+        // Fully verified cached outputs do not need to execute a Java processor.
+        let mut java = None;
         let mut libraries =
             json!({"libraries":profile["libraries"].as_array().cloned().unwrap_or_default()});
         normalize_libraries(root, &mut libraries, selection.kind, downloader)?;
@@ -282,7 +283,11 @@ pub(super) fn install(
                     .open(&log_path)
                     .map_err(|e| e.to_string())?;
                 let stderr = log.try_clone().map_err(|e| e.to_string())?;
-                let mut command = hidden_command(&java);
+                let java = java
+                    .get_or_insert_with(|| crate::java::find(java_path, base.java_major()))
+                    .as_ref()
+                    .map_err(Clone::clone)?;
+                let mut command = hidden_command(java);
                 command
                     .args([
                         "-Djava.awt.headless=true",
@@ -340,14 +345,10 @@ pub(super) fn install(
                 }
             }
         }
-        for (key, expected) in &values {
-            if let Some(key) = key.strip_suffix("_SHA")
-                && let Some(file) = values.get(key)
-                && !verified(Path::new(file), expected, None)?
-            {
-                return Err(format!("加载器生成文件校验失败：{key}"));
-            }
-        }
+        // `data` defines tokens, not a list of generated client files. For example,
+        // recent Forge clients patch MINECRAFT_JAR directly and never produce the
+        // server processors' MC_UNPACKED path. Verify only the active processors'
+        // declared outputs above; unused *_SHA tokens do not imply extra outputs.
         for file in required {
             if !file.is_file() {
                 return Err(format!(

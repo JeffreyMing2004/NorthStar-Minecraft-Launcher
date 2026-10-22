@@ -830,6 +830,98 @@ fn forge_and_neoforge_install_embedded_libraries_and_check_them_before_launch() 
 }
 
 #[test]
+fn forge_client_ignores_unused_server_data_but_validates_active_processor_outputs() {
+    for corrupted in [false, true] {
+        let fixture = Fixture::new();
+        let patched = b"verified client patch";
+        let relative = "net/test/patched/1/patched-1.jar";
+        let profile = json!({
+            "minecraft":fixture.entry.id, "json":"/version.json",
+            "data":{
+                "MC_UNPACKED":{"client":"[net.minecraft:client:test-1]","server":"[net.minecraft:server:test-1:unpacked]"},
+                "MC_UNPACKED_SHA":{"client":format!("'{}'",fixture.version.downloads["client"].sha1),"server":format!("'{}'",hash(b"server jar"))},
+                "PATCHED":{"client":"[net.test:patched:1]","server":"[net.test:server-patched:1]"},
+                "PATCHED_SHA":{"client":format!("'{}'",hash(patched)),"server":format!("'{}'",hash(b"server patch"))}
+            },
+            "processors":[
+                {"sides":["server"],"jar":"missing:server:1","args":["{MC_UNPACKED}"],"outputs":{"{MC_UNPACKED}":"{MC_UNPACKED_SHA}"}},
+                {"sides":["client"],"jar":"missing:client:1","args":["--clean","{MINECRAFT_JAR}","--output","{PATCHED}"],"outputs":{"{PATCHED}":"{PATCHED_SHA}"}}
+            ]
+        });
+        let child = json!({
+            "id":"native-profile", "inheritsFrom":fixture.entry.id, "mainClass":"net.test.LoaderMain",
+            "libraries":[{"name":"net.test:patched:1","downloads":{"artifact":{"url":"","sha1":hash(patched),"path":relative,"size":patched.len()}}}]
+        });
+        let processor = loader_installer(&[(
+            "META-INF/MANIFEST.MF",
+            b"Manifest-Version: 1.0\r\nMain-Class: test.ClientProcessor\r\n\r\n".to_vec(),
+        )]);
+        let installer = loader_installer(&[
+            (
+                "install_profile.json",
+                serde_json::to_vec(&profile).unwrap(),
+            ),
+            ("version.json", serde_json::to_vec(&child).unwrap()),
+            ("maven/missing/client/1/client-1.jar", processor),
+            (
+                &format!("maven/{relative}"),
+                if corrupted {
+                    b"damaged client patch".to_vec()
+                } else {
+                    patched.to_vec()
+                },
+            ),
+        ]);
+        let path =
+            "/maven/net/minecraftforge/forge/test-1-47.4.28/forge-test-1-47.4.28-installer.jar";
+        fixture.server.put(path, installer.clone());
+        fixture
+            .server
+            .put(&format!("{path}.sha1"), hash(&installer).into_bytes());
+        let selection = LoaderVersion {
+            kind: LoaderKind::Forge,
+            minecraft: fixture.entry.id.clone(),
+            version: "47.4.28".into(),
+            stable: true,
+        };
+        let result = install_loader(
+            &fixture.root,
+            &fixture.entry,
+            &selection,
+            "missing-java.exe",
+            &fixture.server.downloader(),
+        );
+        let marker = fixture
+            .root
+            .join("versions")
+            .join(selection.id().unwrap())
+            .join("nscl-instance.json");
+        if corrupted {
+            // A bad declared output must require rebuilding; it cannot publish a profile
+            // when the rebuild's Java runtime is unavailable.
+            let error = result.unwrap_err();
+            assert!(error.contains("Java 路径不存在"), "{error}");
+            assert!(!marker.exists());
+        } else {
+            let installed = result.unwrap();
+            assert!(marker.is_file());
+            assert!(
+                installed
+                    .extra_files
+                    .iter()
+                    .any(|file| file.path.as_deref() == Some(relative))
+            );
+            assert!(
+                !fixture
+                    .root
+                    .join("libraries/net/minecraft/client/test-1/client-test-1.jar")
+                    .exists()
+            );
+        }
+    }
+}
+
+#[test]
 fn bad_installer_checksum_zip_paths_and_cancellation_never_publish_loader() {
     for failure in ["checksum", "zip-slip", "cancel"] {
         let fixture = Fixture::new();
