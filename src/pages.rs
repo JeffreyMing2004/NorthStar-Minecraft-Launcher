@@ -859,7 +859,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     }
                 }
             });
-            app::hint(ui, "不同目录分别保存游戏和实例，切换路径不会移动或删除已有文件。默认目录随启动器 EXE 所在位置确定。");
+            app::hint(ui, "默认使用启动器所在目录；目录中已有 .minecraft 文件夹时优先使用它。可直接添加 .minecraft 路径，切换不会移动或删除已有文件。");
             app::hint(
                 ui,
                 &format!(

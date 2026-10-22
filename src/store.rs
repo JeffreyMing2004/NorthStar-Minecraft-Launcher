@@ -75,11 +75,24 @@ pub fn settings_path() -> PathBuf {
 }
 
 pub fn game_directory(settings: &Settings) -> PathBuf {
-    if settings.game_directory.trim().is_empty() {
+    let root = if settings.game_directory.trim().is_empty() {
         launcher_directory()
     } else {
         PathBuf::from(settings.game_directory.trim())
+    };
+    resolve_game_directory(root)
+}
+
+fn resolve_game_directory(root: PathBuf) -> PathBuf {
+    // An explicitly selected .minecraft is already the game root.
+    if root
+        .file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case(".minecraft"))
+    {
+        return root;
     }
+    let nested = root.join(".minecraft");
+    if nested.is_dir() { nested } else { root }
 }
 
 pub fn launcher_directory() -> PathBuf {
@@ -178,6 +191,33 @@ pub fn write_json(path: &std::path::Path, value: &impl Serialize) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn game_root_prefers_minecraft_child_but_never_descends_twice_or_uses_a_file() {
+        let parent = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/test-work");
+        std::fs::create_dir_all(&parent).unwrap();
+        let root = tempfile::tempdir_in(parent).unwrap();
+        let directory = root.path().join("Launcher with spaces");
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut settings = Settings::default();
+        add_game_directory(&mut settings, &directory.to_string_lossy()).unwrap();
+        assert_eq!(game_directory(&settings), directory);
+
+        let nested = directory.join(".minecraft");
+        std::fs::write(&nested, b"not a directory").unwrap();
+        assert_eq!(game_directory(&settings), directory);
+        std::fs::remove_file(&nested).unwrap();
+        std::fs::create_dir_all(nested.join(".minecraft")).unwrap();
+        std::fs::write(directory.join("keep.txt"), b"existing data").unwrap();
+        assert_eq!(game_directory(&settings), nested);
+        assert_eq!(resolve_game_directory(directory.clone()), nested);
+        add_game_directory(&mut settings, &nested.to_string_lossy()).unwrap();
+        assert_eq!(game_directory(&settings), nested);
+        assert_eq!(
+            std::fs::read(directory.join("keep.txt")).unwrap(),
+            b"existing data"
+        );
+    }
 
     #[test]
     fn default_root_follows_executable_and_custom_paths_are_remembered() {
