@@ -826,20 +826,6 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 "镜像失败或校验不通过时回退到官方源",
             );
             ui.add_space(24.0);
-            settings_input(
-                ui,
-                "Microsoft 应用 Client ID",
-                &mut app.settings.microsoft_client_id,
-                width,
-            );
-            app::hint(
-                ui,
-                "NSCL 的公共应用标识；应用需支持个人账号，回调平台选择移动和桌面应用程序。",
-            );
-            ui.add_space(24.0);
-            settings_input(ui, "Microsoft 登录回调 URI", &mut app.settings.microsoft_redirect_uri, width);
-            app::hint(ui, "与应用注册一致；默认 http://localhost:29111/auth-response，端口占用时尝试已登记的 29112–29115。浏览器登录使用 PKCE，无需 Client Secret。");
-            ui.add_space(24.0);
             settings_input(ui, "离线测试玩家名", &mut app.settings.player_name, width);
             app::hint(
                 ui,
