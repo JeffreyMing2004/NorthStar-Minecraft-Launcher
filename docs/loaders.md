@@ -32,6 +32,16 @@ Forge / NeoForge 补丁输出保存在游戏文件目录的 `.nscl/installers/<�
 
 启动器代码与界面全部使用 Rust；执行加载器提供的 Java 补丁工具不依赖 WebView、JavaScript 或官方 Minecraft 启动器。
 
+## Fabric 首次启动与 Windows 权限
+
+Fabric 首次启动时会在实例的 `.fabric/remappedJars/` 下生成映射缓存。若日志出现 `client-intermediary.jar.tmp can't be written`，可能是实例目录确实不可写，也可能是启动器处于 Windows 的低完整性权限环境。后者会让子进程 Java 的 `Files.isWritable` 返回 `false`，即使它实际能在低完整性目录创建文件，ZIP 文件系统仍会进入只读模式。
+
+NSCL 会识别 Fabric 映射 JAR 写入失败的日志；在 Windows 上结合当前进程的完整性级别区分低完整性环境与普通目录写入问题，并在界面和 CLI 中显示恢复办法及原始日志路径。检测只在对应启动失败后进行，不阻止已有缓存的正常启动；它只读取当前进程令牌，不修改系统权限或目录 ACL。
+
+遇到此提示，请退出 NSCL，将启动器 EXE **复制**到普通用户目录后重新打开。目标目录应位于沙箱或受限开发目录之外；仅重新运行原 EXE 或在同一个受限目录内复制文件，仍可能保留或继承低完整性标签。保留原有游戏目录设置即可，无需重装游戏或删除存档，也不需要管理员权限。若已在普通桌面环境运行但仍出现 JAR 写入错误，再检查实例目录的写入权限、磁盘空间和安全软件拦截情况。
+
+排查原理可参考 [Windows 强制完整性控制](https://learn.microsoft.com/en-us/windows/win32/secauthz/mandatory-integrity-control)与 [OpenJDK Windows 权限预检实现](https://github.com/openjdk/jdk17u/blob/master/src/java.base/windows/classes/sun/nio/fs/WindowsSecurity.java)。
+
 ## 镜像
 
 沿用「设置 → 下载源」和「失败时回退官方源」。自定义源需要支持以下 BMCLAPI 兼容映射：
@@ -71,4 +81,4 @@ cargo run --bin nscl-cli -- launch 1.20.1-forge-47.4.28
 
 Forge `26.3 / 66.1.0` 已使用官方安装包和现有缓存验证安装完成，覆盖 `MC_UNPACKED` 未被客户端步骤生成的情况；原版和实际补丁 JAR 的 SHA-1 均匹配安装清单。
 
-本次 Windows 环境已验证 Forge `1.20.1-47.4.28`、Fabric `1.20.1 / 0.20.1` 与 NeoForge `26.3 / 26.3.0.95` 的真实安装，Forge 和 NeoForge 已通过启动器启动并正常退出。Fabric 的同一启动参数直接交给 Java 可完成首次映射并运行；但此开发会话中，经启动器创建的 Java 子进程实际能写文件，`Files.isWritable` 却返回 `false`，使 Fabric 首次 ZIP 映射报只读错误。此问题尚未确认原因，仍需普通桌面会话复测，不能视为 Fabric 在所有环境的首次启动均已通过。安装标记、依赖校验与存档隔离不依赖该可写性判断。
+本次 Windows 环境已验证 Forge `1.20.1-47.4.28`、Fabric `1.20.1 / 0.20.1` 与 NeoForge `26.3 / 26.3.0.95` 的真实安装，三者均已通过启动器的共享启动核心启动并正常退出。Fabric 在 Java 17、含空格的游戏目录和没有映射缓存的新实例中完成了首次映射，生成 `client-intermediary.jar`，随后完成窗口与材质初始化，退出码为 `0`。此前的首次映射失败已定位为沙箱开发目录中的 EXE 继承低完整性标签；复制同一可执行文件到普通用户目录运行后通过。该验证不代表覆盖所有 Minecraft / Fabric 版本、模组组合或操作系统。

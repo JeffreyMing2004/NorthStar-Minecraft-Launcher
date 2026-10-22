@@ -11,9 +11,13 @@ use crate::store::Settings;
 use std::{
     collections::BTreeMap,
     fs::{self, File},
+    io::Read,
     path::{Path, PathBuf},
     process::Stdio,
 };
+
+#[cfg(windows)]
+mod windows;
 
 pub struct LaunchPlan {
     pub java: PathBuf,
@@ -214,7 +218,48 @@ pub fn launch(plan: &LaunchPlan, on_started: impl FnOnce(u32, &Path)) -> Result<
         .map_err(|e| format!("启动 Java 失败：{e}"))?;
     on_started(child.id(), &plan.log_path);
     let status = child.wait().map_err(|e| e.to_string())?;
-    Ok(status.code().unwrap_or(-1))
+    let code = status.code().unwrap_or(-1);
+    if code != 0
+        && let Some(error) = fabric_remap_failure(&plan.log_path)
+    {
+        return Err(format!(
+            "{error}\n退出码：{code}；启动日志：{}",
+            plan.log_path.display()
+        ));
+    }
+    Ok(code)
+}
+
+fn fabric_remap_failure(log_path: &Path) -> Option<String> {
+    // Remapping happens before Minecraft starts. Bound the diagnostic read and
+    // tolerate non-UTF-8 output without changing the original log on disk.
+    let mut bytes = Vec::new();
+    File::open(log_path)
+        .ok()?
+        .take(64 * 1024)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    let log = String::from_utf8_lossy(&bytes);
+    if !is_fabric_remap_write_failure(&log) {
+        return None;
+    }
+    #[cfg(windows)]
+    if windows::is_low_integrity().unwrap_or(false) {
+        return Some(
+            "Fabric 首次映射失败：启动器正处于 Windows 低完整性权限环境，Java 可能把可写的缓存误判为只读。请退出 NSCL，将启动器 EXE 复制到普通用户目录（沙箱或受限开发目录之外）后重新打开；无需以管理员身份运行，也无需重装游戏。"
+                .into(),
+        );
+    }
+    Some(
+        "Fabric 首次映射失败：无法写入映射 JAR。请检查实例目录的写入权限、磁盘空间及安全软件拦截情况；无需删除存档。"
+            .into(),
+    )
+}
+
+fn is_fabric_remap_write_failure(log: &str) -> bool {
+    log.contains("error remapping game jars")
+        && log.contains("OutputConsumerPath")
+        && log.contains("can't be written")
 }
 
 pub fn validate_player_name(name: &str) -> Result<()> {

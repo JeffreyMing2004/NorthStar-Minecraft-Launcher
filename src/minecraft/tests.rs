@@ -605,6 +605,10 @@ fn damaged_install_is_rejected_before_executing_java() {
 fn child_process_fixture() {
     println!("test game stdout");
     eprintln!("test game stderr");
+    if let Ok(failure) = fs::read_to_string("fixture-failure.txt") {
+        eprintln!("{failure}");
+        std::process::exit(1);
+    }
 }
 
 #[test]
@@ -636,6 +640,40 @@ fn game_process_preserves_working_directory_and_logs() {
     let log = fs::read_to_string(log_path).unwrap();
     assert!(log.contains("test game stdout"));
     assert!(log.contains("test game stderr"));
+}
+
+#[test]
+fn fabric_remap_failure_is_diagnosed_without_hiding_other_exit_codes() {
+    let fabric_error = "java.lang.RuntimeException: error remapping game jars\nCaused by: java.io.IOException: client-intermediary.jar.tmp can't be written\n at net.fabricmc.loader.impl.lib.tinyremapper.OutputConsumerPath.<init>";
+    for (output, fabric) in [(fabric_error, true), ("Unrelated game crash", false)] {
+        let directory = test_dir();
+        fs::write(directory.path().join("fixture-failure.txt"), output).unwrap();
+        let log_path = directory.path().join("game.log");
+        let plan = LaunchPlan {
+            java: std::env::current_exe().unwrap(),
+            arguments: vec![
+                "--exact".into(),
+                "minecraft::tests::child_process_fixture".into(),
+                "--ignored".into(),
+                "--nocapture".into(),
+            ],
+            game_directory: directory.path().into(),
+            log_path: log_path.clone(),
+        };
+        let mut started = false;
+        let result = launch(&plan, |_, _| started = true);
+        assert!(started);
+        assert!(fs::read_to_string(&log_path).unwrap().contains(output));
+        if fabric {
+            let error = result.unwrap_err();
+            assert!(error.contains("Fabric 首次映射失败"));
+            assert!(error.contains("退出码：1"));
+            assert!(error.contains(log_path.to_string_lossy().as_ref()));
+            assert!(error.contains("目录"));
+        } else {
+            assert_eq!(result.unwrap(), 1);
+        }
+    }
 }
 
 #[test]
