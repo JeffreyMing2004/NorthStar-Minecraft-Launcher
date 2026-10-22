@@ -399,7 +399,7 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
                 .desired_width((width - 24.0).max(0.0)),
         );
         ui.add_space(10.0);
-        ui.horizontal_wrapped(|ui| {
+        theme::toolbar(ui, |ui| {
             ui.label("模型");
             for model in [Model::Classic, Model::Slim] {
                 if ui
@@ -412,7 +412,7 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
             }
         });
         ui.add_space(10.0);
-        ui.horizontal_wrapped(|ui| {
+        theme::toolbar(ui, |ui| {
             if ui.button("预览本地皮肤").clicked() {
                 app.skin.preview(ui.ctx());
             }
@@ -449,7 +449,7 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
         app.skin.preview(ui.ctx());
     }
     ui.add_space(10.0);
-    ui.horizontal_wrapped(|ui| {
+    theme::toolbar(ui, |ui| {
         if app.skin.pending {
             ui.spinner();
         }

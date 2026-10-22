@@ -440,8 +440,11 @@ fn row(
     );
     info.add(egui::Label::new(RichText::new(meta).size(11.0).color(theme::HINT)).truncate());
     let mut button = ui.new_child(UiBuilder::new().max_rect(Rect::from_min_size(
-        Pos2::new(rect.right() - 114.0, rect.center().y - 18.0),
-        Vec2::new(96.0, 36.0),
+        Pos2::new(
+            rect.right() - 114.0,
+            rect.center().y - theme::CONTROL_HEIGHT / 2.0,
+        ),
+        Vec2::new(96.0, theme::CONTROL_HEIGHT),
     )));
     download_button(&mut button, action, enabled)
 }

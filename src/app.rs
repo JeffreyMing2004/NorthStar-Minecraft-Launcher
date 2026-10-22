@@ -398,7 +398,7 @@ impl NsclApp {
                 }
 
                 let use_short_name = rect.width() < 1320.0;
-                let brand_width = if use_short_name { 140.0 } else { 340.0 };
+                let brand_width = if use_short_name { 160.0 } else { 340.0 };
                 let mut brand = ui.new_child(
                     UiBuilder::new()
                         .max_rect(egui::Rect::from_two_pos(
@@ -438,17 +438,17 @@ impl NsclApp {
                     },
                 );
 
-                // 与原设计一致：五个 64px 按钮与四个 6px 间隙，整组相对窗口居中。
+                // Navigation keeps a fixed rhythm and remains centered in the window.
                 let mut nav = ui.new_child(
                     UiBuilder::new()
                         .max_rect(egui::Rect::from_center_size(
                             center,
-                            Vec2::new(344.0, rect.height()),
+                            Vec2::new(424.0, rect.height()),
                         ))
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
                 nav.horizontal_centered(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
+                    ui.spacing_mut().item_spacing = Vec2::new(theme::TAB_GAP, 0.0);
                     for item in Page::ALL {
                         let active = self.page == item;
                         let fill = if active {
@@ -467,7 +467,7 @@ impl NsclApp {
                             &ButtonStyle {
                                 fill,
                                 radius: 7.0,
-                                min_size: Vec2::new(64.0, 38.0),
+                                min_size: Vec2::new(72.0, theme::CONTROL_HEIGHT),
                                 ..Default::default()
                             },
                         );
@@ -498,6 +498,7 @@ impl NsclApp {
                     controls.available_size(),
                     egui::Layout::right_to_left(egui::Align::Center),
                     |ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
                         window_button(ui, "✕", egui::Color32::from_rgb(0xb7, 0x39, 0x49), || {
                             ctx.send_viewport_cmd(ViewportCommand::Close)
                         });
@@ -522,7 +523,8 @@ fn window_button(ui: &mut Ui, label: &str, hover: Color32, action: impl FnOnce()
             hover,
             active: hover,
             radius: 5.0,
-            min_size: Vec2::new(34.0, 30.0),
+            min_size: Vec2::new(36.0, 32.0),
+            padding: Vec2::new(8.0, 6.0),
             ..Default::default()
         },
     );
@@ -537,6 +539,7 @@ pub struct ButtonStyle {
     pub active: Color32,
     pub radius: f32,
     pub min_size: Vec2,
+    pub padding: Vec2,
     pub stroke: Option<egui::Stroke>,
 }
 
@@ -548,6 +551,7 @@ impl Default for ButtonStyle {
             active: theme::HOVER,
             radius: 8.0,
             min_size: Vec2::ZERO,
+            padding: Vec2::new(16.0, 10.0),
             stroke: None,
         }
     }
@@ -561,7 +565,7 @@ pub fn styled_button(ui: &mut Ui, text: RichText, style: &ButtonStyle) -> egui::
         f32::INFINITY,
         egui::TextStyle::Button,
     );
-    let size = (galley.size() + Vec2::new(24.0, 16.0)).max(style.min_size);
+    let size = (galley.size() + style.padding * 2.0).max(style.min_size);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), &label));
     let fill = if response.is_pointer_button_down_on() {
@@ -655,6 +659,37 @@ pub fn primary_button(ui: &mut Ui, label: &str) -> bool {
                 },
                 46.0,
             ),
+            ..Default::default()
+        },
+    )
+    .clicked()
+}
+
+pub fn tab_button(ui: &mut Ui, label: &str, selected: bool) -> bool {
+    styled_button(
+        ui,
+        RichText::new(label).size(14.0).color(if selected {
+            theme::ON_ACCENT
+        } else {
+            theme::MUTED
+        }),
+        &ButtonStyle {
+            fill: if selected {
+                theme::ACCENT
+            } else {
+                Color32::TRANSPARENT
+            },
+            hover: if selected {
+                theme::ACCENT_HOVER
+            } else {
+                theme::HOVER
+            },
+            active: if selected {
+                theme::ACCENT_HOVER
+            } else {
+                theme::HOVER
+            },
+            min_size: Vec2::new(104.0, theme::CONTROL_HEIGHT),
             ..Default::default()
         },
     )

@@ -20,7 +20,7 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
         .show(ctx,|ui| {
             if let Some(catalog)=&catalog {app::body(ui,&catalog.target.label());}
             ui.add_space(12.0);
-            ui.horizontal_wrapped(|ui| {
+            theme::toolbar(ui, |ui| {
                 if download_button(ui,"刷新列表",!busy) {refresh=Some(false);}
                 if download_button(ui,"检查更新",!busy) {refresh=Some(true);}
                 if download_button(ui,"卸载所选",!busy && app.service.game.is_none() && !app.service.content.managed_selection.is_empty()) {remove=true;}
@@ -45,7 +45,7 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
                                 }
                                 ui.add(egui::Label::new(RichText::new(&version.name).size(15.0).color(theme::HEADING)).truncate());
                             });
-                            ui.horizontal_wrapped(|ui| {
+                            theme::toolbar(ui, |ui| {
                                 ui.label(RichText::new(&version.version_number).size(12.0).color(theme::MUTED));
                                 if !entry.intact {ui.label(RichText::new("文件缺失或已修改").size(12.0).color(theme::ACCENT));}
                                 if let Some(candidate)=app.service.content.updates.available.iter().find(|u|u.project_id==version.project_id) {
@@ -68,7 +68,7 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
             });
             ui.add_space(10.0);
             if let Some(catalog)=&catalog {
-                ui.horizontal_wrapped(|ui| {
+                theme::toolbar(ui, |ui| {
                     app::hint(ui,&format!("{} 个已登记模组 · 已选择 {} 个",catalog.entries.len(),app.service.content.managed_selection.len()));
                     if ui.button("打开 mods 目录").clicked() {open_mods(app,catalog);}
                 });

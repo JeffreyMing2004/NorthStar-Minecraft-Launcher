@@ -30,6 +30,19 @@ pub fn dashed_bg() -> Color32 {
 pub const MOUNTAIN_BACK: Color32 = Color32::from_rgb(0x24, 0x50, 0x64);
 pub const MOUNTAIN_FRONT: Color32 = Color32::from_rgb(0x16, 0x2e, 0x40);
 pub const STAR: Color32 = Color32::from_rgb(0xa3, 0xf5, 0xdb);
+pub const CONTROL_HEIGHT: f32 = 40.0;
+pub const CONTROL_GAP: f32 = 12.0;
+pub const TAB_GAP: f32 = 16.0;
+
+pub fn toolbar<R>(
+    ui: &mut egui::Ui,
+    content: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(CONTROL_GAP, CONTROL_GAP);
+        content(ui)
+    })
+}
 
 pub fn card(padding: i8) -> Frame {
     Frame::default()
@@ -77,9 +90,28 @@ pub fn apply(ctx: &Context) {
         style.visuals.faint_bg_color = Color32::from_rgb(0x11, 0x1b, 0x28);
         style.visuals.hyperlink_color = ACCENT;
         style.visuals.selection.bg_fill = Color32::from_rgb(0x1d, 0x3a, 0x3f);
+        for visuals in [
+            &mut style.visuals.widgets.inactive,
+            &mut style.visuals.widgets.hovered,
+            &mut style.visuals.widgets.active,
+        ] {
+            visuals.corner_radius = egui::CornerRadius::same(8);
+            visuals.bg_stroke = Stroke::new(1.0, SECONDARY_BORDER);
+            visuals.fg_stroke = Stroke::new(1.0, BODY_TEXT);
+        }
+        style.visuals.widgets.inactive.bg_fill = SECONDARY_BG;
+        style.visuals.widgets.inactive.weak_bg_fill = SECONDARY_BG;
+        style.visuals.widgets.hovered.bg_fill = HOVER;
+        style.visuals.widgets.hovered.weak_bg_fill = HOVER;
+        style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT.gamma_multiply(0.65));
         style.visuals.widgets.active.bg_fill = HOVER;
-        style.spacing.item_spacing = egui::vec2(8.0, 8.0);
-        style.spacing.button_padding = egui::vec2(12.0, 8.0);
+        style.visuals.widgets.active.weak_bg_fill = HOVER;
+        style.spacing.item_spacing = egui::vec2(CONTROL_GAP, CONTROL_GAP);
+        style.spacing.button_padding = egui::vec2(16.0, 10.0);
+        style.spacing.interact_size.y = CONTROL_HEIGHT;
+        style
+            .text_styles
+            .insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
         style.spacing.slider_rail_height = 3.0;
         style.visuals.override_text_color = Some(BODY_TEXT);
         style.visuals.extreme_bg_color = Color32::from_rgb(0x0c, 0x16, 0x22);

@@ -3,11 +3,6 @@ use crate::theme;
 use egui::{Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
 
 pub fn home(ui: &mut Ui, app: &mut NsclApp) {
-    app::hint(
-        ui,
-        "拖入 .mrpack 或 Modrinth 整合包 ZIP，自动识别并安装到独立实例；可选客户端文件默认不安装。",
-    );
-    ui.add_space(10.0);
     if app.service.busy() {
         task_status(ui, app);
         ui.add_space(10.0);
@@ -83,7 +78,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         );
     } else {
         let mut selection =
-            launch.new_child(UiBuilder::new().max_rect(instance.shrink2(Vec2::new(50.0, 26.0))));
+            launch.new_child(UiBuilder::new().max_rect(instance.shrink2(Vec2::new(50.0, 22.0))));
         let previous = app.service.selected.clone();
         let selected_name = app
             .service
@@ -127,7 +122,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             }
         }
     } else {
-        launch.horizontal(|ui| {
+        theme::toolbar(&mut launch, |ui| {
             ui.add_enabled_ui(!app.service.busy() && app.service.game.is_none(), |ui| {
                 if app::primary_button(
                     ui,
@@ -409,9 +404,13 @@ fn page_card(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
 
 pub fn account(ui: &mut Ui, app: &mut NsclApp) {
     page_card(ui, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut app.account_tab, 0, "账号管理");
-            ui.selectable_value(&mut app.account_tab, 1, "皮肤与预览");
+        theme::toolbar(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = theme::TAB_GAP;
+            for (index, label) in ["账号管理", "皮肤与预览"].iter().enumerate() {
+                if app::tab_button(ui, label, app.account_tab == index as u8) {
+                    app.account_tab = index as u8;
+                }
+            }
         });
         ui.add_space(20.0);
         if app.account_tab == 1 {
@@ -433,6 +432,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                     ui.ctx(),
                 );
             }
+            ui.add_space(theme::CONTROL_GAP);
             egui::CollapsingHeader::new("其他登录方式").show(ui, |ui| {
                 if ui.button("设备代码登录（需应用启用对应流程）").clicked() {
                     app.accounts
@@ -441,7 +441,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
             });
             ui.add_space(16.0);
             let mut create = false;
-            ui.horizontal_wrapped(|ui| {
+            theme::toolbar(ui, |ui| {
                 let name = ui.add(
                     egui::TextEdit::singleline(&mut app.offline_name)
                         .hint_text("离线账号玩家名")
@@ -450,6 +450,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                 create = ui.button("创建离线账号").clicked()
                     || (name.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
             });
+            ui.add_space(8.0);
             app::hint(
                 ui,
                 "玩家名为 1–16 位英文字母、数字或下划线。离线账号无法进入要求正版认证的服务器。",
@@ -479,7 +480,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                     .show(ui, |ui| {
                         app::body(ui, "在 Microsoft 官方网页完成登录与授权，然后返回启动器。");
                         ui.add_space(12.0);
-                        ui.horizontal_wrapped(|ui| {
+                        theme::toolbar(ui, |ui| {
                             if ui
                                 .add_enabled(
                                     !app.accounts.browser_opening,
@@ -530,7 +531,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                                 .color(theme::ACCENT),
                         );
                         ui.add_space(10.0);
-                        ui.horizontal_wrapped(|ui| {
+                        theme::toolbar(ui, |ui| {
                             if ui
                                 .add_enabled(
                                     !app.accounts.browser_opening,
@@ -547,6 +548,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                                 ui.ctx().copy_text(prompt.code.clone());
                             }
                         });
+                        ui.add_space(10.0);
                         let remaining = prompt
                             .expires
                             .saturating_duration_since(std::time::Instant::now())
@@ -659,39 +661,10 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
             return;
         }
         ui.add_enabled_ui(!app.service.busy(), |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
+            theme::toolbar(ui, |ui| {
+                ui.spacing_mut().item_spacing.x = theme::TAB_GAP;
                 for (index, item) in CATEGORIES.iter().enumerate() {
-                    let selected = app.category == index;
-                    if app::styled_button(
-                        ui,
-                        RichText::new(*item).size(14.0).color(if selected {
-                            theme::ON_ACCENT
-                        } else {
-                            theme::MUTED
-                        }),
-                        &app::ButtonStyle {
-                            fill: if selected {
-                                theme::ACCENT
-                            } else {
-                                Color32::TRANSPARENT
-                            },
-                            hover: if selected {
-                                theme::ACCENT_HOVER
-                            } else {
-                                theme::HOVER
-                            },
-                            active: if selected {
-                                theme::ACCENT_HOVER
-                            } else {
-                                theme::HOVER
-                            },
-                            min_size: Vec2::new(68.0, 38.0),
-                            ..Default::default()
-                        },
-                    )
-                    .clicked()
-                    {
+                    if app::tab_button(ui, item, app.category == index) {
                         app.category = index;
                     }
                 }
@@ -746,7 +719,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 "默认按实例要求自动选择已安装的 Java 主版本和架构；关闭自动选择后可手动指定。",
             );
             ui.add_space(12.0);
-            ui.horizontal(|ui| {
+            theme::toolbar(ui, |ui| {
                 if download_button(ui, "扫描 Java", !app.service.java_busy) {
                     app.service.inspect_java(None, ui.ctx());
                 }
@@ -785,7 +758,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     });
             }
             ui.add_space(14.0);
-            ui.horizontal_wrapped(|ui| {
+            theme::toolbar(ui, |ui| {
                 ui.label("自动安装 Java");
                 egui::ComboBox::from_id_salt("install-java-major")
                     .width(110.0)
@@ -842,7 +815,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     }
                 });
             ui.add_space(10.0);
-            ui.horizontal_wrapped(|ui| {
+            theme::toolbar(ui, |ui| {
                 ui.add(egui::TextEdit::singleline(&mut app.new_game_directory).hint_text("添加 MC 路径，例如 D:\\Minecraft 或已有 .minecraft 目录").desired_width((width - 100.0).max(180.0)));
                 if ui.button("添加路径").clicked() {
                     match crate::store::add_game_directory(&mut app.settings, &app.new_game_directory) {
@@ -979,7 +952,7 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                                 .inner_margin(14)
                                 .show(ui, |ui| {
                                     ui.set_min_width(660.0_f32.min(ui.available_width()));
-                                    ui.horizontal_wrapped(|ui| {
+                                    theme::toolbar(ui, |ui| {
                                         if ui
                                             .selectable_label(
                                                 app.service.selected == instance.id,
@@ -1078,7 +1051,7 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                 ui.separator();
                 ui.add_enabled_ui(editable && !app.service.installed.is_empty(), |ui| {
                     app::heading(ui, "创建空白实例");
-                    ui.horizontal(|ui| {
+                    theme::toolbar(ui, |ui| {
                         ui.add(
                             egui::TextEdit::singleline(&mut app.new_instance_name)
                                 .hint_text("实例名称，例如 生存世界")
@@ -1141,88 +1114,93 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
             .open(&mut open)
             .default_width(530.0)
             .max_height((ctx.content_rect().height() - 120.0).max(220.0))
-            .vscroll(true)
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 12.0;
                 ui.add_enabled_ui(editable, |ui| {
-                    ui.label(format!(
-                        "Minecraft {} · Java {}",
-                        instance.version_id,
-                        app.service
-                            .installed
-                            .iter()
-                            .find(|v| v.id == instance.version_id)
-                            .map(|v| v.java_major)
-                            .unwrap_or(0)
-                    ));
-                    ui.label("实例名称");
-                    ui.text_edit_singleline(&mut instance.name);
-                    ui.label("版本隔离");
-                    ui.add_enabled_ui(!instance.requires_isolation(), |ui| {
-                        egui::ComboBox::from_id_salt("instance-isolation")
-                            .selected_text(instance.isolation.label())
-                            .show_ui(ui, |ui| {
-                                for mode in crate::instances::Isolation::ALL {
-                                    ui.selectable_value(&mut instance.isolation, mode, mode.label());
-                                }
-                                if instance.is_external() {
-                                    ui.selectable_value(&mut instance.isolation, crate::instances::Isolation::Version, crate::instances::Isolation::Version.label());
-                                }
+                    egui::ScrollArea::vertical()
+                        .id_salt("instance-configuration-form")
+                        .max_height((ctx.content_rect().height() - 260.0).max(140.0))
+                        .show(ui, |ui| {
+                            ui.label(format!(
+                                "Minecraft {} · Java {}",
+                                instance.version_id,
+                                app.service
+                                    .installed
+                                    .iter()
+                                    .find(|v| v.id == instance.version_id)
+                                    .map(|v| v.java_major)
+                                    .unwrap_or(0)
+                            ));
+                            ui.label("实例名称");
+                            ui.text_edit_singleline(&mut instance.name);
+                            ui.label("版本隔离");
+                            ui.add_enabled_ui(!instance.requires_isolation(), |ui| {
+                                egui::ComboBox::from_id_salt("instance-isolation")
+                                    .selected_text(instance.isolation.label())
+                                    .show_ui(ui, |ui| {
+                                        for mode in crate::instances::Isolation::ALL {
+                                            ui.selectable_value(&mut instance.isolation, mode, mode.label());
+                                        }
+                                        if instance.is_external() {
+                                            ui.selectable_value(&mut instance.isolation, crate::instances::Isolation::Version, crate::instances::Isolation::Version.label());
+                                        }
+                                    });
                             });
-                    });
-                    if instance.requires_isolation() {
-                        app::hint(ui, "整合包始终使用独立目录，避免模组与配置混用。");
-                    } else {
-                        app::hint(ui, "切换后从所选目录读取存档、模组、配置和截图；原目录文件保留，不自动搬移。共享模式下不同版本会使用同一份游戏数据。");
-                    }
-                    if let Ok(path) = instance.game_directory(&root) {
-                        app::hint(ui, &format!("游戏目录：{}", path.display()));
-                    }
-                    if instance.is_external() { app::hint(ui, "已识别其他启动器的版本配置，使用现有客户端与依赖；缺少文件时会提示具体路径，不会覆盖原配置。"); }
-                    if instance.isolation == crate::instances::Isolation::Shared
-                        && ui.button("打开保留的独立目录").clicked()
-                        && let Err(error) = instance.directory(&root).and_then(|p| open::that_detached(p).map_err(|e| e.to_string()))
-                    {
-                        app.service.error = Some(error);
-                    }
-                    let mut override_java = instance.java_path.is_some();
-                    if ui
-                        .checkbox(&mut override_java, "为此实例单独选择 Java")
-                        .changed()
-                    {
-                        instance.java_path = override_java.then(String::new);
-                    }
-                    if let Some(path) = &mut instance.java_path {
-                        ui.add(
-                            egui::TextEdit::singleline(path)
-                                .hint_text("留空自动匹配 Java；否则填写可执行文件或安装目录"),
-                        );
-                        egui::ComboBox::from_id_salt("instance-java")
-                            .selected_text("使用已检测的 Java……")
-                            .show_ui(ui, |ui| {
-                                for runtime in &app.service.java_runtimes {
-                                    if ui.selectable_label(false, runtime.label()).clicked() {
-                                        *path = runtime.path.to_string_lossy().into_owned();
-                                    }
+                            if instance.requires_isolation() {
+                                app::hint(ui, "整合包始终使用独立目录，避免模组与配置混用。");
+                            } else {
+                                app::hint(ui, "切换后从所选目录读取存档、模组、配置和截图；原目录文件保留，不自动搬移。共享模式下不同版本会使用同一份游戏数据。");
+                            }
+                            if let Ok(path) = instance.game_directory(&root) {
+                                app::hint(ui, &format!("游戏目录：{}", path.display()));
+                            }
+                            if instance.is_external() { app::hint(ui, "已识别其他启动器的版本配置，使用现有客户端与依赖；缺少文件时会提示具体路径，不会覆盖原配置。"); }
+                            if instance.isolation == crate::instances::Isolation::Shared
+                                && ui.button("打开保留的独立目录").clicked()
+                                && let Err(error) = instance.directory(&root).and_then(|p| open::that_detached(p).map_err(|e| e.to_string()))
+                            {
+                                app.service.error = Some(error);
+                            }
+                            let mut override_java = instance.java_path.is_some();
+                            if ui
+                                .checkbox(&mut override_java, "为此实例单独选择 Java")
+                                .changed()
+                            {
+                                instance.java_path = override_java.then(String::new);
+                            }
+                            if let Some(path) = &mut instance.java_path {
+                                ui.add(
+                                    egui::TextEdit::singleline(path)
+                                        .hint_text("留空自动匹配 Java；否则填写可执行文件或安装目录"),
+                                );
+                                egui::ComboBox::from_id_salt("instance-java")
+                                    .selected_text("使用已检测的 Java……")
+                                    .show_ui(ui, |ui| {
+                                        for runtime in &app.service.java_runtimes {
+                                            if ui.selectable_label(false, runtime.label()).clicked() {
+                                                *path = runtime.path.to_string_lossy().into_owned();
+                                            }
+                                        }
+                                    });
+                                if ui.button("扫描 Java").clicked() {
+                                    app.service.inspect_java(None, ui.ctx());
                                 }
-                            });
-                        if ui.button("扫描 Java").clicked() {
-                            app.service.inspect_java(None, ui.ctx());
-                        }
-                    }
-                    let mut override_memory = instance.memory.is_some();
-                    if ui
-                        .checkbox(&mut override_memory, "为此实例单独分配内存")
-                        .changed()
-                    {
-                        instance.memory = override_memory.then_some(app.settings.memory);
-                    }
-                    if instance.memory.is_some() {
-                        ui.horizontal(|ui| {
-                            ui.text_edit_singleline(&mut app.instance_memory);
-                            ui.label("MiB（1024–32768）");
+                            }
+                            let mut override_memory = instance.memory.is_some();
+                            if ui
+                                .checkbox(&mut override_memory, "为此实例单独分配内存")
+                                .changed()
+                            {
+                                instance.memory = override_memory.then_some(app.settings.memory);
+                            }
+                            if instance.memory.is_some() {
+                                ui.horizontal(|ui| {
+                                    ui.text_edit_singleline(&mut app.instance_memory);
+                                    ui.label("MiB（1024–32768）");
+                                });
+                            }
                         });
-                    }
+                    ui.separator();
                     if ui.button("保存实例配置").clicked() {
                         let result = (|| {
                             if instance.memory.is_some() {
@@ -1324,7 +1302,7 @@ fn installation_options(ui: &mut Ui, app: &mut NsclApp) {
     }
     ui.add_space(14.0);
     ui.add_enabled_ui(!app.service.busy(), |ui| {
-        ui.horizontal_wrapped(|ui| {
+        theme::toolbar(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::new(12.0, 10.0);
             for kind in std::iter::once(None).chain(LoaderKind::ALL.map(Some)) {
                 let label = kind.map(LoaderKind::label).unwrap_or("不安装加载器");
@@ -1711,6 +1689,7 @@ fn version_row(
     );
     let mut info = ui.new_child(UiBuilder::new().max_rect(info_rect));
     info.spacing_mut().item_spacing = Vec2::new(14.0, 5.0);
+    info.spacing_mut().interact_size.y = 24.0;
     info.horizontal(|ui| {
         ui.add(
             egui::Label::new(
@@ -1745,8 +1724,11 @@ fn version_row(
     let mut action = ui.new_child(
         UiBuilder::new()
             .max_rect(Rect::from_min_size(
-                Pos2::new(rect.right() - 114.0, rect.center().y - 18.0),
-                Vec2::new(96.0, 36.0),
+                Pos2::new(
+                    rect.right() - 114.0,
+                    rect.center().y - theme::CONTROL_HEIGHT / 2.0,
+                ),
+                Vec2::new(96.0, theme::CONTROL_HEIGHT),
             ))
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
@@ -1762,7 +1744,7 @@ pub(crate) fn download_button(ui: &mut Ui, label: &str, enabled: bool) -> bool {
                 fill: theme::SECONDARY_BG,
                 hover: theme::HOVER,
                 stroke: Some(Stroke::new(1.0, theme::SECONDARY_BORDER)),
-                min_size: Vec2::new(96.0, 36.0),
+                min_size: Vec2::new(96.0, theme::CONTROL_HEIGHT),
                 ..Default::default()
             },
         )
@@ -1796,7 +1778,7 @@ pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
         ui.horizontal(|ui| {
             let info_width = (ui.available_width() - 116.0).max(0.0);
             ui.allocate_ui_with_layout(
-                Vec2::new(info_width, 36.0),
+                Vec2::new(info_width, theme::CONTROL_HEIGHT),
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     ui.set_width(info_width);
@@ -1894,7 +1876,8 @@ pub fn about(ui: &mut Ui, app: &mut NsclApp) {
                 app.updates.status = error;
             }
         }
-        ui.horizontal_wrapped(|ui| {
+        ui.add_space(theme::CONTROL_GAP);
+        theme::toolbar(ui, |ui| {
             if ui
                 .add_enabled(!app.updates.busy, egui::Button::new("检查更新"))
                 .clicked()
@@ -1939,6 +1922,7 @@ pub fn about(ui: &mut Ui, app: &mut NsclApp) {
                 }
             }
         });
+        ui.add_space(theme::CONTROL_GAP);
         app::hint(ui, &app.updates.status);
         if let Some(release) = &app.updates.release {
             egui::CollapsingHeader::new(format!("{} 更新说明", release.tag_name)).show(ui, |ui| {
