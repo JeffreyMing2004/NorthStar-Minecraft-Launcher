@@ -3,7 +3,7 @@ use crate::{
     pages::{download_button, task_status},
     theme,
 };
-use egui::{RichText, Ui};
+use egui::RichText;
 
 pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
     if !app.service.content.manager_open {
@@ -70,7 +70,7 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
             if let Some(catalog)=&catalog {
                 ui.horizontal_wrapped(|ui| {
                     app::hint(ui,&format!("{} 个已登记模组 · 已选择 {} 个",catalog.entries.len(),app.service.content.managed_selection.len()));
-                    if ui.button("打开 mods 目录").clicked() {open_mods(ui,app,catalog);}
+                    if ui.button("打开 mods 目录").clicked() {open_mods(app,catalog);}
                 });
             }
             if busy {task_status(ui,app);}
@@ -89,7 +89,7 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
     }
 }
 
-fn open_mods(_ui: &mut Ui, app: &mut NsclApp, catalog: &crate::content::ManagedCatalog) {
+fn open_mods(app: &mut NsclApp, catalog: &crate::content::ManagedCatalog) {
     let result = catalog
         .target
         .instance

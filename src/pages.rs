@@ -225,20 +225,26 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             .color(theme::MUTED),
     );
     account.add_space(20.0);
-    if app::styled_button(
-        &mut account,
-        RichText::new("管理账号 →").size(13.0),
-        &app::ButtonStyle {
-            fill: theme::SECONDARY_BG,
-            stroke: Some(Stroke::new(1.0, theme::SECONDARY_BORDER)),
-            min_size: Vec2::new(footer.width(), 42.0),
-            ..Default::default()
-        },
-    )
-    .clicked()
-    {
-        app.page = Page::Account;
-    }
+    account.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 12.0;
+        for (label, tab) in [("管理账号", 0), ("更换皮肤", 1)] {
+            if app::styled_button(
+                ui,
+                RichText::new(label).size(13.0),
+                &app::ButtonStyle {
+                    fill: theme::SECONDARY_BG,
+                    stroke: Some(Stroke::new(1.0, theme::SECONDARY_BORDER)),
+                    min_size: Vec2::new((footer.width() - 12.0) * 0.5, 42.0),
+                    ..Default::default()
+                },
+            )
+            .clicked()
+            {
+                app.page = Page::Account;
+                app.account_tab = tab;
+            }
+        }
+    });
 }
 
 fn draw_card(ui: &Ui, rect: Rect) {
@@ -398,6 +404,15 @@ fn page_card(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
 
 pub fn account(ui: &mut Ui, app: &mut NsclApp) {
     page_card(ui, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(&mut app.account_tab, 0, "账号管理");
+            ui.selectable_value(&mut app.account_tab, 1, "皮肤与预览");
+        });
+        ui.add_space(20.0);
+        if app.account_tab == 1 {
+            crate::skin_ui::controls(ui, app);
+            return;
+        }
         app::eyebrow(ui, "ACCOUNT & SKIN");
         ui.add_space(12.0);
         app::heading(ui, "让冒险拥有你的名字");
@@ -426,7 +441,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
         ui.add_space(12.0);
         app::hint(
             ui,
-            "密码只在 Microsoft 官方网页输入；启动器将刷新令牌保存在系统凭据库。下方可预览和上传角色皮肤。",
+            "密码只在 Microsoft 官方网页输入；启动器将刷新令牌保存在系统凭据库。切换到「皮肤与预览」可管理角色皮肤。",
         );
         if app.accounts.pending {
             ui.add_space(20.0);
@@ -462,7 +477,6 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                             "若 Edge 提示现有实例以管理员权限运行，请保存网页后按提示以普通权限重启 Edge。",
                         );
                         ui.add_space(10.0);
-                        app::hint(ui, &format!("当前本地回调：{}", prompt.redirect_uri));
                         let remaining = prompt
                             .expires
                             .saturating_duration_since(std::time::Instant::now())
@@ -595,7 +609,6 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
             ui,
             "离线测试玩家名和试玩选项可在设置中配置；正版启动验证失败时不会自动切换离线身份。",
         );
-        crate::skin_ui::controls(ui, app);
     });
 }
 
@@ -745,11 +758,12 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     .selected_text(format!("Java {}",app.service.java_install_major))
                     .show_ui(ui,|ui| {for major in [8,11,17,21,25] {ui.selectable_value(&mut app.service.java_install_major,major,format!("Java {major}"));}});
                 if ui.add_enabled(!app.service.java_busy,egui::Button::new("下载并安装")).clicked() {app.service.install_java(ui.ctx());}
-                if ui.button("按当前实例选择").clicked()
-                    && let Some(major)=app.service.instances.iter().find(|i|i.id==app.service.selected).and_then(|i|app.service.installed.iter().find(|v|v.id==i.version_id)).map(|v|v.java_major)
+                let required=app.service.instances.iter().find(|i|i.id==app.service.selected).and_then(|i|app.service.installed.iter().find(|v|v.id==i.version_id)).map(|v|v.java_major);
+                if ui.add_enabled(required.is_some(),egui::Button::new("按当前实例选择")).clicked()
+                    && let Some(major)=required
                 {app.service.java_install_major=major;}
             });
-            app::hint(ui,"下载 Eclipse Temurin JRE，校验后安装到启动器目录；Java 路径留空即可自动匹配。支持 Windows。");
+            app::hint(ui,"下载 Eclipse Temurin JRE，校验后安装到启动器数据目录；Java 路径留空即可自动匹配。支持 Windows。");
             if !app.service.java_status.is_empty() {
                 ui.add_space(10.0);
                 app::body(ui, &app.service.java_status);
@@ -1772,7 +1786,7 @@ pub fn about(ui: &mut Ui) {
         ui.add_space(10.0);
         app::body(
             ui,
-            "支持原版与 Forge / Fabric / NeoForge 安装启动、Microsoft 正版登录、多账号与独立实例、Modrinth 模组与整合包，以及皮肤上传和可旋转的 3D 角色预览。",
+            "支持原版与 Forge / Fabric / NeoForge 安装启动、Microsoft 正版登录、Java 自动安装、多账号与独立实例、Modrinth 模组与整合包、模组更新及卸载，以及皮肤上传和可旋转的 3D 角色预览。",
         );
         ui.add_space(22.0);
         ui.label(

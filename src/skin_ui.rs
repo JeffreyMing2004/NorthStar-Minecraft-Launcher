@@ -346,21 +346,57 @@ fn cube(
 }
 
 pub fn controls(ui: &mut Ui, app: &mut NsclApp) {
-    ui.add_space(24.0);
-    ui.separator();
-    ui.add_space(20.0);
     app::heading(ui, "皮肤与角色预览");
-    ui.add_space(10.0);
+    ui.add_space(18.0);
     let width = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 260.0), Sense::hover());
-    app.skin.paint(ui, rect, "account-skin-model");
-    ui.add_space(12.0);
+    if width >= 640.0 {
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 330.0), Sense::hover());
+        let model_width = width * 0.36;
+        let model_rect = Rect::from_min_size(rect.min, Vec2::new(model_width, rect.height()));
+        ui.painter().rect_filled(model_rect, 12.0, theme::TOPBAR_BG);
+        app.skin
+            .paint(ui, model_rect.shrink(12.0), "account-skin-model");
+        let form_rect = Rect::from_min_max(
+            Pos2::new(model_rect.right() + 24.0, rect.top() + 8.0),
+            rect.max,
+        );
+        let mut form = ui.new_child(egui::UiBuilder::new().max_rect(form_rect));
+        form.set_clip_rect(form_rect.intersect(ui.clip_rect()));
+        form_controls(&mut form, app);
+    } else {
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 230.0), Sense::hover());
+        app.skin.paint(ui, rect, "account-skin-model");
+        ui.add_space(12.0);
+        form_controls(ui, app);
+    }
+}
+
+fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
+    let width = ui.available_width();
+    ui.label(
+        RichText::new(
+            app.accounts
+                .list
+                .current()
+                .map(|a| a.name.as_str())
+                .filter(|_| app.settings.online_mode)
+                .unwrap_or("本地角色预览"),
+        )
+        .size(17.0)
+        .color(theme::HEADING),
+    );
+    ui.add_space(10.0);
+    app::hint(ui, "选择 PNG 与手臂模型，先预览，再上传到当前正版账号。");
+    ui.add_space(18.0);
     let editable = !app.skin.pending && !app.accounts.pending;
     ui.add_enabled_ui(editable, |ui| {
         ui.add(
             egui::TextEdit::singleline(&mut app.skin.path)
+                .font(egui::FontId::proportional(13.0))
+                .frame(crate::pages::input_frame())
+                .margin(Vec2::new(12.0, 10.0))
                 .hint_text("PNG 皮肤路径，也可将文件拖入此页")
-                .desired_width(width),
+                .desired_width((width - 24.0).max(0.0)),
         );
         ui.add_space(10.0);
         ui.horizontal_wrapped(|ui| {
@@ -455,5 +491,55 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn skin_controls_and_model_fit_the_account_tab_without_network_actions() {
+        let (_root, mut app, ctx) = crate::service::tests::fixture();
+        app.accounts.list = Default::default();
+        app.account_tab = 1;
+        for width in [876.0, 1116.0] {
+            let size = egui::vec2(width, 510.0);
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                    ..Default::default()
+                },
+                |ui| crate::pages::account(ui, &mut app),
+            );
+            output.textures_delta.clear();
+            for label in ["预览本地皮肤", "上传到当前正版账号", "刷新账号皮肤"]
+            {
+                let rect = crate::service::tests::text_rect(&output, label);
+                assert!(
+                    rect.max.x < size.x && rect.max.y < size.y,
+                    "{label}: {rect:?}"
+                );
+            }
+            assert!(output.shapes.iter().any(|s|matches!(&s.shape,egui::Shape::Mesh(mesh) if mesh.texture_id!=egui::TextureId::default())));
+            assert!(!app.skin.pending && !app.accounts.pending);
+            assert!(app.service.task == crate::service::Task::Idle);
+            output.drop_without_applying_deltas();
+        }
+    }
+
+    #[test]
+    fn late_skin_results_cannot_replace_a_new_account_preview() {
+        let mut view = SkinView::new();
+        let mut accounts = AccountService::new();
+        accounts.list = Default::default();
+        view.generation = 2;
+        view.pending = true;
+        view.status = "current operation".into();
+        view.sender
+            .send((1, Ok((skins::default_skin(), None, "old account".into()))))
+            .unwrap();
+        view.sync(&mut accounts, false, &egui::Context::default());
+        assert!(view.pending);
+        assert_eq!(view.status, "current operation");
+        view.sender.send((2, Err("current result".into()))).unwrap();
+        view.sync(&mut accounts, false, &egui::Context::default());
+        assert!(!view.pending);
+        assert_eq!(view.status, "current result");
     }
 }

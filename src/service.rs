@@ -549,4 +549,4 @@ fn send(sender: &Sender<Event>, context: &egui::Context, event: Event) {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

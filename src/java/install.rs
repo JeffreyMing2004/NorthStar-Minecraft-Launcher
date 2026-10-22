@@ -344,7 +344,7 @@ fn install_at(
         if !runtime.compatible(major) {
             return Err("下载的 Java 版本或架构与请求不符。".into());
         }
-        fs::rename(&stage, &destination).map_err(|e| e.to_string())?;
+        publish(&stage, &destination, downloader)?;
         Ok(JavaRuntime {
             path: destination.join("bin/java.exe"),
             ..runtime
@@ -354,6 +354,25 @@ fn install_at(
         let _ = fs::remove_dir_all(&stage);
     }
     result
+}
+
+fn publish(stage: &Path, destination: &Path, downloader: &Downloader) -> Result<()> {
+    for attempt in 0..8 {
+        downloader.check_cancelled()?;
+        match fs::rename(stage, destination) {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if cfg!(windows)
+                    && matches!(error.raw_os_error(), Some(5 | 32 | 33))
+                    && attempt < 7 =>
+            {
+                // Windows may briefly hold a just-extracted executable open for inspection.
+                std::thread::sleep(Duration::from_millis((25u64 << attempt).min(250)));
+            }
+            Err(error) => return Err(format!("发布 Java 运行时失败：{error}")),
+        }
+    }
+    unreachable!()
 }
 
 #[cfg(test)]
