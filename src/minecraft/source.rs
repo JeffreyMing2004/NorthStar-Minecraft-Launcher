@@ -35,7 +35,7 @@ impl SourceKind {
     pub const ALL: [Self; 4] = [Self::Official, Self::Bmclapi, Self::Minguncle, Self::Custom];
     pub fn label(self) -> &'static str {
         match self {
-            Self::Official => "Mojang 官方源",
+            Self::Official => "官方源",
             Self::Bmclapi => "BMCLAPI（bangbang93）",
             Self::Minguncle => "mirror.minguncle.cn",
             Self::Custom => "自定义镜像",
@@ -69,21 +69,27 @@ impl Source {
         let Some(base) = base else {
             return Ok(vec![canonical.to_string()]);
         };
+        let mut path = canonical.path();
         let prefix = match canonical.host_str().unwrap_or("") {
             "piston-meta.mojang.com"
             | "launchermeta.mojang.com"
             | "piston-data.mojang.com"
             | "launcher.mojang.com" => "",
             "libraries.minecraft.net" => "/maven",
+            "maven.minecraftforge.net" | "maven.fabricmc.net" => "/maven",
+            "files.minecraftforge.net" if path.starts_with("/maven/") => {
+                path = path.strip_prefix("/maven").unwrap();
+                "/maven"
+            }
+            "maven.neoforged.net" if path.starts_with("/releases/") => {
+                path = path.strip_prefix("/releases").unwrap();
+                "/maven"
+            }
+            "meta.fabricmc.net" => "/fabric-meta",
             "resources.download.minecraft.net" => "/assets",
             _ => return Ok(vec![canonical.to_string()]),
         };
-        let mirror = format!(
-            "{}{}{}",
-            base.as_str().trim_end_matches('/'),
-            prefix,
-            canonical.path()
-        );
+        let mirror = format!("{}{}{}", base.as_str().trim_end_matches('/'), prefix, path);
         let mut result = vec![mirror];
         if self.fallback_to_official && result[0] != canonical.as_str() {
             result.push(canonical.to_string());
@@ -124,7 +130,17 @@ fn canonical_url(url: &Url, custom: Option<&Url>) -> Url {
     let (host, path) = if let Some(path) = path.strip_prefix("/assets/") {
         ("resources.download.minecraft.net", format!("/{path}"))
     } else if let Some(path) = path.strip_prefix("/maven/") {
-        ("libraries.minecraft.net", format!("/{path}"))
+        if path.starts_with("net/neoforged/") {
+            ("maven.neoforged.net", format!("/releases/{path}"))
+        } else if path.starts_with("net/fabricmc/") {
+            ("maven.fabricmc.net", format!("/{path}"))
+        } else if path.starts_with("net/minecraftforge/") || path.starts_with("de/oceanlabs/mcp/") {
+            ("maven.minecraftforge.net", format!("/{path}"))
+        } else {
+            ("libraries.minecraft.net", format!("/{path}"))
+        }
+    } else if let Some(path) = path.strip_prefix("/fabric-meta/") {
+        ("meta.fabricmc.net", format!("/{path}"))
     } else if path.starts_with("/v1/objects/") {
         ("piston-data.mojang.com", path.to_owned())
     } else if path.starts_with("/v1/packages/") || path.starts_with("/mc/game/") {

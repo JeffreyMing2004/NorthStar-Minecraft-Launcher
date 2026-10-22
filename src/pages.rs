@@ -672,6 +672,11 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
             vanilla_downloads(ui, app);
             return;
         }
+        if app.category == 1 {
+            ui.add_space(20.0);
+            loader_downloads(ui, app);
+            return;
+        }
         egui::ScrollArea::vertical()
             .id_salt("download-placeholder")
             .auto_shrink([false, false])
@@ -680,20 +685,6 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
                 app::heading(ui, CATEGORIES[app.category]);
                 ui.add_space(10.0);
                 app::body(ui, DESCRIPTIONS[app.category - 1]);
-                if app.category == 1 {
-                    ui.add_space(20.0);
-                    ui.horizontal(|ui| {
-                        for loader in ["Forge", "Fabric", "NeoForge"] {
-                            egui::Frame::NONE
-                                .stroke(Stroke::new(1.0, theme::CARD_BORDER))
-                                .corner_radius(7.0)
-                                .inner_margin(egui::Margin::symmetric(18, 9))
-                                .show(ui, |ui| {
-                                    ui.label(RichText::new(loader).size(13.0));
-                                });
-                        }
-                    });
-                }
                 empty_state(
                     ui,
                     "↓",
@@ -826,7 +817,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 );
                 app::hint(
                     ui,
-                    "例如 https://example.com；需支持 /mc/game、/v1、/maven 和 /assets 路径。",
+                    "例如 https://example.com；需支持 /mc/game、/v1、/maven、/assets，Fabric 还需 /fabric-meta。",
                 );
             }
             ui.add_space(10.0);
@@ -1221,6 +1212,165 @@ fn settings_input(ui: &mut Ui, label: &str, value: &mut String, width: f32) {
     ui.add_space(10.0);
 }
 
+fn loader_downloads(ui: &mut Ui, app: &mut NsclApp) {
+    use crate::minecraft::LoaderKind;
+    app.service.ensure_versions_loaded(&app.settings, ui.ctx());
+    if app.service.loader_minecraft.is_empty() {
+        let selected = app
+            .service
+            .instances
+            .iter()
+            .find(|instance| instance.id == app.service.selected)
+            .and_then(|instance| {
+                app.service
+                    .installed
+                    .iter()
+                    .find(|version| version.id == instance.version_id)
+            });
+        app.service.loader_minecraft = selected
+            .map(|version| {
+                version
+                    .loader
+                    .as_ref()
+                    .map(|loader| loader.minecraft.clone())
+                    .unwrap_or_else(|| version.id.clone())
+            })
+            .or_else(|| {
+                app.service
+                    .versions
+                    .iter()
+                    .find(|version| version.kind == "release")
+                    .map(|version| version.id.clone())
+            })
+            .unwrap_or_default();
+    }
+    ui.add_enabled_ui(!app.service.busy(), |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(12.0, 10.0);
+            for kind in LoaderKind::ALL {
+                let selected = app.service.loader_kind == kind;
+                if app::styled_button(
+                    ui,
+                    RichText::new(kind.label()).size(14.0).color(if selected {
+                        theme::ON_ACCENT
+                    } else {
+                        theme::BODY_TEXT
+                    }),
+                    &app::ButtonStyle {
+                        fill: if selected {
+                            theme::ACCENT
+                        } else {
+                            theme::SECONDARY_BG
+                        },
+                        min_size: Vec2::new(108.0, 38.0),
+                        ..Default::default()
+                    },
+                )
+                .clicked()
+                {
+                    app.service.loader_kind = kind;
+                }
+            }
+        });
+        ui.add_space(18.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(16.0, 10.0);
+            ui.label("Minecraft");
+            egui::ComboBox::from_id_salt("loader-minecraft")
+                .width(175.0)
+                .height(260.0)
+                .selected_text(if app.service.loader_minecraft.is_empty() {
+                    "选择版本"
+                } else {
+                    &app.service.loader_minecraft
+                })
+                .show_ui(ui, |ui| {
+                    for version in &app.service.versions {
+                        if version.kind == "release" || app.service.snapshots {
+                            ui.selectable_value(
+                                &mut app.service.loader_minecraft,
+                                version.id.clone(),
+                                &version.id,
+                            );
+                        }
+                    }
+                });
+            ui.checkbox(&mut app.service.snapshots, "显示快照");
+            if download_button(ui, "刷新列表", !app.service.loader_minecraft.is_empty()) {
+                app.service.load_loaders(&app.settings, ui.ctx());
+            }
+        });
+    });
+    ui.add_space(14.0);
+    app::hint(
+        ui,
+        "安装为独立实例，保留现有游戏和存档。Forge / NeoForge 的补丁处理需要对应版本的 Java。",
+    );
+    ui.add_space(16.0);
+    let response = ui.add(
+        egui::TextEdit::singleline(&mut app.service.loader_search)
+            .font(FontId::proportional(14.0))
+            .frame(input_frame())
+            .margin(Vec2::new(14.0, 10.0))
+            .hint_text("搜索加载器版本")
+            .desired_width(280.0),
+    );
+    input_focus(ui, &response);
+    ui.add_space(18.0);
+    app.service.ensure_loaders_loaded(&app.settings, ui.ctx());
+    let reserved = if app.service.busy() {
+        88.0
+    } else if !app.service.notice.is_empty() {
+        52.0
+    } else {
+        0.0
+    };
+    let height = (ui.available_height() - reserved).max(80.0);
+    let query = app.service.loader_search.trim().to_ascii_lowercase();
+    let versions: Vec<_> = app
+        .service
+        .loaders
+        .iter()
+        .filter(|version| version.version.to_ascii_lowercase().contains(&query))
+        .cloned()
+        .collect();
+    let mut install = None;
+    ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), height), egui::Layout::top_down(egui::Align::Min), |ui| {
+        ui.set_min_height(height);
+        if versions.is_empty() {
+            ui.add_space(((height - 50.0) * 0.5).max(0.0));
+            ui.vertical_centered(|ui| {
+                if app.service.busy() { ui.spinner(); app::body(ui, &app.service.progress.stage); }
+                else if !query.is_empty() { app::body(ui, "没有匹配的加载器版本，请调整搜索词。"); }
+                else { app::body(ui, "该 Minecraft 版本暂无可用加载器，或列表获取失败；可切换版本或刷新重试。"); }
+            });
+            return;
+        }
+        ui.spacing_mut().item_spacing.y = 10.0;
+        egui::ScrollArea::vertical().id_salt("loader-versions").max_height(height).min_scrolled_height(0.0).auto_shrink([false, false])
+            .show_rows(ui, 72.0, versions.len(), |ui, range| {
+                for index in range {
+                    let version = &versions[index];
+                    let installed = version.id().is_ok_and(|id| app.service.installed.iter().any(|entry| entry.id == id));
+                    // Reuse the spacious 72-pixel version row from vanilla downloads.
+                    let row = crate::minecraft::VersionEntry {
+                        id: format!("{} {}", version.kind.label(), version.version),
+                        kind: if version.stable { "稳定版" } else { "预览版" }.into(),
+                        release_time: version.minecraft.clone(),
+                        url: String::new(), sha1: String::new(),
+                    };
+                    if ui.push_id(&row.id, |ui| version_row(ui, &row, installed, !app.service.busy() && app.service.game.is_none())).inner {
+                        install = Some(version.clone());
+                    }
+                }
+            });
+    });
+    if let Some(version) = install {
+        app.service.install_modded(version, &app.settings, ui.ctx());
+    }
+    task_status(ui, app);
+}
+
 fn vanilla_downloads(ui: &mut Ui, app: &mut NsclApp) {
     app.service.ensure_versions_loaded(&app.settings, ui.ctx());
     let search_width = (ui.available_width() * 0.42).clamp(240.0, 400.0);
@@ -1448,7 +1598,9 @@ fn task_status(ui: &mut Ui, app: &mut NsclApp) {
             );
             if matches!(
                 app.service.task,
-                crate::service::Task::Install | crate::service::Task::Manifest
+                crate::service::Task::Install
+                    | crate::service::Task::Manifest
+                    | crate::service::Task::LoaderVersions
             ) && download_button(ui, "取消任务", true)
             {
                 app.service.cancel();

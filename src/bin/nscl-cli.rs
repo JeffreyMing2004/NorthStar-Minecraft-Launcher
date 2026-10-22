@@ -26,8 +26,16 @@ fn run() -> Result<(), String> {
     let mut id = None;
     let (mut settings, _) = store::load();
     let mut limit = 10usize;
+    let mut loader = None;
+    let mut loader_version = None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
+            "--loader" => {
+                loader = Some(minecraft::LoaderKind::parse(
+                    &arguments.next().ok_or("缺少加载器名称")?,
+                )?)
+            }
+            "--loader-version" => loader_version = Some(arguments.next().ok_or("缺少加载器版本")?),
             "--source" => {
                 settings.source.kind = match arguments.next().ok_or("缺少下载源")?.as_str() {
                     "official" => SourceKind::Official,
@@ -63,6 +71,9 @@ fn run() -> Result<(), String> {
             value if !value.starts_with('-') && id.is_none() => id = Some(value.to_owned()),
             _ => return Err(format!("未知参数：{argument}")),
         }
+    }
+    if loader_version.is_some() && (loader.is_none() || command != "install") {
+        return Err("--loader-version 需用于 install，并同时指定 --loader。".into());
     }
     let root = store::game_directory(&settings);
     if command == "java" {
@@ -187,7 +198,7 @@ fn run() -> Result<(), String> {
         }
         return Ok(());
     }
-    if command != "list" && command != "install" {
+    if !matches!(command.as_str(), "list" | "install" | "loaders") {
         return Err("未知命令，使用 --help 查看帮助。".into());
     }
     let downloader = Downloader::new(
@@ -203,6 +214,25 @@ fn run() -> Result<(), String> {
             );
         }),
     )?;
+    if command == "loaders" {
+        let minecraft = id.as_deref().ok_or("请指定 Minecraft 版本")?;
+        let kind = loader.ok_or("请通过 --loader forge|fabric|neoforge 指定加载器")?;
+        for version in minecraft::loader_versions(minecraft, kind, &downloader)?
+            .into_iter()
+            .take(limit)
+        {
+            println!(
+                "{}\t{}",
+                version.label(),
+                if version.stable {
+                    "稳定版"
+                } else {
+                    "预览版"
+                }
+            );
+        }
+        return Ok(());
+    }
     let manifest = minecraft::manifest(&downloader)?;
     if command == "list" {
         for version in manifest
@@ -220,7 +250,24 @@ fn run() -> Result<(), String> {
             .iter()
             .find(|entry| entry.id == id)
             .ok_or("版本列表中没有该版本")?;
-        let installed = minecraft::install(&root, entry, &downloader)?;
+        let installed = if let Some(kind) = loader {
+            let versions = minecraft::loader_versions(&id, kind, &downloader)?;
+            let selection = match loader_version {
+                Some(version) => versions
+                    .into_iter()
+                    .find(|item| item.version == version)
+                    .ok_or("该加载器版本不支持所选 Minecraft 版本")?,
+                None => versions
+                    .iter()
+                    .find(|item| item.stable)
+                    .or_else(|| versions.first())
+                    .cloned()
+                    .ok_or("没有兼容的加载器版本")?,
+            };
+            minecraft::install_loader(&root, entry, &selection, &settings.java_path, &downloader)?
+        } else {
+            minecraft::install(&root, entry, &downloader)?
+        };
         println!(
             "已安装 {}，需要 Java {}",
             installed.id, installed.java_major
@@ -231,6 +278,6 @@ fn run() -> Result<(), String> {
 
 fn help() {
     println!(
-        "NSCL 客户端工具\n命令：list [搜索词]、install <版本>、installed、instances、java、login（浏览器）、login-device（设备代码）、inspect <实例或版本>、launch <实例或版本>\n参数：--source official|bmclapi|minguncle|custom、--mirror URL、--no-fallback、--game-dir PATH、--java PATH、--offline、--username NAME、--demo、--limit N\nCLI 使用已选择的身份，--offline / --username 明确切换为离线测试。inspect 会隐藏正版令牌。"
+        "NSCL 客户端工具\n命令：list [搜索词]、loaders <MC版本> --loader forge|fabric|neoforge、install <版本> [--loader forge|fabric|neoforge] [--loader-version 版本]、installed、instances、java、login（浏览器）、login-device（设备代码）、inspect <实例或版本>、launch <实例或版本>\n参数：--source official|bmclapi|minguncle|custom、--mirror URL、--no-fallback、--game-dir PATH、--java PATH、--offline、--username NAME、--demo、--limit N\nCLI 使用已选择的身份，--offline / --username 明确切换为离线测试。inspect 会隐藏正版令牌。"
     );
 }

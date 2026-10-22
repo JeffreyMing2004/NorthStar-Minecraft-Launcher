@@ -233,6 +233,8 @@ mod tests {
                 java_major: 17,
                 platform: "test".into(),
                 metadata_sha1: "test".into(),
+                loader: None,
+                extra_files: Vec::new(),
             },
         )
         .unwrap();

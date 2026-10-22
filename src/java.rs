@@ -81,6 +81,19 @@ pub fn probe(path: &Path) -> Result<JavaRuntime> {
         return Err("Java 路径不存在，请选择 java/javaw 可执行文件或 Java 安装目录。".into());
     }
     let path = std::fs::canonicalize(path).map_err(|_| "无法访问 Java 路径。")?;
+    // Java and third-party filesystem providers can mis-handle the Win32 extended
+    // prefix in argv[0]/java.home. Keep the executable path in normal absolute form.
+    #[cfg(windows)]
+    let path = {
+        let text = path.to_string_lossy();
+        if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+            PathBuf::from(format!(r"\\{rest}"))
+        } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+            PathBuf::from(rest)
+        } else {
+            path
+        }
+    };
     let probe_path = if path
         .file_name()
         .is_some_and(|n| n.eq_ignore_ascii_case("javaw.exe"))

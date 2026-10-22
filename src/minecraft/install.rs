@@ -19,6 +19,10 @@ pub struct InstalledVersion {
     pub java_major: u32,
     pub platform: String,
     pub metadata_sha1: String,
+    #[serde(default)]
+    pub loader: Option<super::LoaderVersion>,
+    #[serde(default)]
+    pub extra_files: Vec<Artifact>,
 }
 
 #[derive(Clone, Debug)]
@@ -191,6 +195,8 @@ pub fn install(
         java_major: version.java_major(),
         platform: platform.key(),
         metadata_sha1: entry.sha1.clone(),
+        loader: None,
+        extra_files: Vec::new(),
     };
     // The completion marker is written last. An interrupted install is never shown as playable.
     write_json(&version_dir.join("nscl-instance.json"), &installed)?;

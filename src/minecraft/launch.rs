@@ -1,6 +1,6 @@
 use super::{
     Result,
-    download::{validate_id, verified},
+    download::{safe_join, validate_id, verified},
     install::{
         InstalledVersion, Platform, extract_natives, hidden_command, materialize_assets, plan,
         read_json, rules_allow,
@@ -111,7 +111,19 @@ pub fn prepare_instance_launch(
     }
     let version: Version = read_json(&metadata)?;
     if version.id != id || version.inherits_from.is_some() {
-        return Err("只支持已完整安装的原版客户端。".into());
+        return Err("该版本尚未完成安装或版本合并，请重新安装。".into());
+    }
+    for artifact in &installed.extra_files {
+        let path = safe_join(
+            &root.join("libraries"),
+            artifact.path.as_deref().ok_or("安装记录缺少库文件路径。")?,
+        )?;
+        if !verified(&path, &artifact.sha1, artifact.size)? {
+            return Err(format!(
+                "加载器生成文件缺失或损坏：{}。请重新安装/修复加载器。",
+                path.display()
+            ));
+        }
     }
     validate_id(&version.asset_index.id)?;
     let index_path = root
@@ -179,7 +191,20 @@ pub fn absolute_root(root: &Path) -> Result<PathBuf> {
 pub fn launch(plan: &LaunchPlan, on_started: impl FnOnce(u32, &Path)) -> Result<i32> {
     let log = File::create(&plan.log_path).map_err(|e| format!("创建游戏日志失败：{e}"))?;
     let stderr = log.try_clone().map_err(|e| e.to_string())?;
-    let mut child = hidden_command(&plan.java)
+    // Prefer the runtime's Windows GUI launcher for games, and retain the console
+    // executable for installer tools and runtimes without javaw.
+    #[cfg(windows)]
+    let mut command = {
+        let javaw = plan.java.with_file_name("javaw.exe");
+        if javaw.is_file() {
+            std::process::Command::new(javaw)
+        } else {
+            hidden_command(&plan.java)
+        }
+    };
+    #[cfg(not(windows))]
+    let mut command = hidden_command(&plan.java);
+    let mut child = command
         .args(&plan.arguments)
         .current_dir(&plan.game_directory)
         .stdin(Stdio::null())

@@ -193,6 +193,22 @@ fn mirror_routing_and_official_fallback() {
             "https://piston-data.mojang.com/v1/objects/hash/client.jar",
             "/v1/objects/hash/client.jar",
         ),
+        (
+            "https://meta.fabricmc.net/v2/versions/loader/1.20.1",
+            "/fabric-meta/v2/versions/loader/1.20.1",
+        ),
+        (
+            "https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar",
+            "/maven/net/fabricmc/fabric-loader/0.20.1/fabric-loader-0.20.1.jar",
+        ),
+        (
+            "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml",
+            "/maven/net/minecraftforge/forge/maven-metadata.xml",
+        ),
+        (
+            "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml",
+            "/maven/net/neoforged/neoforge/maven-metadata.xml",
+        ),
     ] {
         let candidates = source.candidates(input).unwrap();
         assert_eq!(
@@ -620,4 +636,242 @@ fn game_process_preserves_working_directory_and_logs() {
     let log = fs::read_to_string(log_path).unwrap();
     assert!(log.contains("test game stdout"));
     assert!(log.contains("test game stderr"));
+}
+
+#[test]
+fn fabric_installs_merges_libraries_and_keeps_vanilla_and_worlds() {
+    let fixture = Fixture::new();
+    let bytes = b"new fabric library";
+    let selection = LoaderVersion {
+        kind: LoaderKind::Fabric,
+        minecraft: fixture.entry.id.clone(),
+        version: "0.20.1".into(),
+        stable: true,
+    };
+    let profile = json!({
+        "id":"fabric-native-id", "inheritsFrom":fixture.entry.id,
+        "mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient",
+        "arguments":{"game":["--loader-test","value with spaces"],"jvm":["-Dfabric.test=true"]},
+        "libraries":[{"name":"test:lib:2","url":"https://maven.fabricmc.net/","sha1":hash(bytes),"size":bytes.len()}]
+    });
+    fixture.server.put(
+        "/fabric-meta/v2/versions/loader/test-1/0.20.1/profile/json",
+        serde_json::to_vec(&profile).unwrap(),
+    );
+    fixture.server.put(
+        "/fabric-meta/v2/versions/loader/test-1",
+        serde_json::to_vec(&json!([{"loader":{"version":"0.20.1","stable":true}}])).unwrap(),
+    );
+    fixture
+        .server
+        .put("/maven/test/lib/2/lib-2.jar", bytes.to_vec());
+    let downloader = fixture.server.downloader();
+    assert_eq!(
+        loader_versions("test-1", LoaderKind::Fabric, &downloader).unwrap()[0],
+        selection
+    );
+    let installed =
+        install_loader(&fixture.root, &fixture.entry, &selection, "", &downloader).unwrap();
+    assert_eq!(installed.loader.as_ref(), Some(&selection));
+    assert_eq!(installed_versions(&fixture.root).len(), 2);
+    let metadata = fixture
+        .root
+        .join("versions")
+        .join(&installed.id)
+        .join(format!("{}.json", installed.id));
+    let version: Version = read_json(&metadata).unwrap();
+    assert!(version.inherits_from.is_none());
+    assert!(
+        version
+            .libraries
+            .iter()
+            .any(|library| library.name == "test:lib:2")
+    );
+    assert!(
+        !version
+            .libraries
+            .iter()
+            .any(|library| library.name == "test:lib:1")
+    );
+    assert!(fixture.root.join("libraries/test/lib.jar").is_file());
+    let platform = Platform::current();
+    let files = plan(&fixture.root, &version, &fixture.index, &platform).unwrap();
+    let args = launch_arguments(
+        &fixture.root,
+        &version,
+        &fixture.index,
+        &files.classpath,
+        &fixture.root.join("natives"),
+        &platform,
+        &crate::store::Settings::default(),
+    )
+    .unwrap();
+    for expected in [
+        "net.fabricmc.loader.impl.launch.knot.KnotClient",
+        "--loader-test",
+        "value with spaces",
+        "--username",
+        "-Dfabric.test=true",
+    ] {
+        assert!(args.iter().any(|arg| arg == expected));
+    }
+    let instance = crate::instances::list(&fixture.root)
+        .into_iter()
+        .find(|instance| instance.version_id == installed.id)
+        .unwrap();
+    let world = instance
+        .directory(&fixture.root)
+        .unwrap()
+        .join("saves/test-world");
+    fs::create_dir_all(&world).unwrap();
+    fs::write(world.join("level.dat"), b"keep my world").unwrap();
+    install_loader(&fixture.root, &fixture.entry, &selection, "", &downloader).unwrap();
+    assert_eq!(fs::read(world.join("level.dat")).unwrap(), b"keep my world");
+    let mut wrong_parent = profile;
+    wrong_parent["inheritsFrom"] = "other-game".into();
+    fixture.server.put(
+        "/fabric-meta/v2/versions/loader/test-1/0.20.1/profile/json",
+        serde_json::to_vec(&wrong_parent).unwrap(),
+    );
+    assert!(install_loader(&fixture.root, &fixture.entry, &selection, "", &downloader).is_err());
+    assert!(!metadata.with_file_name("nscl-instance.json").exists());
+    assert_eq!(fs::read(world.join("level.dat")).unwrap(), b"keep my world");
+}
+
+fn loader_installer(entries: &[(&str, Vec<u8>)]) -> Vec<u8> {
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for (name, bytes) in entries {
+        writer
+            .start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(bytes).unwrap();
+    }
+    writer.finish().unwrap().into_inner()
+}
+
+#[test]
+fn forge_and_neoforge_install_embedded_libraries_and_check_them_before_launch() {
+    for (kind, version, path) in [
+        (
+            LoaderKind::Forge,
+            "47.4.28",
+            "/maven/net/minecraftforge/forge/test-1-47.4.28/forge-test-1-47.4.28-installer.jar",
+        ),
+        (
+            LoaderKind::NeoForge,
+            "21.1.264",
+            "/maven/net/neoforged/neoforge/21.1.264/neoforge-21.1.264-installer.jar",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        let embedded = b"embedded universal jar";
+        let relative = "net/test/universal/1/universal-1.jar";
+        let profile = json!({"minecraft":fixture.entry.id,"json":"/version.json","processors":[{"sides":["server"],"jar":"bad:server:1","args":["--never-run"]}]});
+        let child = json!({"id":"native-profile","inheritsFrom":fixture.entry.id,"mainClass":"net.test.LoaderMain","arguments":{"game":["--launchTarget","testclient"]},"libraries":[{"name":"net.test:universal:1","downloads":{"artifact":{"url":"","sha1":hash(embedded),"path":relative,"size":embedded.len()}}}]});
+        let installer = loader_installer(&[
+            (
+                "install_profile.json",
+                serde_json::to_vec(&profile).unwrap(),
+            ),
+            ("version.json", serde_json::to_vec(&child).unwrap()),
+            (&format!("maven/{relative}"), embedded.to_vec()),
+        ]);
+        fixture.server.put(path, installer.clone());
+        fixture
+            .server
+            .put(&format!("{path}.sha1"), hash(&installer).into_bytes());
+        let selection = LoaderVersion {
+            kind,
+            minecraft: fixture.entry.id.clone(),
+            version: version.into(),
+            stable: true,
+        };
+        // Server-only processors must not require Java or execute their payload.
+        let installed = install_loader(
+            &fixture.root,
+            &fixture.entry,
+            &selection,
+            "missing-java.exe",
+            &fixture.server.downloader(),
+        )
+        .unwrap();
+        assert_eq!(installed.extra_files.len(), 1);
+        assert_eq!(
+            fs::read(fixture.root.join("libraries").join(relative)).unwrap(),
+            embedded
+        );
+        let marker = fixture
+            .root
+            .join("versions")
+            .join(&installed.id)
+            .join("nscl-instance.json");
+        assert!(marker.is_file());
+        fs::write(fixture.root.join("libraries").join(relative), b"damaged").unwrap();
+        let error = prepare_launch(
+            &fixture.root,
+            &installed.id,
+            &crate::store::Settings::default(),
+        )
+        .unwrap_err();
+        assert!(error.contains("加载器生成文件缺失或损坏"));
+        install_loader(
+            &fixture.root,
+            &fixture.entry,
+            &selection,
+            "missing-java.exe",
+            &fixture.server.downloader(),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read(fixture.root.join("libraries").join(relative)).unwrap(),
+            embedded
+        );
+    }
+}
+
+#[test]
+fn bad_installer_checksum_zip_paths_and_cancellation_never_publish_loader() {
+    for failure in ["checksum", "zip-slip", "cancel"] {
+        let fixture = Fixture::new();
+        let profile = json!({"minecraft":fixture.entry.id,"json":"/version.json"});
+        let child = json!({"id":"native-profile","inheritsFrom":fixture.entry.id,"mainClass":"net.test.LoaderMain","libraries":[]});
+        let installer = loader_installer(&[
+            (
+                "install_profile.json",
+                serde_json::to_vec(&profile).unwrap(),
+            ),
+            ("version.json", serde_json::to_vec(&child).unwrap()),
+            ("maven/../escaped.jar", b"must never escape".to_vec()),
+        ]);
+        let path =
+            "/maven/net/minecraftforge/forge/test-1-47.4.28/forge-test-1-47.4.28-installer.jar";
+        fixture.server.put(path, installer.clone());
+        fixture.server.put(
+            &format!("{path}.sha1"),
+            if failure == "checksum" {
+                hash(b"wrong installer").into_bytes()
+            } else {
+                hash(&installer).into_bytes()
+            },
+        );
+        let selection = LoaderVersion {
+            kind: LoaderKind::Forge,
+            minecraft: fixture.entry.id.clone(),
+            version: "47.4.28".into(),
+            stable: true,
+        };
+        let mut downloader = fixture.server.downloader();
+        if failure == "cancel" {
+            downloader.cancel = Arc::new(AtomicBool::new(true));
+        }
+        let error =
+            install_loader(&fixture.root, &fixture.entry, &selection, "", &downloader).unwrap_err();
+        assert!(!error.is_empty());
+        assert!(
+            !installed_versions(&fixture.root)
+                .iter()
+                .any(|item| item.loader.is_some())
+        );
+        assert!(!fixture.root.join("escaped.jar").exists());
+    }
 }

@@ -106,6 +106,21 @@ impl Downloader {
     }
 
     pub fn json<T: DeserializeOwned>(&self, url: &str) -> Result<T> {
+        self.fetch(url, |bytes| {
+            serde_json::from_slice(bytes).map_err(|e| format!("元数据不是有效 JSON：{e}"))
+        })
+    }
+
+    pub(super) fn checksum(&self, url: &str) -> Result<String> {
+        self.fetch(url, |bytes| {
+            let text = std::str::from_utf8(bytes).map_err(|_| "校验文件编码无效。")?;
+            let hash = text.split_whitespace().next().unwrap_or("");
+            validate_hash(hash)?;
+            Ok(hash.to_ascii_lowercase())
+        })
+    }
+
+    pub(super) fn fetch<T>(&self, url: &str, parse: impl Fn(&[u8]) -> Result<T>) -> Result<T> {
         let mut errors = Vec::new();
         for candidate in self.source.candidates(url)? {
             self.check_cancelled()?;
@@ -124,7 +139,7 @@ impl Downloader {
                 if bytes.len() > 16 * 1024 * 1024 {
                     return Err("版本列表过大。".into());
                 }
-                serde_json::from_slice(&bytes).map_err(|e| format!("元数据不是有效 JSON：{e}"))
+                parse(&bytes)
             })();
             match result {
                 Ok(data) => return Ok(data),
@@ -135,6 +150,18 @@ impl Downloader {
     }
 
     pub fn download(&self, job: &Job) -> Result<()> {
+        if job.url.is_empty() {
+            validate_hash(&job.sha1)?;
+            self.check_cancelled()?;
+            return if verified(&job.path, &job.sha1, job.size)? {
+                Ok(())
+            } else {
+                Err(format!(
+                    "安装生成的文件缺失或损坏，请重新安装加载器：{}",
+                    job.path.display()
+                ))
+            };
+        }
         self.download_from(job, &self.source.candidates(&job.url)?)
     }
 

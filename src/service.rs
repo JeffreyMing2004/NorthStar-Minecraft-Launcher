@@ -1,5 +1,8 @@
 use crate::{
-    minecraft::{self, Downloader, InstalledVersion, Progress, Reporter, VersionEntry},
+    minecraft::{
+        self, Downloader, InstalledVersion, LoaderKind, LoaderVersion, Progress, Reporter,
+        VersionEntry,
+    },
     store::{self, Settings},
 };
 use std::{
@@ -15,6 +18,7 @@ use std::{
 pub enum Task {
     Idle,
     Manifest,
+    LoaderVersions,
     Install,
     Launch,
 }
@@ -22,6 +26,7 @@ pub enum Task {
 enum Event {
     Progress(Progress),
     Versions(Vec<VersionEntry>),
+    Loaders(Vec<LoaderVersion>),
     Installed(InstalledVersion),
     Failed(String),
     GameStarted(u32, PathBuf),
@@ -37,6 +42,10 @@ pub struct GameService {
     pub selected: String,
     pub search: String,
     pub snapshots: bool,
+    pub loader_kind: LoaderKind,
+    pub loader_minecraft: String,
+    pub loader_search: String,
+    pub loaders: Vec<LoaderVersion>,
     pub progress: Progress,
     pub error: Option<String>,
     pub notice: String,
@@ -49,6 +58,7 @@ pub struct GameService {
     pub java_busy: bool,
     pub java_status: String,
     versions_requested: bool,
+    loaders_requested: Option<(String, LoaderKind)>,
     cancel: Arc<AtomicBool>,
     sender: Sender<Event>,
     receiver: Receiver<Event>,
@@ -71,6 +81,10 @@ impl GameService {
             selected,
             search: String::new(),
             snapshots: false,
+            loader_kind: LoaderKind::Forge,
+            loader_minecraft: String::new(),
+            loader_search: String::new(),
+            loaders: Vec::new(),
             progress: Progress::default(),
             error: None,
             notice: String::new(),
@@ -83,6 +97,7 @@ impl GameService {
             java_busy: false,
             java_status: String::new(),
             versions_requested: false,
+            loaders_requested: None,
             cancel: Arc::new(AtomicBool::new(false)),
             sender,
             receiver,
@@ -129,10 +144,19 @@ impl GameService {
                     self.task = Task::Idle;
                     self.notice.clear();
                 }
+                Event::Loaders(versions) => {
+                    self.loaders = versions;
+                    self.task = Task::Idle;
+                    self.notice.clear();
+                }
                 Event::Installed(version) => {
                     self.selected = version.id.clone();
                     self.refresh(settings);
-                    if !self.instances.iter().any(|i| i.version_id == version.id) {
+                    if let Some(instance) =
+                        self.instances.iter().find(|i| i.version_id == version.id)
+                    {
+                        self.selected = instance.id.clone();
+                    } else {
                         match crate::instances::create(
                             &store::game_directory(settings),
                             &version.id,
@@ -146,7 +170,14 @@ impl GameService {
                         }
                     }
                     self.task = Task::Idle;
-                    self.notice = format!("Minecraft {} 安装完成，可在开始页启动。", version.id);
+                    self.notice = format!(
+                        "{} 安装完成，可在开始页启动。",
+                        version
+                            .loader
+                            .as_ref()
+                            .map(LoaderVersion::label)
+                            .unwrap_or_else(|| format!("Minecraft {}", version.id))
+                    );
                 }
                 Event::Failed(error) => {
                     self.task = Task::Idle;
@@ -197,6 +228,8 @@ impl GameService {
     pub fn invalidate_versions(&mut self) {
         self.versions.clear();
         self.versions_requested = false;
+        self.loaders.clear();
+        self.loaders_requested = None;
     }
 
     pub fn ensure_versions_loaded(&mut self, settings: &Settings, ctx: &egui::Context) {
@@ -232,6 +265,71 @@ impl GameService {
     }
 
     pub fn install(&mut self, entry: VersionEntry, settings: &Settings, ctx: &egui::Context) {
+        self.start_install(entry, None, settings, ctx);
+    }
+
+    pub fn ensure_loaders_loaded(&mut self, settings: &Settings, ctx: &egui::Context) {
+        if !self.loader_minecraft.is_empty()
+            && self.loaders_requested.as_ref()
+                != Some(&(self.loader_minecraft.clone(), self.loader_kind))
+        {
+            self.load_loaders(settings, ctx);
+        }
+    }
+
+    pub fn load_loaders(&mut self, settings: &Settings, ctx: &egui::Context) {
+        if self.busy() || self.loader_minecraft.is_empty() {
+            return;
+        }
+        let (minecraft, kind) = (self.loader_minecraft.clone(), self.loader_kind);
+        self.loaders_requested = Some((minecraft.clone(), kind));
+        self.loaders.clear();
+        self.begin(Task::LoaderVersions);
+        let (source, cancel, sender, context) = (
+            settings.source.clone(),
+            self.cancel.clone(),
+            self.sender.clone(),
+            ctx.clone(),
+        );
+        std::thread::spawn(move || {
+            let result = Downloader::new(source, cancel, reporter(&sender, &context))
+                .and_then(|downloader| minecraft::loader_versions(&minecraft, kind, &downloader));
+            send(
+                &sender,
+                &context,
+                match result {
+                    Ok(versions) => Event::Loaders(versions),
+                    Err(error) => Event::Failed(error),
+                },
+            );
+        });
+    }
+
+    pub fn install_modded(
+        &mut self,
+        selection: LoaderVersion,
+        settings: &Settings,
+        ctx: &egui::Context,
+    ) {
+        let Some(entry) = self
+            .versions
+            .iter()
+            .find(|entry| entry.id == selection.minecraft)
+            .cloned()
+        else {
+            self.error = Some("Minecraft 版本不存在，请刷新版本列表。".into());
+            return;
+        };
+        self.start_install(entry, Some(selection), settings, ctx);
+    }
+
+    fn start_install(
+        &mut self,
+        entry: VersionEntry,
+        loader: Option<LoaderVersion>,
+        settings: &Settings,
+        ctx: &egui::Context,
+    ) {
         if self.busy() {
             return;
         }
@@ -242,13 +340,19 @@ impl GameService {
         self.begin(Task::Install);
         let root = store::game_directory(settings);
         let source = settings.source.clone();
+        let java = settings.java_path.clone();
         let cancel = self.cancel.clone();
         let sender = self.sender.clone();
         let context = ctx.clone();
         std::thread::spawn(move || {
             let reporter = reporter(&sender, &context);
-            let result = Downloader::new(source, cancel, reporter)
-                .and_then(|downloader| minecraft::install(&root, &entry, &downloader));
+            let result =
+                Downloader::new(source, cancel, reporter).and_then(|downloader| match loader {
+                    Some(loader) => {
+                        minecraft::install_loader(&root, &entry, &loader, &java, &downloader)
+                    }
+                    None => minecraft::install(&root, &entry, &downloader),
+                });
             send(
                 &sender,
                 &context,
