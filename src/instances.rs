@@ -10,7 +10,7 @@ use std::{
 
 const CONFIG: &str = "nscl-instance.json";
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Instance {
     pub id: String,

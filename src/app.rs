@@ -190,7 +190,7 @@ impl eframe::App for NsclApp {
                             } else if self.service.game.is_some() {
                                 "游戏正在运行"
                             } else {
-                                "原版客户端 · 准备就绪"
+                                "启动器 · 准备就绪"
                             })
                             .size(10.0)
                             .color(theme::FOOTER_TEXT),
@@ -593,23 +593,6 @@ pub fn primary_button(ui: &mut Ui, label: &str) -> bool {
             ..Default::default()
         },
     )
-    .clicked()
-}
-
-pub fn secondary_button(ui: &mut Ui, label: &str, enabled: bool) -> bool {
-    ui.add_enabled_ui(enabled, |ui| {
-        styled_button(
-            ui,
-            RichText::new(label).size(13.0).color(theme::BODY_TEXT),
-            &ButtonStyle {
-                fill: theme::SECONDARY_BG,
-                stroke: Some(egui::Stroke::new(1.0, theme::SECONDARY_BORDER)),
-                min_size: Vec2::new(150.0, 42.0),
-                ..Default::default()
-            },
-        )
-    })
-    .inner
     .clicked()
 }
 

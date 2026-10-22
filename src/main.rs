@@ -2,11 +2,12 @@
 
 mod account_service;
 mod app;
+mod content_page;
 mod download_flow;
 mod pages;
 mod service;
 mod theme;
-use nscl::{accounts, instances, java, minecraft, store};
+use nscl::{accounts, content, instances, java, minecraft, store};
 
 use app::NsclApp;
 

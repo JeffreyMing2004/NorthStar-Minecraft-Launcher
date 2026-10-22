@@ -85,6 +85,10 @@ impl Downloader {
         (self.reporter)(event);
     }
 
+    pub(crate) fn complete(&self, stage: &str) {
+        self.update(stage, 0, true);
+    }
+
     fn update(&self, stage: &str, bytes: u64, complete: bool) {
         let event = {
             let mut state = self.progress.lock().unwrap();

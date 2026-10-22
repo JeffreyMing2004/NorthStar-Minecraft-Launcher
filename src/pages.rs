@@ -119,6 +119,8 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         ) {
             if app.service.installed.is_empty() {
                 app.page = Page::Downloads;
+                app.category = 0;
+                app.download = Default::default();
             } else {
                 app.instance_manager = true;
             }
@@ -617,7 +619,6 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
 
 pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
     const CATEGORIES: [&str; 3] = ["Minecraft", "整合包", "Mod"];
-    const DESCRIPTIONS: [&str; 2] = ["发现组合好的模组与全新玩法。", "为现有实例添加更多可能。"];
     let width = ui.available_width();
     let height = ui.available_height();
     theme::card(24).show(ui, |ui| {
@@ -628,42 +629,48 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
             installation_options(ui, app);
             return;
         }
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 8.0;
-            for (index, item) in CATEGORIES.iter().enumerate() {
-                let selected = app.category == index;
-                if app::styled_button(
-                    ui,
-                    RichText::new(*item).size(14.0).color(if selected {
-                        theme::ON_ACCENT
-                    } else {
-                        theme::MUTED
-                    }),
-                    &app::ButtonStyle {
-                        fill: if selected {
-                            theme::ACCENT
+        if app.category != 0 && app.service.content.plan.is_some() {
+            crate::content_page::plan(ui, app);
+            return;
+        }
+        ui.add_enabled_ui(!app.service.busy(), |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                for (index, item) in CATEGORIES.iter().enumerate() {
+                    let selected = app.category == index;
+                    if app::styled_button(
+                        ui,
+                        RichText::new(*item).size(14.0).color(if selected {
+                            theme::ON_ACCENT
                         } else {
-                            Color32::TRANSPARENT
+                            theme::MUTED
+                        }),
+                        &app::ButtonStyle {
+                            fill: if selected {
+                                theme::ACCENT
+                            } else {
+                                Color32::TRANSPARENT
+                            },
+                            hover: if selected {
+                                theme::ACCENT_HOVER
+                            } else {
+                                theme::HOVER
+                            },
+                            active: if selected {
+                                theme::ACCENT_HOVER
+                            } else {
+                                theme::HOVER
+                            },
+                            min_size: Vec2::new(68.0, 38.0),
+                            ..Default::default()
                         },
-                        hover: if selected {
-                            theme::ACCENT_HOVER
-                        } else {
-                            theme::HOVER
-                        },
-                        active: if selected {
-                            theme::ACCENT_HOVER
-                        } else {
-                            theme::HOVER
-                        },
-                        min_size: Vec2::new(68.0, 38.0),
-                        ..Default::default()
-                    },
-                )
-                .clicked()
-                {
-                    app.category = index;
+                    )
+                    .clicked()
+                    {
+                        app.category = index;
+                    }
                 }
-            }
+            });
         });
         ui.add_space(18.0);
         ui.separator();
@@ -672,23 +679,8 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
             minecraft_downloads(ui, app);
             return;
         }
-        egui::ScrollArea::vertical()
-            .id_salt("download-placeholder")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.add_space(28.0);
-                app::heading(ui, CATEGORIES[app.category]);
-                ui.add_space(10.0);
-                app::body(ui, DESCRIPTIONS[app.category - 1]);
-                empty_state(
-                    ui,
-                    "↓",
-                    &format!("{}下载服务尚未接入", CATEGORIES[app.category]),
-                    "接入资源服务后，这里将显示可用版本和安装进度。",
-                    None,
-                );
-                ui.vertical_centered(|ui| app::badge_muted(ui, "暂无下载任务"));
-            });
+        ui.add_space(20.0);
+        crate::content_page::show(ui, app);
     });
 }
 
@@ -702,7 +694,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
         ui.add_space(12.0);
         app::heading(ui, "为你的冒险做好准备");
         ui.add_space(10.0);
-        app::body(ui, "配置原版游戏下载、独立实例目录及 Java 启动环境。");
+        app::body(ui, "配置游戏下载源、独立实例目录及 Java 启动环境。");
         ui.add_space(30.0);
         ui.scope(|ui| {
             let width = ui.available_width().min(580.0);
@@ -899,6 +891,8 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                     }
                     if ui.button("安装其他版本").clicked() {
                         app.page = Page::Downloads;
+                        app.category = 0;
+                        app.download = Default::default();
                         app.instance_manager = false;
                     }
                 });
@@ -1451,7 +1445,7 @@ fn installation_footer(ui: &mut Ui, app: &mut NsclApp) {
     }
 }
 
-fn download_status_height(app: &NsclApp) -> f32 {
+pub(crate) fn download_status_height(app: &NsclApp) -> f32 {
     if app.service.busy() {
         88.0
     } else if !app.service.notice.is_empty() {
@@ -1640,7 +1634,7 @@ fn version_row(
     download_button(&mut action, action_label, enabled)
 }
 
-fn download_button(ui: &mut Ui, label: &str, enabled: bool) -> bool {
+pub(crate) fn download_button(ui: &mut Ui, label: &str, enabled: bool) -> bool {
     ui.add_enabled_ui(enabled, |ui| {
         app::styled_button(
             ui,
@@ -1658,7 +1652,7 @@ fn download_button(ui: &mut Ui, label: &str, enabled: bool) -> bool {
     .clicked()
 }
 
-fn task_status(ui: &mut Ui, app: &mut NsclApp) {
+pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
     if app.service.busy() {
         ui.add_space(16.0);
         ui.separator();
@@ -1698,6 +1692,7 @@ fn task_status(ui: &mut Ui, app: &mut NsclApp) {
                 crate::service::Task::Install
                     | crate::service::Task::Manifest
                     | crate::service::Task::LoaderVersions
+                    | crate::service::Task::Content
             ) && download_button(ui, "取消任务", true)
             {
                 app.service.cancel();
@@ -1732,7 +1727,7 @@ fn task_status(ui: &mut Ui, app: &mut NsclApp) {
     }
 }
 
-fn input_frame() -> egui::Frame {
+pub(crate) fn input_frame() -> egui::Frame {
     egui::Frame::NONE
         .fill(Color32::from_rgb(0x0c, 0x16, 0x22))
         .stroke(Stroke::new(1.0, Color32::from_rgb(0x2b, 0x39, 0x47)))
@@ -1740,7 +1735,7 @@ fn input_frame() -> egui::Frame {
         .inner_margin(egui::Margin::symmetric(14, 12))
 }
 
-fn input_focus(ui: &Ui, response: &egui::Response) {
+pub(crate) fn input_focus(ui: &Ui, response: &egui::Response) {
     if response.has_focus() {
         ui.painter().rect_stroke(
             response.rect.expand(2.0),
@@ -1788,24 +1783,4 @@ pub fn about(ui: &mut Ui) {
             "本项目与 Mojang Studios 或 Microsoft 无隶属或背书关系。",
         );
     });
-}
-
-fn empty_state(ui: &mut Ui, glyph: &str, title: &str, description: &str, action: Option<&str>) {
-    ui.add_space(40.0);
-    ui.vertical_centered(|ui| {
-        ui.label(
-            RichText::new(glyph)
-                .size(42.0)
-                .color(Color32::from_rgb(0x71, 0xb9, 0xbc)),
-        );
-        ui.add_space(18.0);
-        ui.label(RichText::new(title).size(16.0).family(theme::bold_family()));
-        ui.add_space(10.0);
-        app::body(ui, description);
-        if let Some(label) = action {
-            ui.add_space(20.0);
-            app::secondary_button(ui, label, false);
-        }
-    });
-    ui.add_space(18.0);
 }

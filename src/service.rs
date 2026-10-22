@@ -14,6 +14,9 @@ use std::{
     },
 };
 
+mod content;
+pub use content::{ContentPlan, ContentState};
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Task {
     Idle,
@@ -21,6 +24,7 @@ pub enum Task {
     LoaderVersions,
     Install,
     Launch,
+    Content,
 }
 
 enum Event {
@@ -34,6 +38,7 @@ enum Event {
     Session(crate::accounts::Session),
     Java(Vec<crate::java::JavaRuntime>),
     JavaChecked(Result<crate::java::JavaRuntime, String>),
+    Content(content::ContentEvent),
 }
 
 pub struct GameService {
@@ -55,6 +60,7 @@ pub struct GameService {
     pub java_runtimes: Vec<crate::java::JavaRuntime>,
     pub java_busy: bool,
     pub java_status: String,
+    pub content: ContentState,
     versions_requested: bool,
     loaders_requested: Option<(String, LoaderKind)>,
     cancel: Arc<AtomicBool>,
@@ -92,6 +98,7 @@ impl GameService {
             java_runtimes: Vec::new(),
             java_busy: false,
             java_status: String::new(),
+            content: ContentState::default(),
             versions_requested: false,
             loaders_requested: None,
             cancel: Arc::new(AtomicBool::new(false)),
@@ -217,6 +224,7 @@ impl GameService {
                         Err(error) => self.java_status = error,
                     }
                 }
+                Event::Content(event) => self.apply_content(event, settings),
             }
         }
     }

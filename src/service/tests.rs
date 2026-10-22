@@ -178,3 +178,70 @@ fn installation_controls_fit_the_minimum_window_during_query_and_install() {
         output.drop_without_applying_deltas();
     }
 }
+
+#[test]
+fn resource_catalog_and_versions_fit_small_windows_without_starting_tasks() {
+    let (_root, mut app, ctx) = fixture();
+    let size = Vec2::new(876.0, 390.0);
+    for category in [1, 2] {
+        app.category = category;
+        for task in [Task::Idle, Task::Content] {
+            app.service.task = task;
+            let output = frame(&ctx, &mut app, size, vec![]);
+            let search = text_rect(&output, "搜索");
+            let next = text_rect(&output, "下一页");
+            assert!(search.max.x < size.x && next.max.y < size.y);
+            if task == Task::Content {
+                assert!(text_rect(&output, "取消任务").max.y < size.y);
+            }
+            output.drop_without_applying_deltas();
+        }
+    }
+    app.service.task = Task::Idle;
+    app.service.content.project = Some(crate::content::Project {
+        project_id: "example".into(),
+        title: "Test resource".into(),
+        description: String::new(),
+        author: String::new(),
+        downloads: 1,
+    });
+    app.service.content.versions=vec![serde_json::from_value(serde_json::json!({"id":"v1","project_id":"example","name":"Test version","version_number":"1","version_type":"release","date_published":"2026-01-01","game_versions":["1.20.1"],"loaders":["fabric"],"files":[]})).unwrap()];
+    let output = frame(&ctx, &mut app, size, vec![]);
+    assert!(text_rect(&output, "查看方案").max.y < size.y);
+    assert!(app.service.task == Task::Idle);
+    output.drop_without_applying_deltas();
+}
+
+#[test]
+fn local_pack_preview_waits_for_confirmation_and_optional_files_are_a_choice() {
+    use std::io::Write;
+    let (root, mut app, ctx) = fixture();
+    let size = Vec2::new(876.0, 390.0);
+    let path = root.path().join("preview.mrpack");
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+    zip.start_file(
+        "modrinth.index.json",
+        zip::write::SimpleFileOptions::default(),
+    )
+    .unwrap();
+    let metadata = serde_json::json!({"formatVersion":1,"game":"minecraft","versionId":"1","name":"Preview pack","dependencies":{"minecraft":"1.20.1"},"files":[{"path":"config/optional.txt","hashes":{"sha1":"0".repeat(40),"sha512":"0".repeat(128)},"fileSize":1,"downloads":["https://cdn.modrinth.com/example"],"env":{"client":"optional","server":"unsupported"}}]});
+    zip.write_all(&serde_json::to_vec(&metadata).unwrap())
+        .unwrap();
+    zip.finish().unwrap();
+    app.category = 1;
+    app.service.content.plan = Some(super::ContentPlan::Pack(
+        crate::content::inspect_pack(root.path(), &path).unwrap(),
+    ));
+    let output = frame(&ctx, &mut app, size, vec![]);
+    assert!(text_rect(&output, "安装整合包").max.y < size.y);
+    let pos = text_rect(&output, "包含 1 个可选客户端文件").center();
+    output.drop_without_applying_deltas();
+    click(&ctx, &mut app, size, pos);
+    let Some(super::ContentPlan::Pack(plan)) = &app.service.content.plan else {
+        panic!("preview closed");
+    };
+    assert!(plan.include_optional);
+    assert_eq!(plan.download_count(), 1);
+    assert!(app.service.task == Task::Idle);
+    assert!(!root.path().join("instances").exists());
+}

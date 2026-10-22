@@ -7,6 +7,7 @@ mod source;
 
 pub use download::validate_id;
 pub use download::{Downloader, Progress, Reporter};
+pub(crate) use download::{Job, safe_join};
 pub use install::hidden_command;
 pub use install::{InstalledVersion, install, installed_versions, manifest};
 pub use launch::{
