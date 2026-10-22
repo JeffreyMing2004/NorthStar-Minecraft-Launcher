@@ -190,7 +190,7 @@ impl SkinView {
         });
     }
     pub fn paint(&mut self, ui: &mut Ui, rect: Rect, id: &'static str) {
-        let response = ui.interact(rect, ui.make_persistent_id(id), Sense::drag());
+        let response = ui.interact(rect, ui.make_persistent_id(id), Sense::click_and_drag());
         if response.dragged() {
             let delta = ui.input(|i| i.pointer.delta());
             self.yaw += delta.x * 0.015;
@@ -379,7 +379,6 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
                 .list
                 .current()
                 .map(|a| a.name.as_str())
-                .filter(|_| app.settings.online_mode)
                 .unwrap_or("本地角色预览"),
         )
         .size(17.0)
@@ -468,6 +467,54 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn double_click_resets_the_model_and_drag_still_rotates_it() {
+        let ctx = egui::Context::default();
+        let mut view = SkinView::new();
+        view.yaw = 1.5;
+        view.pitch = 0.5;
+        let rect = Rect::from_min_size(Pos2::new(20.0, 20.0), Vec2::new(200.0, 280.0));
+        let pos = rect.center();
+        {
+            let mut frame = |time, events| {
+                ctx.run_ui(
+                    egui::RawInput {
+                        time: Some(time),
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 400.0))),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| view.paint(ui, rect, "interaction-test"),
+                )
+                .drop_without_applying_deltas();
+            };
+            let button = |pressed, pos| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            };
+            frame(0.0, vec![]);
+            frame(
+                0.1,
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    button(true, pos),
+                    button(false, pos),
+                ],
+            );
+            frame(0.25, vec![button(true, pos), button(false, pos)]);
+            frame(0.4, vec![button(true, pos)]);
+            frame(
+                0.5,
+                vec![egui::Event::PointerMoved(pos + Vec2::new(40.0, 20.0))],
+            );
+        }
+        assert!((view.yaw - 0.2).abs() < 0.001);
+        assert!((view.pitch - 0.32).abs() < 0.001);
+    }
+
     #[test]
     fn body_faces_stay_in_atlas_and_rotate_in_depth_order() {
         for arm in [3., 4.] {

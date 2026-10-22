@@ -367,7 +367,7 @@ impl GameService {
         self.begin(Task::Install);
         let root = store::game_directory(settings);
         let source = settings.source.clone();
-        let java = settings.java_path.clone();
+        let java = settings.configured_java().to_owned();
         let cancel = self.cancel.clone();
         let sender = self.sender.clone();
         let context = ctx.clone();
@@ -447,18 +447,13 @@ impl GameService {
             self.error = Some("请先完成或取消账号登录。".into());
             return;
         }
-        let account = if settings.online_mode {
-            match accounts.launch_account() {
-                Some(account) => Some(account),
-                None => {
-                    self.error =
-                        Some("请先在账号页登录 Microsoft 账号，或明确选择离线测试身份。".into());
-                    return;
-                }
-            }
-        } else {
-            None
+        let Some(selected_account) = accounts.list.current() else {
+            self.error =
+                Some("请先在账号页登录 Microsoft 账号或创建离线账号，并选择要使用的账号。".into());
+            return;
         };
+        let account = accounts.launch_account();
+        let offline_identity = minecraft::LaunchIdentity::offline(&selected_account.name);
         let Some(instance) = self
             .instances
             .iter()
@@ -500,7 +495,7 @@ impl GameService {
                         }
                     }
                 }
-                None => minecraft::LaunchIdentity::offline(&settings.player_name),
+                None => offline_identity,
             };
             let plan =
                 match minecraft::prepare_instance_launch(&root, &instance, &settings, &identity) {

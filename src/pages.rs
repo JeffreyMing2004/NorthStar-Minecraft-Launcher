@@ -103,7 +103,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             if app.settings.online_mode {
                 "独立游戏目录 · Microsoft 正版身份"
             } else {
-                "独立游戏目录 · 离线测试身份"
+                "独立游戏目录 · 离线账号"
             },
         );
     }
@@ -181,7 +181,11 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                 } else if app.settings.online_mode {
                     "未登录"
                 } else {
-                    "离线测试"
+                    if app.accounts.list.current().is_some() {
+                        "离线账号"
+                    } else {
+                        "未选择账号"
+                    }
                 },
             )
         });
@@ -417,10 +421,7 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
         ui.add_space(12.0);
         app::heading(ui, "让冒险拥有你的名字");
         ui.add_space(10.0);
-        app::body(
-            ui,
-            "使用 Microsoft 账号授权，验证 Minecraft Java Edition 身份。",
-        );
+        app::body(ui, "登录 Microsoft 正版账号，或创建独立的离线账号。");
         ui.add_space(24.0);
         let editable = !app.accounts.pending && !app.service.busy() && app.service.game.is_none();
         ui.add_enabled_ui(editable, |ui| {
@@ -437,6 +438,30 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                         .login_device(&app.settings.microsoft_client_id, ui.ctx());
                 }
             });
+            ui.add_space(16.0);
+            let mut create = false;
+            ui.horizontal_wrapped(|ui| {
+                let name = ui.add(
+                    egui::TextEdit::singleline(&mut app.offline_name)
+                        .hint_text("离线账号玩家名")
+                        .desired_width(260.0),
+                );
+                create = ui.button("创建离线账号").clicked()
+                    || (name.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+            });
+            app::hint(
+                ui,
+                "玩家名为 1–16 位英文字母、数字或下划线。离线账号无法进入要求正版认证的服务器。",
+            );
+            if create {
+                match app
+                    .accounts
+                    .add_offline(&app.offline_name, &mut app.settings)
+                {
+                    Ok(()) => app.offline_name.clear(),
+                    Err(error) => app.service.error = Some(error),
+                }
+            }
         });
         ui.add_space(12.0);
         app::hint(
@@ -562,9 +587,15 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                                 .size(17.0)
                                 .family(theme::bold_family()),
                         );
-                        if app.settings.online_mode
-                            && app.accounts.list.selected.as_deref() == Some(&account.id)
-                        {
+                        app::badge_muted(
+                            ui,
+                            if account.is_online() {
+                                "Microsoft"
+                            } else {
+                                "离线账号"
+                            },
+                        );
+                        if app.accounts.list.selected.as_deref() == Some(&account.id) {
                             app::badge_muted(ui, "当前账号");
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -577,7 +608,18 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
                         });
                     });
                     ui.add_space(10.0);
-                    app::hint(ui, &format!("UUID：{} · 启动时在线验证身份", account.id));
+                    app::hint(
+                        ui,
+                        &format!(
+                            "UUID：{} · {}",
+                            account.id,
+                            if account.is_online() {
+                                "启动时在线验证身份"
+                            } else {
+                                "使用此玩家名和固定离线 UUID 启动"
+                            }
+                        ),
+                    );
                 });
             ui.add_space(12.0);
         }
@@ -592,22 +634,9 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
             app.service.error = Some(error);
         }
         ui.add_space(16.0);
-        ui.add_enabled_ui(editable, |ui| {
-            let mut offline = !app.settings.online_mode;
-            if ui.checkbox(&mut offline, "使用离线测试身份").changed() {
-                if !offline && app.accounts.list.current().is_none() {
-                    app.service.error = Some("请先登录 Microsoft 账号。".into());
-                } else {
-                    app.settings.online_mode = !offline;
-                    if let Err(error) = app.accounts.save_mode(&app.settings) {
-                        app.service.error = Some(error);
-                    }
-                }
-            }
-        });
         app::hint(
             ui,
-            "离线测试玩家名和试玩选项可在设置中配置；正版启动验证失败时不会自动切换离线身份。",
+            "通过「使用此账号」切换启动身份；正版身份验证失败时不会自动切换离线账号。",
         );
     });
 }
@@ -697,13 +726,15 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
             ui.set_max_width(width);
             ui.label(RichText::new("Java 可执行文件路径").size(14.0));
             ui.add_space(10.0);
+            ui.checkbox(&mut app.settings.auto_java, "按游戏版本自动选择 Java");
+            ui.add_space(10.0);
             let edit = egui::TextEdit::singleline(&mut app.settings.java_path)
                 .font(FontId::proportional(14.0))
                 .hint_text("例如 C:\\Program Files\\Java\\bin\\javaw.exe")
                 .frame(input_frame())
                 .margin(Vec2::new(14.0, 12.0))
                 .desired_width(width);
-            let response = ui.add(edit);
+            let response = ui.add_enabled(!app.settings.auto_java, edit);
             input_focus(ui, &response);
             if response.changed() {
                 app.save_status.clear();
@@ -711,7 +742,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
             ui.add_space(10.0);
             app::hint(
                 ui,
-                "留空自动检测 JAVA_HOME、PATH 及常见安装目录，选择版本要求的 Java。",
+                "默认按实例要求自动选择已安装的 Java 主版本和架构；关闭自动选择后可手动指定。",
             );
             ui.add_space(12.0);
             ui.horizontal(|ui| {
@@ -727,6 +758,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                         .inspect_java(Some(app.settings.java_path.clone()), ui.ctx());
                 }
                 if ui.button("恢复自动匹配").clicked() {
+                    app.settings.auto_java = true;
                     app.settings.java_path.clear();
                 }
             });
@@ -746,6 +778,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                             {
                                 app.settings.java_path =
                                     runtime.path.to_string_lossy().into_owned();
+                                app.settings.auto_java = false;
                             }
                         }
                     });
@@ -763,7 +796,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                     && let Some(major)=required
                 {app.service.java_install_major=major;}
             });
-            app::hint(ui,"下载 Eclipse Temurin JRE，校验后安装到启动器数据目录；Java 路径留空即可自动匹配。支持 Windows。");
+            app::hint(ui,"下载 Eclipse Temurin JRE，校验后安装到启动器数据目录，启用自动选择后即可匹配。支持 Windows。");
             if !app.service.java_status.is_empty() {
                 ui.add_space(10.0);
                 app::body(ui, &app.service.java_status);
@@ -771,7 +804,9 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
             ui.add_space(24.0);
             ui.label(RichText::new("游戏内存（MiB）").size(14.0));
             ui.add_space(10.0);
-            let response = ui.add(
+            ui.checkbox(&mut app.settings.auto_memory, "自动分配游戏内存");
+            ui.add_space(10.0);
+            let response = ui.add_enabled(!app.settings.auto_memory,
                 egui::TextEdit::singleline(&mut app.memory_input)
                     .font(FontId::proportional(14.0))
                     .frame(input_frame())
@@ -783,7 +818,17 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 app.save_status.clear();
             }
             ui.add_space(10.0);
-            app::hint(ui, "范围 1024–32768 MiB，请根据设备可用内存配置。");
+            if app.settings.auto_memory {
+                let version = app.service.instances.iter().find(|i| i.id == app.service.selected)
+                    .and_then(|i| app.service.installed.iter().find(|v| v.id == i.version_id));
+                let (major, modded) = version.map(|v| (v.java_major, v.loader.is_some())).unwrap_or((17, false));
+                match nscl::memory::automatic(major, modded) {
+                    Ok(memory) => app::hint(ui, &format!("当前实例预计分配 {memory} MiB，启动时按可用物理内存重新计算并为系统保留空间。")),
+                    Err(error) => app::hint(ui, &error),
+                }
+            } else {
+                app::hint(ui, "范围 1024–32768 MiB；实例的单独配置优先于此处设置。");
+            }
             ui.add_space(24.0);
             settings_input(ui, "游戏文件目录", &mut app.settings.game_directory, width);
             app::hint(
@@ -822,19 +867,10 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                 &mut app.settings.source.fallback_to_official,
                 "镜像失败或校验不通过时回退到官方源",
             );
-            ui.add_space(24.0);
-            settings_input(ui, "离线测试玩家名", &mut app.settings.player_name, width);
-            app::hint(
-                ui,
-                "1–16 位字母、数字或下划线；离线身份不能用于需要正版认证的服务器。",
-            );
-            ui.add_space(10.0);
-            ui.checkbox(&mut app.settings.demo_mode, "以 Minecraft 试玩模式启动");
             ui.add_space(26.0);
             if app::primary_button(ui, "保存设置") {
-                if let Ok(memory) = app.memory_input.trim().parse::<u32>()
-                    && (1024..=32768).contains(&memory)
-                {
+                let memory = app.memory_input.trim().parse::<u32>().ok().filter(|m| (1024..=32768).contains(m));
+                if app.settings.auto_memory || memory.is_some() {
                     if let Err(error) = app.settings.source.base() {
                         app.save_status = error;
                         return;
@@ -846,13 +882,7 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
                         return;
                     }
                     if let Err(error) = crate::accounts::validate_redirect_uri(app.settings.microsoft_redirect_uri.trim()) { app.save_status = error; return; }
-                    if let Err(error) =
-                        crate::minecraft::validate_player_name(&app.settings.player_name)
-                    {
-                        app.save_status = error;
-                        return;
-                    }
-                    app.settings.memory = memory;
+                    if let Some(memory) = memory { app.settings.memory = memory; }
                     app.settings.java_path = app.settings.java_path.trim().to_owned();
                     app.settings.microsoft_client_id =
                         app.settings.microsoft_client_id.trim().to_owned();

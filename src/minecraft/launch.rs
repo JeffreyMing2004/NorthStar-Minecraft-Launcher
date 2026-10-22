@@ -90,7 +90,7 @@ pub fn prepare_instance_launch(
     identity: &LaunchIdentity,
 ) -> Result<LaunchPlan> {
     instance.validate()?;
-    let settings = instance.effective_settings(settings);
+    let mut settings = instance.effective_settings(settings);
     let id = instance.version_id.as_str();
     validate_id(id)?;
     validate_player_name(&identity.name)?;
@@ -99,7 +99,7 @@ pub fn prepare_instance_launch(
     {
         return Err("启动身份无效，请重新登录。".into());
     }
-    if !(1024..=32768).contains(&settings.memory) {
+    if !settings.auto_memory && !(1024..=32768).contains(&settings.memory) {
         return Err("游戏内存必须为 1024–32768 MiB。".into());
     }
     let root = absolute_root(root)?;
@@ -152,7 +152,11 @@ pub fn prepare_instance_launch(
     }
     let natives = extract_natives(&root, id, &platform, &files.natives, None)?;
     materialize_assets(&root, &version, &index, None)?;
-    let java = crate::java::find(&settings.java_path, version.java_major())?;
+    let java = crate::java::find(settings.configured_java(), version.java_major())?;
+    if settings.auto_memory {
+        settings.memory =
+            crate::memory::automatic(version.java_major(), installed.loader.is_some())?;
+    }
     let game_directory = instance.directory(&root)?;
     fs::create_dir_all(game_directory.join("logs")).map_err(|e| e.to_string())?;
     let log_path = game_directory.join("logs/nscl-launch.log");

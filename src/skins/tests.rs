@@ -10,6 +10,7 @@ fn bytes(width: u32, height: u32) -> Vec<u8> {
 fn session() -> Session {
     Session {
         account: Account {
+            kind: crate::accounts::AccountKind::Microsoft,
             id: "0123456789abcdef0123456789abcdef".into(),
             name: "Test".into(),
             xuid: "1".into(),

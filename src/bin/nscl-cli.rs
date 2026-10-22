@@ -28,6 +28,7 @@ fn run() -> Result<(), String> {
     let mut limit = 10usize;
     let mut loader = None;
     let mut loader_version = None;
+    let mut offline_override = false;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--loader" => {
@@ -51,15 +52,23 @@ fn run() -> Result<(), String> {
             }
             "--no-fallback" => settings.source.fallback_to_official = false,
             "--game-dir" => settings.game_directory = arguments.next().ok_or("缺少游戏目录")?,
-            "--java" => settings.java_path = arguments.next().ok_or("缺少 Java 路径")?,
+            "--java" => {
+                settings.java_path = arguments.next().ok_or("缺少 Java 路径")?;
+                settings.auto_java = false;
+            }
             "--username" => {
                 settings.player_name = arguments.next().ok_or("缺少玩家名")?;
                 settings.online_mode = false;
+                offline_override = true;
             }
-            "--offline" => settings.online_mode = false,
+            "--offline" => {
+                settings.online_mode = false;
+                offline_override = true;
+            }
             "--demo" => {
                 settings.demo_mode = true;
                 settings.online_mode = false;
+                offline_override = true;
             }
             "--limit" => {
                 limit = arguments
@@ -154,14 +163,22 @@ fn run() -> Result<(), String> {
                 version_id: id,
                 ..Default::default()
             });
-        let identity = if settings.online_mode {
+        let identity = if !offline_override {
             let list = AccountList::load()?;
             let account = list
                 .current()
-                .ok_or("请先使用 login 登录 Microsoft 账号，或明确指定 --offline。")?;
-            let session =
-                AuthClient::new()?.resume(account, None, &SystemVault, &AtomicBool::new(false))?;
-            minecraft::LaunchIdentity::microsoft(&session)
+                .ok_or("请先登录或创建并选择账号，或明确指定 --offline。")?;
+            if account.is_online() {
+                let session = AuthClient::new()?.resume(
+                    account,
+                    None,
+                    &SystemVault,
+                    &AtomicBool::new(false),
+                )?;
+                minecraft::LaunchIdentity::microsoft(&session)
+            } else {
+                minecraft::LaunchIdentity::offline(&account.name)
+            }
         } else {
             minecraft::LaunchIdentity::offline(&settings.player_name)
         };
@@ -202,7 +219,7 @@ fn run() -> Result<(), String> {
         return Err("未知命令，使用 --help 查看帮助。".into());
     }
     let downloader = Downloader::new(
-        settings.source,
+        settings.source.clone(),
         Arc::new(AtomicBool::new(false)),
         Arc::new(|progress| {
             eprintln!(
@@ -264,7 +281,13 @@ fn run() -> Result<(), String> {
                     .cloned()
                     .ok_or("没有兼容的加载器版本")?,
             };
-            minecraft::install_loader(&root, entry, &selection, &settings.java_path, &downloader)?
+            minecraft::install_loader(
+                &root,
+                entry,
+                &selection,
+                settings.configured_java(),
+                &downloader,
+            )?
         } else {
             minecraft::install(&root, entry, &downloader)?
         };

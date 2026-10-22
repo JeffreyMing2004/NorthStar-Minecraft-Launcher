@@ -140,11 +140,52 @@ impl CredentialStore for Vault {
 }
 fn account() -> Account {
     Account {
+        kind: AccountKind::Microsoft,
         id: PROFILE.into(),
         name: "TestPlayer".into(),
         xuid: "12345".into(),
         client_id: DEFAULT_CLIENT_ID.into(),
     }
+}
+
+#[test]
+fn offline_accounts_roundtrip_and_legacy_microsoft_accounts_keep_their_identity() {
+    let legacy: Account = serde_json::from_value(json!({
+        "id": PROFILE, "name":"TestPlayer", "xuid":"12345", "client_id":DEFAULT_CLIENT_ID
+    }))
+    .unwrap();
+    assert!(legacy.is_online());
+    let mut list = AccountList::default();
+    list.upsert(legacy.clone());
+    list.add_offline("LocalPlayer").unwrap();
+    let offline = list.current().unwrap().clone();
+    assert!(!offline.is_online());
+    assert_eq!(offline.id, crate::minecraft::offline_uuid("LocalPlayer"));
+    assert!(list.add_offline("localplayer").is_err());
+    for name in ["", "a name", "玩家", "12345678901234567"] {
+        assert!(list.add_offline(name).is_err());
+    }
+    let bytes = serde_json::to_vec(&list).unwrap();
+    let restored: AccountList = serde_json::from_slice(&bytes).unwrap();
+    restored.validate().unwrap();
+    assert_eq!(restored.current(), Some(&offline));
+    assert!(restored.accounts.contains(&legacy));
+    let mut invalid = restored;
+    invalid.accounts.last_mut().unwrap().id = PROFILE.into();
+    assert!(invalid.validate().is_err());
+}
+
+#[test]
+fn offline_accounts_never_read_microsoft_credentials_or_contact_auth_services() {
+    let server = Server::new();
+    let offline = Account::offline("LocalPlayer").unwrap();
+    let error = server
+        .client
+        .resume(&offline, None, &Vault::default(), &AtomicBool::new(false))
+        .err()
+        .unwrap();
+    assert!(error.contains("离线账号"));
+    assert!(server.requests.lock().unwrap().is_empty());
 }
 
 #[test]

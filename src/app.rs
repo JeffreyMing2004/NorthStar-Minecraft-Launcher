@@ -42,6 +42,7 @@ pub struct NsclApp {
     pub page: Page,
     pub category: usize,
     pub account_tab: u8,
+    pub offline_name: String,
     pub download: crate::download_flow::DownloadFlow,
     pub settings: Settings,
     pub memory_input: String,
@@ -73,11 +74,15 @@ impl NsclApp {
             }
             settings
         };
+        let mut settings = settings;
+        let accounts = crate::account_service::AccountService::new();
+        settings.online_mode = accounts.list.current().is_some_and(|a| a.is_online());
         let service = crate::service::GameService::new(&settings);
         Self {
             page: initial_page(),
             category: 0,
             account_tab: 0,
+            offline_name: String::new(),
             download: crate::download_flow::DownloadFlow::default(),
             memory_input: settings.memory.to_string(),
             settings,
@@ -90,7 +95,7 @@ impl NsclApp {
             ),
             skin: crate::skin_ui::SkinView::new(),
             log_view: None,
-            accounts: crate::account_service::AccountService::new(),
+            accounts,
             instance_manager: false,
             instance_edit: None,
             instance_memory: String::new(),

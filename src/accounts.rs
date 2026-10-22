@@ -16,12 +16,39 @@ pub const DEFAULT_CLIENT_ID: &str = "0c342b6c-38ee-414d-8f83-8df917817e2b";
 const SCOPE: &str = "XboxLive.signin offline_access";
 pub type Result<T> = std::result::Result<T, String>;
 
+#[derive(Clone, Copy, Default, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountKind {
+    #[default]
+    Microsoft,
+    Offline,
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Account {
+    #[serde(default)]
+    pub kind: AccountKind,
     pub id: String,
     pub name: String,
     pub xuid: String,
     pub client_id: String,
+}
+
+impl Account {
+    pub fn offline(name: &str) -> Result<Self> {
+        let name = name.trim();
+        crate::minecraft::validate_player_name(name)?;
+        Ok(Self {
+            kind: AccountKind::Offline,
+            id: crate::minecraft::offline_uuid(name),
+            name: name.into(),
+            xuid: String::new(),
+            client_id: String::new(),
+        })
+    }
+    pub fn is_online(&self) -> bool {
+        self.kind == AccountKind::Microsoft
+    }
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -43,13 +70,37 @@ impl AccountList {
         let data: Self =
             serde_json::from_slice(&std::fs::read(path).map_err(|_| "无法读取账号列表。")?)
                 .map_err(|_| "账号列表损坏，请备份 nscl-accounts.json 后重新登录。")?;
-        if data.accounts.iter().any(|a| !valid_profile_id(&a.id)) {
-            return Err("账号列表包含无效身份。".into());
-        }
+        data.validate()?;
         Ok(data)
     }
     pub fn save(&self) -> Result<()> {
+        self.validate()?;
         crate::store::write_json(&Self::path(), self)
+    }
+    pub fn validate(&self) -> Result<()> {
+        let mut ids = std::collections::BTreeSet::new();
+        for account in &self.accounts {
+            if !valid_profile_id(&account.id)
+                || crate::minecraft::validate_player_name(&account.name).is_err()
+                || !ids.insert(&account.id)
+                || (!account.is_online() && Account::offline(&account.name)? != *account)
+            {
+                return Err("账号列表包含无效或重复身份。".into());
+            }
+        }
+        Ok(())
+    }
+    pub fn add_offline(&mut self, name: &str) -> Result<()> {
+        let account = Account::offline(name)?;
+        if self
+            .accounts
+            .iter()
+            .any(|a| !a.is_online() && a.name.eq_ignore_ascii_case(&account.name))
+        {
+            return Err("此离线账号已存在，请直接选择使用。".into());
+        }
+        self.upsert(account);
+        Ok(())
     }
     pub fn current(&self) -> Option<&Account> {
         self.accounts
@@ -271,6 +322,9 @@ impl AuthClient {
         vault: &dyn CredentialStore,
         cancel: &AtomicBool,
     ) -> Result<Session> {
+        if !account.is_online() {
+            return Err("离线账号不使用 Microsoft 登录凭据。".into());
+        }
         check_cancel(cancel)?;
         if let Some(session) = cached.as_ref().filter(|s| s.expires_at > now() + 120) {
             match self.profile(&session.access_token) {
@@ -385,6 +439,7 @@ impl AuthClient {
         check_cancel(cancel)?;
         Ok(Session {
             account: Account {
+                kind: AccountKind::Microsoft,
                 id,
                 name,
                 xuid,

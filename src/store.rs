@@ -8,10 +8,14 @@ pub const APP_IDENTIFIER: &str = "cool.cnb.jeffreyming.nscl";
 #[serde(default)]
 pub struct Settings {
     pub memory: u32,
+    pub auto_memory: bool,
     pub java_path: String,
+    pub auto_java: bool,
     pub game_directory: String,
     pub source: crate::minecraft::Source,
+    #[serde(skip_serializing)]
     pub player_name: String,
+    #[serde(skip)]
     pub demo_mode: bool,
     pub microsoft_client_id: String,
     pub microsoft_redirect_uri: String,
@@ -23,7 +27,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             memory: 4096,
+            auto_memory: true,
             java_path: String::new(),
+            auto_java: true,
             game_directory: String::new(),
             source: crate::minecraft::Source::default(),
             player_name: "NSCLPlayer".into(),
@@ -33,6 +39,12 @@ impl Default for Settings {
             online_mode: false,
             selected_instance: String::new(),
         }
+    }
+}
+
+impl Settings {
+    pub fn configured_java(&self) -> &str {
+        if self.auto_java { "" } else { &self.java_path }
     }
 }
 

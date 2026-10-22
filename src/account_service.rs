@@ -66,6 +66,7 @@ impl AccountService {
     pub fn launch_account(&self) -> Option<(Account, Option<Session>)> {
         self.list
             .current()
+            .filter(|account| account.is_online())
             .map(|account| (account.clone(), self.sessions.get(&account.id).cloned()))
     }
     pub fn accept(&mut self, session: Session) {
@@ -267,21 +268,47 @@ impl AccountService {
         if self.pending {
             return Err("请先完成或取消登录。".into());
         }
-        if !self.list.accounts.iter().any(|a| a.id == id) {
-            return Err("账号不存在。".into());
-        }
+        let online = self
+            .list
+            .accounts
+            .iter()
+            .find(|a| a.id == id)
+            .ok_or("账号不存在。")?
+            .is_online();
         let mut list = self.list.clone();
         list.selected = Some(id.into());
         list.save()?;
         self.list = list;
-        settings.online_mode = true;
+        settings.online_mode = online;
         self.save_mode(settings)
+    }
+    pub fn add_offline(&mut self, name: &str, settings: &mut Settings) -> Result<(), String> {
+        if self.pending {
+            return Err("请先完成或取消登录。".into());
+        }
+        let mut list = self.list.clone();
+        list.add_offline(name)?;
+        list.save()?;
+        self.list = list;
+        settings.online_mode = false;
+        self.save_mode(settings)?;
+        self.status = "离线账号已创建并选中。".into();
+        Ok(())
     }
     pub fn remove(&mut self, id: &str, settings: &mut Settings) -> Result<(), String> {
         if self.pending {
             return Err("请先完成或取消登录。".into());
         }
-        SystemVault.remove(id)?;
+        let online = self
+            .list
+            .accounts
+            .iter()
+            .find(|a| a.id == id)
+            .ok_or("账号不存在。")?
+            .is_online();
+        if online {
+            SystemVault.remove(id)?;
+        }
         let mut list = self.list.clone();
         list.accounts.retain(|a| a.id != id);
         if list.selected.as_deref() == Some(id) {
@@ -290,8 +317,14 @@ impl AccountService {
         list.save()?;
         self.list = list;
         self.sessions.remove(id);
+        settings.online_mode = self.list.current().is_some_and(|a| a.is_online());
         self.save_mode(settings)?;
-        self.status = "已移除该账号及本机保存的刷新令牌。".into();
+        self.status = if online {
+            "已移除该账号及本机保存的刷新令牌。"
+        } else {
+            "已移除离线账号。"
+        }
+        .into();
         Ok(())
     }
     pub fn save_mode(&self, settings: &Settings) -> Result<(), String> {

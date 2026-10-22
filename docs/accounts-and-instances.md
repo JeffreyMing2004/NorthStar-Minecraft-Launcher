@@ -1,5 +1,13 @@
 # 账号、Java 与实例管理
 
+## 离线账号与身份选择
+
+在「账号 → 账号管理」填写玩家名，点击「创建离线账号」即可保存并选中。玩家名为 1–16 位英文字母、数字或下划线，重复名称不区分大小写。离线账号使用由玩家名确定的固定 UUID，重启启动器后仍保留。
+
+账号列表标明 Microsoft 或离线账号类型，通过「使用此账号」切换，支持移除。未选择账号时，启动前会提示先登录或创建账号。Microsoft 账号继续在线验证；离线账号不访问认证服务或系统登录凭据，无法进入要求正版认证的服务器。
+
+设置页已移除「离线测试玩家名」和「以 Minecraft 试玩模式启动」；桌面启动使用所选账号的玩家名，旧设置中的试玩标记不再生效。旧版 Microsoft 账号列表可直接读取。CLI 仍支持显式的 `--offline` / `--username` / `--demo` 临时测试参数。
+
 ## Microsoft 正版登录
 
 应用 Client ID 和本机登录回调地址由启动器在后台管理，设置页不显示这两项，无需手动配置。
@@ -20,9 +28,9 @@ Windows 使用原生 ShellExecuteEx 接口打开默认浏览器，检查调用�
 
 认证只连接 Microsoft、Xbox 和 Minecraft 官方服务，不经过客户端下载镜像。遵守设备代码轮询间隔、`slow_down`、有效期与取消操作；网络请求具有超时限制。优先使用当前 `/launcher/login` 和 `/entitlements/license` 接口；仅在接口返回 404/405 时兼容旧接口，认证拒绝不会触发接口回退。
 
-Windows 使用凭据管理器，macOS 使用 Keychain，保存 Microsoft 刷新令牌；Minecraft access token 仅保存在内存并传给游戏。系统凭据库不可用时，桌面登录会明确提示仅当前会话有效；Linux 暂时只提供会话登录。移除账号会删除本机保存的刷新令牌，但不等同于撤销 Microsoft 网站上的应用授权。移除最后一个账号后，用户仍需明确选择离线测试或重新登录。
+Windows 使用凭据管理器，macOS 使用 Keychain，保存 Microsoft 刷新令牌；Minecraft access token 仅保存在内存并传给游戏。系统凭据库不可用时，桌面登录会明确提示仅当前会话有效；Linux 暂时只提供会话登录。移除 Microsoft 账号会删除本机保存的刷新令牌，但不等同于撤销 Microsoft 网站上的应用授权。移除最后一个账号后，需要重新登录或创建离线账号。
 
-`nscl-accounts.json` 与设置文件相邻，仅包含玩家名、UUID、XUID、公开 Client ID 和当前账号选择，不包含令牌。诊断输出隐藏启动令牌，认证错误不回显原始响应。不要向他人分享 Java 进程完整命令行，游戏需要通过参数接收 access token。
+`nscl-accounts.json` 与设置文件相邻，仅包含账号类型、玩家名、UUID、XUID、公开 Client ID 和当前账号选择，不包含令牌。诊断输出隐藏启动令牌，认证错误不回显原始响应。不要向他人分享 Java 进程完整命令行，游戏需要通过参数接收 access token。
 
 协议依据：[Microsoft 授权码与 PKCE 文档](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow)、[回调 URI 配置说明](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url)、[设备代码授权文档](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code)、[Xbox 身份认证概述](https://learn.microsoft.com/en-us/gaming/gdk/docs/services/fundamentals/s2s-auth-calls/service-authentication/live-xbox-live-authentication)、[Prism Launcher 当前认证步骤](https://github.com/PrismLauncher/PrismLauncher/tree/develop/launcher/minecraft/auth/steps)。测试使用本地模拟认证服务与虚拟系统凭据；真实用户登录、Minecraft 应用许可和正版服务器连接需实际授权验证。
 
@@ -39,14 +47,18 @@ Windows 使用凭据管理器，macOS 使用 Keychain，保存 Microsoft 刷新�
 ## Java 配置
 
 - 「设置 → 扫描 Java」检查 `JAVA_HOME`、`PATH`、常见发行版目录及启动器数据目录下的 `java/`，列出可用版本、架构、发行版和路径。
-- 可填写 `java` / `javaw` 可执行文件或 Java 安装目录，点击「检测当前路径」验证。单次检测最多等待约 6 秒，不阻塞界面。
-- 全局路径留空时，按 Minecraft 元数据自动选择同主版本、同架构的 Java。手动指定不匹配的版本会提示错误，不会偷偷换用其他 Java。
+- 默认启用「按游戏版本自动选择 Java」，按 Minecraft 元数据选择同主版本、同架构的已安装 Java，切换实例时自动匹配。
+- 关闭自动选择后，可填写 `java` / `javaw` 可执行文件或 Java 安装目录，点击「检测当前路径」验证。从扫描列表选择运行时会切换为手动模式；「恢复自动匹配」可重新启用自动模式。单次检测最多等待约 6 秒，不阻塞界面。手动指定不匹配的版本会提示错误。
 - 实例可继承全局配置，或单独配置 Java 和 1024–32768 MiB 内存。实例 Java 覆盖开启且路径留空表示此实例使用自动匹配。
 - Windows 可在设置中选择 Java 8、11、17、21、25，点击「下载并安装」自动获取 Eclipse Temurin JRE；「按当前实例选择」可选中已安装实例要求的主版本。运行时下载完成并验证 SHA-256 后解压，执行版本和架构检测，全部通过才发布到设置文件旁的 `java/temurin-<主版本>-<架构>-<校验前缀>/`，自动扫描与匹配会识别它。其他系统可继续手动指定 Java。
-- 下载时显示字节进度并支持取消，下载包在 `java/.downloads/` 缓存并复核；未通过校验、解压失败或取消不会发布半完成运行时。不会修改系统 Java、注册表或 `JAVA_HOME`，手动指定的 Java 仍优先使用。
+- 下载时显示字节进度并支持取消，下载包在 `java/.downloads/` 缓存并复核；未通过校验、解压失败或取消不会发布半完成运行时。不会修改系统 Java、注册表或 `JAVA_HOME`。关闭自动模式后使用手动指定的全局 Java，实例单独配置优先。
 - Java 来自 [Adoptium 官方 API](https://github.com/adoptium/api.adoptium.net/blob/main/docs/cookbook.adoc) 和 Adoptium GitHub 发布资产，不经过 Minecraft 下载镜像。缺少 Java 时可先在设置中安装，再重试游戏或加载器安装。
 
 ## 实例管理
+
+内存默认自动分配，启动时重新读取可用物理内存。现代原版以 4096 MiB、带加载器的实例以 6144 MiB 为目标；Java 8 等旧版采用更保守的目标。实际分配不超过物理内存的一半，并从当前可用内存中至少预留 1024 MiB，按 256 MiB 向下取整。无法安全分配至少 1024 MiB 时提示关闭部分程序后重试；无法读取系统内存时使用 2048 MiB 保守值。
+
+可在设置中关闭「自动分配游戏内存」并指定 1024–32768 MiB。实例的单独内存配置优先于全局自动或手动设置，未单独配置则继承全局模式。设置页显示当前实例的预计分配值，启动时以当时的可用内存重新计算。
 
 在「开始 → 管理实例」中，选择已安装的 Minecraft 版本并填写名称，即可创建独立空白实例。同一客户端版本可创建多个实例，分别配置存档、模组、Java 和内存。管理窗口支持选择当前实例、重命名、打开目录、归档和恢复；游戏或任务运行期间锁定实例修改。
 

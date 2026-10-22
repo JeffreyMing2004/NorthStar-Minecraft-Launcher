@@ -28,9 +28,11 @@ impl Instance {
         let mut result = settings.clone();
         if let Some(path) = &self.java_path {
             result.java_path = path.clone();
+            result.auto_java = path.trim().is_empty();
         }
         if let Some(memory) = self.memory {
             result.memory = memory;
+            result.auto_memory = false;
         }
         result
     }
@@ -253,7 +255,15 @@ mod tests {
             two.directory(dir.path()).unwrap()
         );
         assert_eq!(one.effective_settings(&Settings::default()).memory, 2048);
+        assert!(!one.effective_settings(&Settings::default()).auto_memory);
+        assert!(one.effective_settings(&Settings::default()).auto_java);
         assert_eq!(two.effective_settings(&Settings::default()).memory, 4096);
+        assert!(two.effective_settings(&Settings::default()).auto_memory);
+        let mut manual = one.clone();
+        manual.java_path = Some("instance-java".into());
+        let effective = manual.effective_settings(&Settings::default());
+        assert!(!effective.auto_java);
+        assert_eq!(effective.configured_java(), "instance-java");
         fs::write(
             one.directory(dir.path()).unwrap().join("save-data"),
             "world",

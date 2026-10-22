@@ -582,12 +582,26 @@ fn online_arguments_use_msa_identity_and_the_selected_instance_directory() {
 
 #[test]
 fn old_settings_migrate_without_losing_values() {
-    let settings: crate::store::Settings =
-        serde_json::from_str(r#"{"memory":2048,"java_path":"test-java"}"#).unwrap();
+    let mut settings: crate::store::Settings = serde_json::from_str(
+        r#"{"memory":2048,"java_path":"test-java","demo_mode":true,"player_name":"LegacyPlayer"}"#,
+    )
+    .unwrap();
     assert_eq!(settings.memory, 2048);
     assert_eq!(settings.java_path, "test-java");
     assert_eq!(settings.source.kind, SourceKind::Official);
-    assert_eq!(settings.player_name, "NSCLPlayer");
+    assert_eq!(settings.player_name, "LegacyPlayer");
+    assert!(settings.auto_java && settings.auto_memory);
+    assert_eq!(settings.configured_java(), "");
+    assert!(!settings.demo_mode);
+    settings.auto_java = false;
+    settings.auto_memory = false;
+    assert_eq!(settings.configured_java(), "test-java");
+    let value = serde_json::to_value(&settings).unwrap();
+    assert!(value.get("demo_mode").is_none());
+    assert!(value.get("player_name").is_none());
+    let restored: crate::store::Settings = serde_json::from_value(value).unwrap();
+    assert!(!restored.auto_java && !restored.auto_memory);
+    assert_eq!(restored.memory, 2048);
 }
 
 #[test]

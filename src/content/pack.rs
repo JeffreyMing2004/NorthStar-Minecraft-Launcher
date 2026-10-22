@@ -457,7 +457,7 @@ pub fn install_pack(
         .ok_or("官方版本列表中没有整合包要求的 Minecraft 版本。")?;
     let installed = match &plan.loader {
         Some(loader) => {
-            minecraft::install_loader(root, entry, loader, &settings.java_path, downloader)?
+            minecraft::install_loader(root, entry, loader, settings.configured_java(), downloader)?
         }
         None => minecraft::install(root, entry, downloader)?,
     };
