@@ -2,7 +2,7 @@
 
 **NSCL** 是一款使用 Rust 与 eframe/egui 构建的 Minecraft Java Edition 桌面启动器。原生窗口、单一可执行文件、无需额外运行库。
 
-[下载](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases) · [使用文档](#使用文档) · [问题反馈](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues) · [CNB 镜像](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)
+[下载](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases) · [问题反馈](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues) · [CNB 镜像](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)
 
 ## 功能
 
@@ -59,27 +59,6 @@ cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
 ```
-
-## 数据位置
-
-用户配置保存在 `%LOCALAPPDATA%\cool.cnb.jeffreyming.nscl\`（`settings.json`、`nscl-accounts.json`、缓存与 Java 运行时）。游戏文件默认使用 `NSCL.exe` 所在目录，其中已有 `.minecraft` 时优先使用该子目录。登录刷新令牌保存在系统凭据管理器，不写入配置文件。
-
-## 使用文档
-
-| 文档 | 内容 |
-| --- | --- |
-| [原版客户端](docs/vanilla-client.md) | 安装、镜像接口、文件修复与命令行 |
-| [模组加载器](docs/loaders.md) | Forge、Fabric、NeoForge 安装与 Java 要求 |
-| [账号与实例](docs/accounts-and-instances.md) | 登录、凭据保存、Java 配置与实例归档 |
-| [模组与整合包](docs/mods-and-modpacks.md) | 资源下载、依赖解析与整合包格式 |
-| [启动器更新](docs/launcher-updates.md) | 发布流程、校验与回退 |
-
-## 支持范围
-
-- 模组与整合包资源目前接入 Modrinth，支持 `.mrpack` 及同格式 ZIP；CurseForge、Quilt 尚未接入。
-- 兼容性检查依据资源发布信息、依赖与整合包清单，不保证任意第三方模组组合均能运行。
-- 离线账号无法进入要求正版认证的服务器；正版验证失败不会自动切换为离线账号。
-- Java 自动安装与重启更新目前仅支持 Windows。
 
 ## 反馈
 
