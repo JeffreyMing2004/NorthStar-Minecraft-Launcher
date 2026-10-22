@@ -2,6 +2,7 @@ use crate::{
     app::{self, NsclApp},
     content::ContentKind,
     pages::{download_button, download_status_height, input_focus, input_frame, task_status},
+    project_icons::Logo,
     service::ContentPlan,
     theme,
 };
@@ -160,10 +161,12 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
         egui::ScrollArea::vertical()
             .id_salt("content-projects")
             .max_height(height)
+            .min_scrolled_height(0.0)
             .auto_shrink([false, false])
             .show_rows(ui, 82.0, hits.len(), |ui, range| {
                 for index in range {
                     let project = &hits[index];
+                    let logo = app.project_icons.get(ui.ctx(), project.icon_url.as_deref());
                     if ui
                         .push_id(&project.project_id, |ui| {
                             row(
@@ -176,6 +179,7 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
                                 ),
                                 "查看版本",
                                 !app.service.busy(),
+                                Some(logo),
                             )
                         })
                         .inner
@@ -211,6 +215,9 @@ fn versions(ui: &mut Ui, app: &mut NsclApp) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
         back = download_button(ui, "返回搜索", !app.service.busy());
+        let logo = app.project_icons.get(ui.ctx(), project.icon_url.as_deref());
+        let (rect, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
+        logo.paint(ui, rect, &project.title);
         ui.add(
             egui::Label::new(
                 RichText::new(&project.title)
@@ -255,6 +262,7 @@ fn versions(ui: &mut Ui, app: &mut NsclApp) {
         egui::ScrollArea::vertical()
             .id_salt("content-versions")
             .max_height(height)
+            .min_scrolled_height(0.0)
             .auto_shrink([false, false])
             .show_rows(ui, 82.0, versions.len(), |ui, range| {
                 for index in range {
@@ -282,6 +290,7 @@ fn versions(ui: &mut Ui, app: &mut NsclApp) {
                                 ),
                                 "查看方案",
                                 !app.service.busy(),
+                                None,
                             )
                         })
                         .inner
@@ -300,6 +309,11 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
         back = download_button(ui, "返回资源", !app.service.busy());
+        if let Some(project) = &app.service.content.project {
+            let logo = app.project_icons.get(ui.ctx(), project.icon_url.as_deref());
+            let (rect, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
+            logo.paint(ui, rect, &project.title);
+        }
         app::heading(ui, "确认安装方案");
     });
     if back {
@@ -310,7 +324,7 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
     let height = (ui.available_height() - download_status_height(app) - 90.0).max(0.0);
     let busy = app.service.busy();
     list_area(ui, height, |ui| {
-        egui::ScrollArea::vertical().id_salt("content-plan").max_height(height).auto_shrink([false,false]).show(ui,|ui| {
+        egui::ScrollArea::vertical().id_salt("content-plan").max_height(height).min_scrolled_height(0.0).auto_shrink([false,false]).show(ui,|ui| {
             ui.spacing_mut().item_spacing.y=10.0;
             match &mut app.service.content.plan {
                 Some(ContentPlan::Mod(plan))=>{
@@ -376,6 +390,7 @@ fn row(
     meta: &str,
     action: &str,
     enabled: bool,
+    logo: Option<Logo>,
 ) -> bool {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 82.0), Sense::hover());
     ui.painter().rect_filled(rect, 10.0, theme::TOPBAR_BG);
@@ -385,8 +400,18 @@ fn row(
         Stroke::new(1.0, theme::CARD_BORDER),
         egui::StrokeKind::Inside,
     );
+    let text_offset = if let Some(logo) = logo {
+        logo.paint(
+            ui,
+            Rect::from_min_size(rect.min + Vec2::new(16.0, 13.0), Vec2::splat(56.0)),
+            title,
+        );
+        88.0
+    } else {
+        16.0
+    };
     let mut info = ui.new_child(UiBuilder::new().max_rect(Rect::from_min_max(
-        rect.min + Vec2::new(16.0, 10.0),
+        rect.min + Vec2::new(text_offset, 10.0),
         Pos2::new(rect.right() - 132.0, rect.bottom() - 8.0),
     )));
     info.spacing_mut().item_spacing.y = 4.0;

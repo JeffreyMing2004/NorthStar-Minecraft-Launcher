@@ -34,6 +34,8 @@ pub struct Project {
     #[serde(default)]
     pub author: String,
     pub downloads: u64,
+    #[serde(default)]
+    pub icon_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

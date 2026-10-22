@@ -18,6 +18,26 @@ use std::{
     time::Duration,
 };
 
+#[test]
+fn project_logos_allow_missing_null_and_empty_urls() {
+    let mut project = json!({"project_id":"test","title":"Test","description":"","downloads":1});
+    assert!(
+        serde_json::from_value::<Project>(project.clone())
+            .unwrap()
+            .icon_url
+            .is_none()
+    );
+    for url in [
+        serde_json::Value::Null,
+        json!(""),
+        json!("https://cdn.modrinth.com/data/test/icon.png"),
+    ] {
+        project["icon_url"] = url.clone();
+        let parsed: Project = serde_json::from_value(project.clone()).unwrap();
+        assert_eq!(parsed.icon_url.as_deref(), url.as_str());
+    }
+}
+
 struct Server {
     base: String,
     routes: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,

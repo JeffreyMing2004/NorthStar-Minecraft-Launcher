@@ -46,6 +46,7 @@ pub struct NsclApp {
     pub memory_input: String,
     pub save_status: String,
     pub service: crate::service::GameService,
+    pub project_icons: crate::project_icons::ProjectIcons,
     pub log_view: Option<String>,
     pub accounts: crate::account_service::AccountService,
     pub instance_manager: bool,
@@ -79,6 +80,11 @@ impl NsclApp {
             settings,
             save_status: load_error.unwrap_or_default(),
             service,
+            project_icons: crate::project_icons::ProjectIcons::new(
+                crate::store::settings_path()
+                    .with_file_name("cache")
+                    .join("project-icons"),
+            ),
             log_view: None,
             accounts: crate::account_service::AccountService::new(),
             instance_manager: false,

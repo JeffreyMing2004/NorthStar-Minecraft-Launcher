@@ -2,6 +2,8 @@
 
 目前接入 Modrinth 公共 API，无需为搜索与下载填写 API Key。启动器界面及安装逻辑均为 Rust，沿用原有的后台任务、进度和取消入口。
 
+模组与整合包搜索列表显示项目 Logo，版本页和安装确认页沿用所选项目的图标。图片在后台加载，最多并发 4 个请求，并在设置文件旁的 `cache/project-icons/` 缓存缩略图；翻页或再次打开启动器时可复用。支持 PNG、JPEG、WebP 和 GIF 首帧，保持原始比例及透明背景。没有 Logo、图片损坏或网络失败时显示项目名称首字占位，不影响搜索、下载与安装。
+
 ## 模组下载
 
 1. 在「下载 → Minecraft」安装游戏和 Forge、Fabric 或 NeoForge。
@@ -48,5 +50,7 @@
 - [官方 `.mrpack` 格式](https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack)
 
 自动测试使用本地模拟服务覆盖依赖安装、模组更新保留存档、游戏版本及加载器不匹配、仅服务端资源、冲突依赖、下载取消、错误校验值、同名文件保护、写入失败回退、客户端覆盖文件和独立实例创建。桌面交互测试覆盖最小窗口布局和整合包确认前不安装。
+
+Logo 测试覆盖常见图片格式、透明背景、等比例绘制、请求去重、重启后缓存复用、损坏缓存恢复和缺图回退。已通过 Sodium 模组与 Fabulously Optimized 整合包的真实 Logo 下载验证；需要联网复测时运行 `cargo test --bin nscl live_modrinth_mod_and_modpack_logos -- --ignored --nocapture`。
 
 已在独立 Windows 测试实例中通过真实 Modrinth API 下载并安装 Iris `1.7.6+1.20.1` 和其指定的 Sodium 依赖，完整性及依赖检查通过。Fabulously Optimized `5.2.8`（Minecraft `1.20.1` / Fabric `0.14.22`）也已完成真实下载、加载器安装与独立实例创建，校验 52 个下载文件和 27 个配置/附带文件。此验证覆盖下载与安装，不等同于所有模组组合的游戏运行验证。

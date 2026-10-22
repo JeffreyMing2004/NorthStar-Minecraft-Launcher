@@ -7,6 +7,7 @@ fn fixture() -> (tempfile::TempDir, NsclApp, Context) {
     std::fs::create_dir_all(&parent).unwrap();
     let root = tempfile::tempdir_in(parent).unwrap();
     let mut app = NsclApp::new();
+    app.project_icons = crate::project_icons::ProjectIcons::new(root.path().join("icons"));
     app.settings.game_directory = root.path().to_string_lossy().into_owned();
     app.service = GameService::new(&app.settings);
     app.service.versions_requested = true;
@@ -185,12 +186,34 @@ fn resource_catalog_and_versions_fit_small_windows_without_starting_tasks() {
     let size = Vec2::new(876.0, 390.0);
     for category in [1, 2] {
         app.category = category;
+        app.service.task = Task::Idle;
+        app.service.content_kind(if category == 1 {
+            crate::content::ContentKind::Modpack
+        } else {
+            crate::content::ContentKind::Mod
+        });
+        app.service.content.results.hits = vec![crate::content::Project {
+            project_id: "example".into(),
+            title: "Test resource".into(),
+            description: "Example description".into(),
+            author: "Author".into(),
+            downloads: 1,
+            icon_url: None,
+        }];
         for task in [Task::Idle, Task::Content] {
             app.service.task = task;
-            let output = frame(&ctx, &mut app, size, vec![]);
+            let mut output = frame(&ctx, &mut app, size, vec![]);
+            output.textures_delta.clear();
             let search = text_rect(&output, "搜索");
             let next = text_rect(&output, "下一页");
             assert!(search.max.x < size.x && next.max.y < size.y);
+            if task == Task::Idle {
+                let title = text_rect(&output, "Test resource");
+                let placeholder = text_rect(&output, "T");
+                let action = text_rect(&output, "查看版本");
+                assert!(placeholder.max.x < title.min.x);
+                assert!(title.max.x < action.min.x && action.max.x < size.x);
+            }
             if task == Task::Content {
                 assert!(text_rect(&output, "取消任务").max.y < size.y);
             }
@@ -204,6 +227,7 @@ fn resource_catalog_and_versions_fit_small_windows_without_starting_tasks() {
         description: String::new(),
         author: String::new(),
         downloads: 1,
+        icon_url: None,
     });
     app.service.content.versions=vec![serde_json::from_value(serde_json::json!({"id":"v1","project_id":"example","name":"Test version","version_number":"1","version_type":"release","date_published":"2026-01-01","game_versions":["1.20.1"],"loaders":["fabric"],"files":[]})).unwrap()];
     let output = frame(&ctx, &mut app, size, vec![]);
