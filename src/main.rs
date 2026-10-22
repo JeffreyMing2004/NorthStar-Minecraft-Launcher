@@ -2,6 +2,7 @@
 
 mod account_service;
 mod app;
+mod download_flow;
 mod pages;
 mod service;
 mod theme;

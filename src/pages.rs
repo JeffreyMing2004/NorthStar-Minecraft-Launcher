@@ -616,18 +616,18 @@ pub fn account(ui: &mut Ui, app: &mut NsclApp) {
 }
 
 pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
-    const CATEGORIES: [&str; 4] = ["原版", "加载器", "整合包", "Mod"];
-    const DESCRIPTIONS: [&str; 3] = [
-        "为你的实例安装 Forge、Fabric 或 NeoForge。",
-        "发现组合好的模组与全新玩法。",
-        "为现有实例添加更多可能。",
-    ];
+    const CATEGORIES: [&str; 3] = ["Minecraft", "整合包", "Mod"];
+    const DESCRIPTIONS: [&str; 2] = ["发现组合好的模组与全新玩法。", "为现有实例添加更多可能。"];
     let width = ui.available_width();
     let height = ui.available_height();
     theme::card(24).show(ui, |ui| {
         ui.set_width(width - 50.0);
         ui.set_min_height(height - 50.0);
         ui.spacing_mut().item_spacing.y = 0.0;
+        if app.category == 0 && app.download.version.is_some() {
+            installation_options(ui, app);
+            return;
+        }
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             for (index, item) in CATEGORIES.iter().enumerate() {
@@ -669,12 +669,7 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
         ui.separator();
         if app.category == 0 {
             ui.add_space(20.0);
-            vanilla_downloads(ui, app);
-            return;
-        }
-        if app.category == 1 {
-            ui.add_space(20.0);
-            loader_downloads(ui, app);
+            minecraft_downloads(ui, app);
             return;
         }
         egui::ScrollArea::vertical()
@@ -1198,166 +1193,275 @@ fn settings_input(ui: &mut Ui, label: &str, value: &mut String, width: f32) {
     ui.add_space(10.0);
 }
 
-fn loader_downloads(ui: &mut Ui, app: &mut NsclApp) {
+fn installation_options(ui: &mut Ui, app: &mut NsclApp) {
     use crate::minecraft::LoaderKind;
+    let Some(version) = app.download.version.clone() else {
+        return;
+    };
     app.service.ensure_versions_loaded(&app.settings, ui.ctx());
-    if app.service.loader_minecraft.is_empty() {
-        let selected = app
-            .service
-            .instances
-            .iter()
-            .find(|instance| instance.id == app.service.selected)
-            .and_then(|instance| {
-                app.service
-                    .installed
-                    .iter()
-                    .find(|version| version.id == instance.version_id)
-            });
-        app.service.loader_minecraft = selected
-            .map(|version| {
-                version
-                    .loader
-                    .as_ref()
-                    .map(|loader| loader.minecraft.clone())
-                    .unwrap_or_else(|| version.id.clone())
-            })
-            .or_else(|| {
-                app.service
-                    .versions
-                    .iter()
-                    .find(|version| version.kind == "release")
-                    .map(|version| version.id.clone())
-            })
-            .unwrap_or_default();
+    let mut back = false;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 18.0;
+        back = download_button(ui, "返回版本列表", !app.service.busy());
+        app::heading(ui, &format!("Minecraft {}", version.id));
+    });
+    if back {
+        app.download = Default::default();
+        return;
     }
+    ui.add_space(14.0);
     ui.add_enabled_ui(!app.service.busy(), |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = Vec2::new(12.0, 10.0);
-            for kind in LoaderKind::ALL {
-                let selected = app.service.loader_kind == kind;
-                if app::styled_button(
-                    ui,
-                    RichText::new(kind.label()).size(14.0).color(if selected {
-                        theme::ON_ACCENT
-                    } else {
-                        theme::BODY_TEXT
-                    }),
-                    &app::ButtonStyle {
-                        fill: if selected {
-                            theme::ACCENT
-                        } else {
-                            theme::SECONDARY_BG
-                        },
-                        min_size: Vec2::new(108.0, 38.0),
-                        ..Default::default()
-                    },
-                )
-                .clicked()
-                {
-                    app.service.loader_kind = kind;
+            for kind in std::iter::once(None).chain(LoaderKind::ALL.map(Some)) {
+                let label = kind.map(LoaderKind::label).unwrap_or("不安装加载器");
+                if installation_choice(ui, label, app.download.kind == kind) {
+                    app.download.choose_kind(kind);
+                    app.service.loader_search.clear();
                 }
             }
         });
-        ui.add_space(18.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(16.0, 10.0);
-            ui.label("Minecraft");
-            egui::ComboBox::from_id_salt("loader-minecraft")
-                .width(175.0)
-                .height(260.0)
-                .selected_text(if app.service.loader_minecraft.is_empty() {
-                    "选择版本"
-                } else {
-                    &app.service.loader_minecraft
-                })
-                .show_ui(ui, |ui| {
-                    for version in &app.service.versions {
-                        if version.kind == "release" || app.service.snapshots {
-                            ui.selectable_value(
-                                &mut app.service.loader_minecraft,
-                                version.id.clone(),
-                                &version.id,
-                            );
-                        }
-                    }
-                });
-            ui.checkbox(&mut app.service.snapshots, "显示快照");
-            if download_button(ui, "刷新列表", !app.service.loader_minecraft.is_empty()) {
-                app.service.load_loaders(&app.settings, ui.ctx());
-            }
-        });
     });
-    ui.add_space(14.0);
-    app::hint(
-        ui,
-        "安装为独立实例，保留现有游戏和存档。Forge / NeoForge 的补丁处理需要对应版本的 Java。",
-    );
-    ui.add_space(16.0);
-    let response = ui.add(
-        egui::TextEdit::singleline(&mut app.service.loader_search)
-            .font(FontId::proportional(14.0))
-            .frame(input_frame())
-            .margin(Vec2::new(14.0, 10.0))
-            .hint_text("搜索加载器版本")
-            .desired_width(280.0),
-    );
-    input_focus(ui, &response);
-    ui.add_space(18.0);
-    app.service.ensure_loaders_loaded(&app.settings, ui.ctx());
-    let reserved = if app.service.busy() {
-        88.0
-    } else if !app.service.notice.is_empty() {
-        52.0
+    ui.add_space(10.0);
+    if let Some(kind) = app.download.kind {
+        app::hint(
+            ui,
+            "选择一个兼容的加载器版本，然后开始安装；每次只安装一种加载器。",
+        );
+        ui.add_space(10.0);
+        ui.add_enabled_ui(!app.service.busy(), |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 18.0;
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut app.service.loader_search)
+                        .font(FontId::proportional(14.0))
+                        .frame(input_frame())
+                        .margin(Vec2::new(14.0, 10.0))
+                        .hint_text("搜索加载器版本")
+                        .desired_width(280.0),
+                );
+                input_focus(ui, &response);
+                if download_button(ui, "刷新列表", true) {
+                    app.download.loader = None;
+                    app.service
+                        .load_loaders(&version.id, kind, &app.settings, ui.ctx());
+                }
+            });
+        });
+        app.service
+            .ensure_loaders_loaded(&version.id, kind, &app.settings, ui.ctx());
+        // A refreshed or newly requested catalog must not retain an obsolete choice.
+        if app
+            .download
+            .loader
+            .as_ref()
+            .is_some_and(|loader| !app.service.loaders.contains(loader))
+        {
+            app.download.loader = None;
+        }
     } else {
+        app::hint(
+            ui,
+            "直接安装 Minecraft 原版客户端，之后可在开始页启动游戏。",
+        );
+    }
+    ui.add_space(12.0);
+    let querying = app.service.task == crate::service::Task::LoaderVersions;
+    let status_height = if querying {
         0.0
+    } else {
+        download_status_height(app)
     };
-    let height = (ui.available_height() - reserved).max(80.0);
+    let height = (ui.available_height() - status_height - 88.0).max(0.0);
+    ui.allocate_ui_with_layout(
+        Vec2::new(ui.available_width(), height),
+        egui::Layout::top_down(egui::Align::Min),
+        |ui| {
+            ui.set_min_height(height);
+            if let Some(kind) = app.download.kind {
+                loader_version_list(ui, app, &version.id, kind, height);
+            } else if height >= 46.0 {
+                ui.add_space(((height - 46.0) * 0.5).max(0.0));
+                ui.vertical_centered(|ui| {
+                    app::body(ui, "原版 Minecraft");
+                    ui.add_space(8.0);
+                    app::hint(ui, "无需选择加载器，点击下方按钮即可安装。");
+                });
+            }
+        },
+    );
+    installation_footer(ui, app);
+    if !querying {
+        task_status(ui, app);
+    }
+}
+
+fn installation_choice(ui: &mut Ui, label: &str, selected: bool) -> bool {
+    app::styled_button(
+        ui,
+        RichText::new(label).size(14.0).color(if selected {
+            theme::ON_ACCENT
+        } else {
+            theme::BODY_TEXT
+        }),
+        &app::ButtonStyle {
+            fill: if selected {
+                theme::ACCENT
+            } else {
+                theme::SECONDARY_BG
+            },
+            min_size: Vec2::new(108.0, 38.0),
+            ..Default::default()
+        },
+    )
+    .clicked()
+}
+
+fn loader_version_list(
+    ui: &mut Ui,
+    app: &mut NsclApp,
+    minecraft: &str,
+    kind: crate::minecraft::LoaderKind,
+    height: f32,
+) {
     let query = app.service.loader_search.trim().to_ascii_lowercase();
     let versions: Vec<_> = app
         .service
         .loaders
         .iter()
-        .filter(|version| version.version.to_ascii_lowercase().contains(&query))
+        .filter(|version| {
+            version.minecraft == minecraft
+                && version.kind == kind
+                && version.version.to_ascii_lowercase().contains(&query)
+        })
         .cloned()
         .collect();
-    let mut install = None;
-    ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), height), egui::Layout::top_down(egui::Align::Min), |ui| {
-        ui.set_min_height(height);
-        if versions.is_empty() {
-            ui.add_space(((height - 50.0) * 0.5).max(0.0));
-            ui.vertical_centered(|ui| {
-                if app.service.busy() { ui.spinner(); app::body(ui, &app.service.progress.stage); }
-                else if !query.is_empty() { app::body(ui, "没有匹配的加载器版本，请调整搜索词。"); }
-                else { app::body(ui, "该 Minecraft 版本暂无可用加载器，或列表获取失败；可切换版本或刷新重试。"); }
-            });
-            return;
-        }
-        ui.spacing_mut().item_spacing.y = 10.0;
-        egui::ScrollArea::vertical().id_salt("loader-versions").max_height(height).min_scrolled_height(0.0).auto_shrink([false, false])
-            .show_rows(ui, 72.0, versions.len(), |ui, range| {
-                for index in range {
-                    let version = &versions[index];
-                    let installed = version.id().is_ok_and(|id| app.service.installed.iter().any(|entry| entry.id == id));
-                    // Reuse the spacious 72-pixel version row from vanilla downloads.
-                    let row = crate::minecraft::VersionEntry {
-                        id: format!("{} {}", version.kind.label(), version.version),
-                        kind: if version.stable { "稳定版" } else { "预览版" }.into(),
-                        release_time: version.minecraft.clone(),
-                        url: String::new(), sha1: String::new(),
-                    };
-                    if ui.push_id(&row.id, |ui| version_row(ui, &row, installed, !app.service.busy() && app.service.game.is_none())).inner {
-                        install = Some(version.clone());
+    if versions.is_empty() {
+        ui.add_space(((height - 84.0) * 0.5).max(0.0));
+        ui.vertical_centered(|ui| {
+            if app.service.busy() {
+                if app.service.task == crate::service::Task::LoaderVersions {
+                    ui.spinner();
+                    app::body(ui, "正在获取兼容的加载器版本……");
+                    ui.add_space(8.0);
+                    if download_button(ui, "取消加载", true) {
+                        app.service.cancel();
                     }
                 }
-            });
-    });
-    if let Some(version) = install {
-        app.service.install_modded(version, &app.settings, ui.ctx());
+            } else if !query.is_empty() {
+                app::body(ui, "没有匹配的加载器版本，请调整搜索词。");
+            } else {
+                app::body(
+                    ui,
+                    "暂无兼容版本，或列表获取失败；可刷新重试或选择不安装加载器。",
+                );
+            }
+        });
+        return;
     }
-    task_status(ui, app);
+    ui.spacing_mut().item_spacing.y = 10.0;
+    egui::ScrollArea::vertical()
+        .id_salt(("loader-versions", minecraft, kind.key()))
+        .max_height(height)
+        .min_scrolled_height(0.0)
+        .auto_shrink([false, false])
+        .show_rows(ui, 72.0, versions.len(), |ui, range| {
+            for index in range {
+                let version = &versions[index];
+                let installed = version
+                    .id()
+                    .is_ok_and(|id| app.service.installed.iter().any(|entry| entry.id == id));
+                let selected = app.download.loader.as_ref() == Some(version);
+                let row = crate::minecraft::VersionEntry {
+                    id: format!("{} {}", version.kind.label(), version.version),
+                    kind: if version.stable {
+                        "稳定版"
+                    } else {
+                        "预览版"
+                    }
+                    .into(),
+                    release_time: format!("适用于 Minecraft {}", version.minecraft),
+                    url: String::new(),
+                    sha1: String::new(),
+                };
+                if ui
+                    .push_id(&row.id, |ui| {
+                        version_row(
+                            ui,
+                            &row,
+                            installed,
+                            selected,
+                            !app.service.busy(),
+                            if selected { "已选择" } else { "选择" },
+                        )
+                    })
+                    .inner
+                {
+                    app.download.choose_loader(version.clone());
+                }
+            }
+        });
 }
 
-fn vanilla_downloads(ui: &mut Ui, app: &mut NsclApp) {
+fn installation_footer(ui: &mut Ui, app: &mut NsclApp) {
+    use crate::download_flow::InstallTarget;
+    let target = app.download.target();
+    let installed = target
+        .as_ref()
+        .and_then(InstallTarget::id)
+        .is_some_and(|id| app.service.installed.iter().any(|version| version.id == id));
+    let summary = match &target {
+        Some(InstallTarget::Vanilla(version)) => format!("Minecraft {} · 原版", version.id),
+        Some(InstallTarget::Modded(loader)) => loader.label(),
+        None => "请选择一个加载器版本".into(),
+    };
+    ui.add_space(18.0);
+    ui.separator();
+    ui.add_space(12.0);
+    let mut install = false;
+    ui.horizontal(|ui| {
+        let summary_width = (ui.available_width() - 220.0).max(0.0);
+        ui.add_sized(
+            Vec2::new(summary_width, 46.0),
+            egui::Label::new(RichText::new(summary).size(14.0).color(theme::BODY_TEXT)).truncate(),
+        );
+        ui.add_enabled_ui(
+            target.is_some() && !app.service.busy() && app.service.game.is_none(),
+            |ui| {
+                install = app::primary_button(
+                    ui,
+                    if installed {
+                        "校验 / 修复"
+                    } else {
+                        "开始安装"
+                    },
+                );
+            },
+        );
+    });
+    if install && let Some(target) = target {
+        match target {
+            InstallTarget::Vanilla(version) => {
+                app.service.install(version, &app.settings, ui.ctx())
+            }
+            InstallTarget::Modded(loader) => {
+                app.service.install_modded(loader, &app.settings, ui.ctx())
+            }
+        }
+    }
+}
+
+fn download_status_height(app: &NsclApp) -> f32 {
+    if app.service.busy() {
+        88.0
+    } else if !app.service.notice.is_empty() {
+        52.0
+    } else {
+        0.0
+    }
+}
+
+fn minecraft_downloads(ui: &mut Ui, app: &mut NsclApp) {
     app.service.ensure_versions_loaded(&app.settings, ui.ctx());
     let search_width = (ui.available_width() * 0.42).clamp(240.0, 400.0);
     ui.horizontal(|ui| {
@@ -1374,26 +1478,20 @@ fn vanilla_downloads(ui: &mut Ui, app: &mut NsclApp) {
         ui.checkbox(&mut app.service.snapshots, "显示快照与历史版本");
     });
     ui.add_space(20.0);
-    let status_height = if app.service.busy() {
-        88.0
-    } else if !app.service.notice.is_empty() {
-        52.0
-    } else {
-        0.0
-    };
+    let status_height = download_status_height(app);
     let list_height = (ui.available_height() - status_height).max(80.0);
     ui.allocate_ui_with_layout(
         Vec2::new(ui.available_width(), list_height),
         egui::Layout::top_down(egui::Align::Min),
         |ui| {
             ui.set_min_height(list_height);
-            vanilla_version_list(ui, app, list_height);
+            minecraft_version_list(ui, app, list_height);
         },
     );
     task_status(ui, app);
 }
 
-fn vanilla_version_list(ui: &mut Ui, app: &mut NsclApp, height: f32) {
+fn minecraft_version_list(ui: &mut Ui, app: &mut NsclApp, height: f32) {
     if app.service.versions.is_empty() {
         ui.add_space(((height - 84.0) * 0.5).max(0.0));
         ui.vertical_centered(|ui| {
@@ -1420,7 +1518,7 @@ fn vanilla_version_list(ui: &mut Ui, app: &mut NsclApp, height: f32) {
         })
         .cloned()
         .collect();
-    let mut install = None;
+    let mut selection = None;
     if versions.is_empty() {
         ui.add_space(((height - 24.0) * 0.5).max(0.0));
         ui.vertical_centered(|ui| {
@@ -1443,15 +1541,23 @@ fn vanilla_version_list(ui: &mut Ui, app: &mut NsclApp, height: f32) {
                     .iter()
                     .any(|entry| entry.id == version.id);
                 let clicked = ui.push_id(&version.id, |ui| {
-                    version_row(ui, version, installed, !app.service.busy())
+                    version_row(
+                        ui,
+                        version,
+                        installed,
+                        false,
+                        !app.service.busy(),
+                        "选择版本",
+                    )
                 });
                 if clicked.inner {
-                    install = Some(version.clone());
+                    selection = Some(version.clone());
                 }
             }
         });
-    if let Some(version) = install {
-        app.service.install(version, &app.settings, ui.ctx());
+    if let Some(version) = selection {
+        app.download.choose_version(version);
+        app.service.loader_search.clear();
     }
 }
 
@@ -1459,7 +1565,9 @@ fn version_row(
     ui: &mut Ui,
     version: &crate::minecraft::VersionEntry,
     installed: bool,
+    selected: bool,
     enabled: bool,
+    action_label: &str,
 ) -> bool {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 72.0), Sense::hover());
     ui.painter().rect_filled(
@@ -1474,7 +1582,14 @@ fn version_row(
     ui.painter().rect_stroke(
         rect,
         10.0,
-        Stroke::new(1.0, theme::CARD_BORDER),
+        Stroke::new(
+            1.0,
+            if selected {
+                theme::ACCENT
+            } else {
+                theme::CARD_BORDER
+            },
+        ),
         egui::StrokeKind::Inside,
     );
     let info_rect = Rect::from_min_max(
@@ -1506,9 +1621,13 @@ fn version_row(
         }
     });
     info.label(
-        RichText::new(version.release_time.get(..10).unwrap_or(""))
-            .size(12.0)
-            .color(theme::MUTED),
+        RichText::new(if version.kind == "稳定版" || version.kind == "预览版" {
+            &version.release_time
+        } else {
+            version.release_time.get(..10).unwrap_or("")
+        })
+        .size(12.0)
+        .color(theme::MUTED),
     );
     let mut action = ui.new_child(
         UiBuilder::new()
@@ -1518,15 +1637,7 @@ fn version_row(
             ))
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
-    download_button(
-        &mut action,
-        if installed {
-            "校验 / 修复"
-        } else {
-            "安装"
-        },
-        enabled,
-    )
+    download_button(&mut action, action_label, enabled)
 }
 
 fn download_button(ui: &mut Ui, label: &str, enabled: bool) -> bool {

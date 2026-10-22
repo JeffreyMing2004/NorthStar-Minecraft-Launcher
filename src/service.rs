@@ -42,8 +42,6 @@ pub struct GameService {
     pub selected: String,
     pub search: String,
     pub snapshots: bool,
-    pub loader_kind: LoaderKind,
-    pub loader_minecraft: String,
     pub loader_search: String,
     pub loaders: Vec<LoaderVersion>,
     pub progress: Progress,
@@ -81,8 +79,6 @@ impl GameService {
             selected,
             search: String::new(),
             snapshots: false,
-            loader_kind: LoaderKind::Forge,
-            loader_minecraft: String::new(),
             loader_search: String::new(),
             loaders: Vec::new(),
             progress: Progress::default(),
@@ -268,20 +264,29 @@ impl GameService {
         self.start_install(entry, None, settings, ctx);
     }
 
-    pub fn ensure_loaders_loaded(&mut self, settings: &Settings, ctx: &egui::Context) {
-        if !self.loader_minecraft.is_empty()
-            && self.loaders_requested.as_ref()
-                != Some(&(self.loader_minecraft.clone(), self.loader_kind))
-        {
-            self.load_loaders(settings, ctx);
+    pub fn ensure_loaders_loaded(
+        &mut self,
+        minecraft: &str,
+        kind: LoaderKind,
+        settings: &Settings,
+        ctx: &egui::Context,
+    ) {
+        if self.loaders_requested.as_ref() != Some(&(minecraft.to_owned(), kind)) {
+            self.load_loaders(minecraft, kind, settings, ctx);
         }
     }
 
-    pub fn load_loaders(&mut self, settings: &Settings, ctx: &egui::Context) {
-        if self.busy() || self.loader_minecraft.is_empty() {
+    pub fn load_loaders(
+        &mut self,
+        minecraft: &str,
+        kind: LoaderKind,
+        settings: &Settings,
+        ctx: &egui::Context,
+    ) {
+        if self.busy() || minecraft.is_empty() {
             return;
         }
-        let (minecraft, kind) = (self.loader_minecraft.clone(), self.loader_kind);
+        let minecraft = minecraft.to_owned();
         self.loaders_requested = Some((minecraft.clone(), kind));
         self.loaders.clear();
         self.begin(Task::LoaderVersions);
@@ -495,3 +500,6 @@ fn send(sender: &Sender<Event>, context: &egui::Context, event: Event) {
     let _ = sender.send(event);
     context.request_repaint();
 }
+
+#[cfg(test)]
+mod tests;

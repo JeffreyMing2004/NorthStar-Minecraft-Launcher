@@ -41,6 +41,7 @@ impl Page {
 pub struct NsclApp {
     pub page: Page,
     pub category: usize,
+    pub download: crate::download_flow::DownloadFlow,
     pub settings: Settings,
     pub memory_input: String,
     pub save_status: String,
@@ -73,6 +74,7 @@ impl NsclApp {
         Self {
             page: initial_page(),
             category: 0,
+            download: crate::download_flow::DownloadFlow::default(),
             memory_input: settings.memory.to_string(),
             settings,
             save_status: load_error.unwrap_or_default(),
