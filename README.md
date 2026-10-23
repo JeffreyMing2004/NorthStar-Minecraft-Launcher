@@ -69,4 +69,6 @@ cargo test --locked --all-targets
 
 NSCL 是独立的非官方项目，与 Mojang Studios 或 Microsoft 无隶属或背书关系。Minecraft 及相关名称、商标归其各自权利人所有。
 
-本仓库尚未指定开源许可证，也未提供 `LICENSE` 文件。
+本项目基于 [GNU General Public License v3.0](LICENSE)（仅限第 3 版，`GPL-3.0-only`）发布：你可以自由使用、修改和再分发，但分发衍生作品时必须同样以 GPL-3.0 开源，并提供完整源码。
+
+`assets/` 下的 Minecraft 相关素材归 Mojang Studios 所有，不受本项目许可证覆盖。
