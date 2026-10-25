@@ -347,11 +347,10 @@ fn cube(
 }
 
 pub fn controls(ui: &mut Ui, app: &mut NsclApp) {
-    app::heading(ui, "皮肤与角色预览");
-    ui.add_space(18.0);
     let width = ui.available_width();
     if width >= 640.0 {
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 330.0), Sense::hover());
+        let height = (ui.ctx().content_rect().height() - 346.0).clamp(270.0, 330.0);
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
         let model_width = width * 0.36;
         let model_rect = Rect::from_min_size(rect.min, Vec2::new(model_width, rect.height()));
         ui.painter().rect_filled(model_rect, 12.0, theme::TOPBAR_BG);

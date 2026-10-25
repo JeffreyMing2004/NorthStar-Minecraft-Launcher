@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod account_service;
+mod account_ui;
 mod app;
 mod content_page;
 mod download_flow;
@@ -8,6 +9,7 @@ mod manager_ui;
 mod pages;
 mod project_icons;
 mod service;
+mod settings_ui;
 mod skin_ui;
 mod theme;
 mod update_service;

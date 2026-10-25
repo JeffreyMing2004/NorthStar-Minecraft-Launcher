@@ -27,13 +27,22 @@ impl Page {
             Page::About => "更多",
         }
     }
-    fn eyebrow(self) -> &'static str {
+    fn subtitle(self) -> &'static str {
         match self {
-            Page::Home => "NORTHSTAR / HOME",
-            Page::Account => "NORTHSTAR / ACCOUNT",
-            Page::Downloads => "NORTHSTAR / DOWNLOADS",
-            Page::Settings => "NORTHSTAR / SETTINGS",
-            Page::About => "NORTHSTAR / MORE",
+            Page::Home => "选择一个世界，继续你的旅程。",
+            Page::Account => "管理你的游戏身份与角色外观。",
+            Page::Downloads => "发现新版本、模组与整合包。",
+            Page::Settings => "让启动器按你的习惯运行。",
+            Page::About => "关于 NorthStar，以及接下来的更新。",
+        }
+    }
+    fn icon(self) -> theme::Icon {
+        match self {
+            Page::Home => theme::Icon::Play,
+            Page::Account => theme::Icon::User,
+            Page::Downloads => theme::Icon::Download,
+            Page::Settings => theme::Icon::Settings,
+            Page::About => theme::Icon::More,
         }
     }
 }
@@ -196,11 +205,11 @@ impl eframe::App for NsclApp {
         }
         self.top_bar(ui, &ctx);
         egui::Panel::bottom("footer")
-            .exact_size(42.0)
+            .exact_size(32.0)
             .show_separator_line(false)
             .frame(
                 egui::Frame::default()
-                    .fill(theme::TOPBAR_BG)
+                    .fill(theme::WINDOW_BG)
                     .stroke(egui::Stroke::new(1.0, theme::CARD_BORDER)),
             )
             .show(ui, |ui| {
@@ -208,7 +217,7 @@ impl eframe::App for NsclApp {
                     ui.available_size(),
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
-                        ui.add_space(20.0);
+                        ui.add_space(28.0);
                         ui.label(RichText::new("●").size(6.0).color(theme::ACCENT));
                         ui.label(
                             RichText::new(if self.service.busy() {
@@ -218,9 +227,9 @@ impl eframe::App for NsclApp {
                             } else if self.updates.available() {
                                 "发现启动器新版本，请前往「更多」更新"
                             } else {
-                                "启动器 · 准备就绪"
+                                "准备就绪"
                             })
-                            .size(10.0)
+                            .size(11.0)
                             .color(theme::FOOTER_TEXT),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -244,10 +253,10 @@ impl eframe::App for NsclApp {
                 egui::Frame::default()
                     .fill(theme::WINDOW_BG)
                     .inner_margin(egui::Margin {
-                        left: 42,
-                        right: 42,
-                        top: if self.page == Page::Downloads { 28 } else { 38 },
-                        bottom: if self.page == Page::Downloads { 24 } else { 30 },
+                        left: 32,
+                        right: 32,
+                        top: 26,
+                        bottom: 24,
                     }),
             )
             .show(ui, |ui| {
@@ -258,8 +267,13 @@ impl eframe::App for NsclApp {
                     pages::downloads(ui, self);
                     return;
                 }
-                ui.add_space(28.0);
+                ui.add_space(20.0);
+                if self.page == Page::Settings {
+                    pages::settings(ui, self);
+                    return;
+                }
                 egui::ScrollArea::vertical()
+                    .id_salt(("page-content", self.page.title()))
                     .auto_shrink([false, false])
                     .show(ui, |ui| match self.page {
                         Page::Home => pages::home(ui, self),
@@ -338,47 +352,27 @@ impl NsclApp {
     }
 
     fn page_heading(&mut self, ui: &mut Ui) {
-        let height = if self.page == Page::Downloads {
-            64.0
-        } else {
-            68.0
-        };
         let (rect, _) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
-        theme::spaced_text(
-            ui.painter(),
-            rect.left_top(),
-            self.page.eyebrow(),
-            10.0,
-            2.5,
-            theme::EYEBROW,
-        );
-        let title = if self.page == Page::Home {
-            "下一段冒险，从这里开始。"
-        } else {
-            self.page.title()
-        };
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), 60.0), Sense::hover());
         ui.painter().text(
-            rect.left_top() + Vec2::new(0.0, 27.0),
+            rect.left_top(),
             egui::Align2::LEFT_TOP,
-            title,
-            egui::FontId::new(28.0, theme::bold_family()),
+            self.page.title(),
+            egui::FontId::new(26.0, theme::bold_family()),
             theme::HEADING,
         );
-        paint_badge(
-            ui.painter(),
-            egui::Rect::from_min_size(
-                egui::pos2(rect.right() - 68.0, rect.center().y - 13.0),
-                Vec2::new(68.0, 26.0),
-            ),
-            "开发预览",
-            false,
+        ui.painter().text(
+            rect.left_top() + Vec2::new(0.0, 38.0),
+            egui::Align2::LEFT_TOP,
+            self.page.subtitle(),
+            egui::FontId::proportional(13.0),
+            theme::MUTED,
         );
     }
 
     fn top_bar(&mut self, ui: &mut Ui, ctx: &Context) {
         egui::Panel::top("topbar")
-            .exact_size(72.0)
+            .exact_size(76.0)
             .show_separator_line(false)
             .frame(
                 egui::Frame::default()
@@ -412,13 +406,14 @@ impl NsclApp {
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
                         let (star_rect, _) =
-                            ui.allocate_exact_size(Vec2::new(26.0, 26.0), egui::Sense::hover());
-                        theme::star4(ui.painter(), star_rect.center(), 13.0, theme::ACCENT);
-                        ui.add_space(10.0);
+                            ui.allocate_exact_size(Vec2::new(36.0, 36.0), egui::Sense::hover());
+                        ui.painter()
+                            .rect_filled(star_rect, 11.0, theme::nav_active_bg());
+                        theme::star4(ui.painter(), star_rect.center(), 12.0, theme::ACCENT);
                         if use_short_name {
                             ui.label(
                                 RichText::new("NSCL")
-                                    .size(13.0)
+                                    .size(16.0)
                                     .color(theme::BODY_TEXT)
                                     .family(theme::bold_family()),
                             );
@@ -438,50 +433,30 @@ impl NsclApp {
                     },
                 );
 
-                // Navigation keeps a fixed rhythm and remains centered in the window.
+                let navigation_rect = egui::Rect::from_center_size(center, Vec2::new(476.0, 50.0));
+                ui.painter()
+                    .rect_filled(navigation_rect, 15.0, theme::INPUT_BG);
+                ui.painter().rect_stroke(
+                    navigation_rect,
+                    15.0,
+                    egui::Stroke::new(1.0, theme::CARD_BORDER),
+                    egui::StrokeKind::Inside,
+                );
                 let mut nav = ui.new_child(
                     UiBuilder::new()
                         .max_rect(egui::Rect::from_center_size(
                             center,
-                            Vec2::new(424.0, rect.height()),
+                            Vec2::new(460.0, rect.height()),
                         ))
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
                 nav.horizontal_centered(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(theme::TAB_GAP, 0.0);
+                    ui.spacing_mut().item_spacing = Vec2::new(5.0, 0.0);
                     for item in Page::ALL {
                         let active = self.page == item;
-                        let fill = if active {
-                            theme::nav_active_bg()
-                        } else {
-                            Color32::TRANSPARENT
-                        };
-                        let text = RichText::new(item.title()).size(14.0).color(if active {
-                            theme::NAV_ACTIVE
-                        } else {
-                            theme::NAV_TEXT
-                        });
-                        let response = styled_button(
-                            ui,
-                            text,
-                            &ButtonStyle {
-                                fill,
-                                radius: 7.0,
-                                min_size: Vec2::new(72.0, theme::CONTROL_HEIGHT),
-                                ..Default::default()
-                            },
-                        );
+                        let response = navigation_button(ui, item, active);
                         if response.clicked() {
                             self.page = item;
-                        }
-                        if active {
-                            // 原设计下划线悬于按钮下方数像素处
-                            let y = rect.bottom() - 1.0;
-                            let x = response.rect.center().x;
-                            ui.painter().line_segment(
-                                [egui::pos2(x - 10.0, y), egui::pos2(x + 10.0, y)],
-                                egui::Stroke::new(2.0, theme::ACCENT),
-                            );
                         }
                     }
                 });
@@ -513,6 +488,46 @@ impl NsclApp {
                 );
             });
     }
+}
+
+fn navigation_button(ui: &mut Ui, page: Page, selected: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(88.0, 38.0), Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, page.title()));
+    let fill = if selected {
+        theme::nav_active_bg()
+    } else if response.hovered() {
+        theme::SECONDARY_BG
+    } else {
+        Color32::TRANSPARENT
+    };
+    let color = if selected {
+        theme::NAV_ACTIVE
+    } else {
+        theme::NAV_TEXT
+    };
+    ui.painter().rect_filled(rect, 10.0, fill);
+    theme::icon(
+        ui.painter(),
+        egui::Rect::from_min_size(rect.min + Vec2::new(14.0, 11.0), Vec2::splat(16.0)),
+        page.icon(),
+        color,
+    );
+    ui.painter().text(
+        rect.min + Vec2::new(40.0, 19.0),
+        egui::Align2::LEFT_CENTER,
+        page.title(),
+        egui::FontId::proportional(14.0),
+        color,
+    );
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            rect,
+            10.0,
+            egui::Stroke::new(1.5, theme::ACCENT),
+            egui::StrokeKind::Inside,
+        );
+    }
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 fn window_button(ui: &mut Ui, label: &str, hover: Color32, action: impl FnOnce()) {
@@ -549,7 +564,7 @@ impl Default for ButtonStyle {
             fill: Color32::TRANSPARENT,
             hover: theme::HOVER,
             active: theme::HOVER,
-            radius: 8.0,
+            radius: 10.0,
             min_size: Vec2::ZERO,
             padding: Vec2::new(16.0, 10.0),
             stroke: None,
@@ -568,12 +583,17 @@ pub fn styled_button(ui: &mut Ui, text: RichText, style: &ButtonStyle) -> egui::
     let size = (galley.size() + style.padding * 2.0).max(style.min_size);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), &label));
+    let hover = ui
+        .ctx()
+        .animate_bool(response.id.with("button-hover"), response.hovered());
     let fill = if response.is_pointer_button_down_on() {
         style.active
-    } else if response.hovered() {
-        style.hover
     } else {
-        style.fill
+        let from = style.fill.to_array();
+        let to = style.hover.to_array();
+        let color: [u8; 4] =
+            std::array::from_fn(|i| egui::lerp(from[i] as f32..=to[i] as f32, hover) as u8);
+        Color32::from_rgba_premultiplied(color[0], color[1], color[2], color[3])
     };
     let mut painter = ui.painter().clone();
     if !ui.is_enabled() {
@@ -614,13 +634,22 @@ fn badge_widget(ui: &mut Ui, text: &str, muted: bool) {
 }
 
 fn paint_badge(painter: &egui::Painter, rect: egui::Rect, text: &str, muted: bool) {
+    painter.rect_filled(
+        rect,
+        8.0,
+        if muted {
+            theme::SECONDARY_BG
+        } else {
+            theme::nav_active_bg()
+        },
+    );
     painter.rect_stroke(
         rect,
-        13.0,
+        8.0,
         egui::Stroke::new(
             1.0,
             if muted {
-                theme::CARD_BORDER
+                Color32::TRANSPARENT
             } else {
                 theme::BADGE_BORDER
             },
@@ -669,49 +698,30 @@ pub fn tab_button(ui: &mut Ui, label: &str, selected: bool) -> bool {
     styled_button(
         ui,
         RichText::new(label).size(14.0).color(if selected {
-            theme::ON_ACCENT
+            theme::ACCENT
         } else {
             theme::MUTED
         }),
         &ButtonStyle {
             fill: if selected {
-                theme::ACCENT
+                theme::nav_active_bg()
             } else {
                 Color32::TRANSPARENT
             },
-            hover: if selected {
-                theme::ACCENT_HOVER
-            } else {
-                theme::HOVER
-            },
-            active: if selected {
-                theme::ACCENT_HOVER
-            } else {
-                theme::HOVER
-            },
+            hover: theme::HOVER,
+            active: theme::HOVER,
             min_size: Vec2::new(104.0, theme::CONTROL_HEIGHT),
+            stroke: selected.then_some(egui::Stroke::new(1.0, theme::BADGE_BORDER)),
             ..Default::default()
         },
     )
     .clicked()
 }
 
-pub fn eyebrow(ui: &mut Ui, text: &str) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::hover());
-    theme::spaced_text(
-        ui.painter(),
-        rect.left_top(),
-        text,
-        10.0,
-        2.5,
-        theme::EYEBROW,
-    );
-}
-
 pub fn heading(ui: &mut Ui, text: &str) {
     ui.label(
         RichText::new(text)
-            .size(21.0)
+            .size(20.0)
             .family(theme::bold_family())
             .color(theme::HEADING),
     );
@@ -722,7 +732,7 @@ pub fn body(ui: &mut Ui, text: &str) {
 }
 
 pub fn hint(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(11.0).color(theme::HINT));
+    ui.label(RichText::new(text).size(12.0).color(theme::HINT));
 }
 
 fn initial_page() -> Page {

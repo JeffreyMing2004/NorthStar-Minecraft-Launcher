@@ -9,14 +9,10 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     }
     let width = ui.available_width();
     let wide = width >= 800.0;
-    let height = ui.available_height().clamp(480.0, 554.0);
+    let height = ui.available_height().clamp(380.0, 560.0);
     let total_height = if wide { height } else { height * 2.0 + 22.0 };
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, total_height), Sense::hover());
-    let left_width = if wide {
-        (width - 22.0) * 1.85 / 2.85
-    } else {
-        width
-    };
+    let left_width = if wide { (width - 22.0) * 0.65 } else { width };
     let launch_rect = Rect::from_min_size(rect.min, Vec2::new(left_width, height));
     let aside_rect = if wide {
         Rect::from_min_max(Pos2::new(launch_rect.right() + 22.0, rect.top()), rect.max)
@@ -28,57 +24,73 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     };
     draw_card(ui, launch_rect);
     draw_card(ui, aside_rect);
-    let banner_height = if height >= 530.0 { 190.0 } else { 160.0 };
+    let banner_height = if height >= 500.0 {
+        224.0
+    } else if height >= 440.0 {
+        186.0
+    } else {
+        140.0
+    };
     let banner = Rect::from_min_size(launch_rect.min, Vec2::new(left_width, banner_height));
     landscape(ui.painter(), banner);
     let content = Rect::from_min_max(
-        launch_rect.min + Vec2::new(30.0, banner_height + 27.0),
-        launch_rect.max - Vec2::new(30.0, 20.0),
+        launch_rect.min + Vec2::new(28.0, banner_height + 24.0),
+        launch_rect.max - Vec2::new(28.0, 24.0),
     );
     let mut launch = ui.new_child(UiBuilder::new().id_salt("launch-content").max_rect(content));
     launch.spacing_mut().item_spacing.y = 0.0;
-    app::eyebrow(&mut launch, "你的游戏空间");
-    launch.add_space(8.0);
-    app::heading(&mut launch, "准备好探索新世界了吗？");
-    launch.add_space(10.0);
-    app::body(
-        &mut launch,
-        if app.service.instances.is_empty() {
-            "安装第一个 Minecraft 实例，让冒险拥有自己的起点。"
-        } else {
-            "选择已安装版本，开启你的下一段旅程。"
-        },
-    );
-    launch.add_space(20.0);
+    launch.horizontal(|ui| {
+        ui.spacing_mut().interact_size.y = 24.0;
+        ui.label(
+            RichText::new("游戏实例")
+                .size(15.0)
+                .family(theme::bold_family()),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(
+                RichText::new(format!("{} 个已安装", app.service.instances.len()))
+                    .size(12.0)
+                    .color(theme::HINT),
+            );
+        });
+    });
+    launch.add_space(14.0);
     let (instance, _) =
-        launch.allocate_exact_size(Vec2::new(content.width(), 84.0), Sense::hover());
+        launch.allocate_exact_size(Vec2::new(content.width(), 76.0), Sense::hover());
     let p = launch.painter();
-    p.rect_filled(instance, 9.0, theme::dashed_bg());
-    dashed_rect(p, instance, theme::DASHED_BORDER);
-    diamond(
-        p,
-        Pos2::new(instance.left() + 27.0, instance.center().y),
-        6.0,
-        Color32::from_rgb(0x7e, 0xa4, 0xba),
+    p.rect_filled(instance, 12.0, theme::INPUT_BG);
+    p.rect_stroke(
+        instance,
+        12.0,
+        Stroke::new(1.0, theme::CARD_BORDER),
+        egui::StrokeKind::Inside,
     );
+    let icon = Rect::from_center_size(
+        Pos2::new(instance.left() + 32.0, instance.center().y),
+        Vec2::splat(34.0),
+    );
+    p.rect_filled(icon, 10.0, theme::nav_active_bg());
+    theme::icon(p, icon.shrink(8.0), theme::Icon::Folder, theme::ACCENT);
     if app.service.instances.is_empty() {
         p.text(
-            instance.min + Vec2::new(50.0, 28.0),
+            instance.min + Vec2::new(64.0, 27.0),
             egui::Align2::LEFT_CENTER,
             "暂无游戏实例",
             FontId::new(14.0, theme::bold_family()),
             theme::HEADING,
         );
         p.text(
-            instance.min + Vec2::new(50.0, 55.0),
+            instance.min + Vec2::new(64.0, 51.0),
             egui::Align2::LEFT_CENTER,
             "原版 · Forge · Fabric · NeoForge",
             FontId::proportional(12.0),
             theme::MUTED,
         );
     } else {
-        let mut selection =
-            launch.new_child(UiBuilder::new().max_rect(instance.shrink2(Vec2::new(50.0, 22.0))));
+        let mut selection = launch.new_child(UiBuilder::new().max_rect(Rect::from_min_max(
+            instance.min + Vec2::new(64.0, 18.0),
+            instance.max - Vec2::new(16.0, 18.0),
+        )));
         let previous = app.service.selected.clone();
         let selected_name = app
             .service
@@ -89,6 +101,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             .unwrap_or("选择实例");
         egui::ComboBox::from_id_salt("installed-version")
             .width(selection.available_width())
+            .wrap_mode(egui::TextWrapMode::Truncate)
             .selected_text(selected_name)
             .show_ui(&mut selection, |ui| {
                 for instance in &app.service.instances {
@@ -103,14 +116,17 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             app.remember_instance();
         }
     }
-    launch.add_space(20.0);
+    let mut actions = launch.new_child(UiBuilder::new().max_rect(Rect::from_min_max(
+        Pos2::new(content.left(), content.bottom() - 46.0),
+        content.max,
+    )));
     if app.service.instances.is_empty() {
         if app::primary_button(
-            &mut launch,
+            &mut actions,
             if app.service.installed.is_empty() {
-                "＋  安装 Minecraft     →"
+                "安装 Minecraft  →"
             } else {
-                "＋  创建游戏实例     →"
+                "创建游戏实例  →"
             },
         ) {
             if app.service.installed.is_empty() {
@@ -122,7 +138,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             }
         }
     } else {
-        theme::toolbar(&mut launch, |ui| {
+        theme::toolbar(&mut actions, |ui| {
             ui.add_enabled_ui(!app.service.busy() && app.service.game.is_none(), |ui| {
                 if app::primary_button(
                     ui,
@@ -143,19 +159,18 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             }
         });
     }
-    launch.add_space(10.0);
-    app::hint(
-        &mut launch,
-        if app.service.busy() {
+    if app.service.busy() || !app.service.notice.is_empty() {
+        launch.add_space(12.0);
+        let status = if app.service.busy() {
             &app.service.progress.stage
-        } else if !app.service.notice.is_empty() {
-            &app.service.notice
         } else {
-            "账号页可登录正版账号，设置中可配置 Java 与下载镜像。"
-        },
-    );
+            &app.service.notice
+        };
+        launch
+            .add(egui::Label::new(RichText::new(status).size(12.0).color(theme::HINT)).truncate());
+    }
 
-    let content = aside_rect.shrink(25.0);
+    let content = aside_rect.shrink(24.0);
     let mut aside = ui.new_child(
         UiBuilder::new()
             .id_salt("account-summary")
@@ -212,7 +227,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                 .list
                 .current()
                 .map(|a| a.name.as_str())
-                .unwrap_or("添加你的 Minecraft 账号"),
+                .unwrap_or("你的冒险身份"),
         )
         .size(16.0)
         .family(theme::bold_family())
@@ -220,7 +235,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     );
     account.add_space(10.0);
     account.label(
-        RichText::new("在这里管理身份、切换账号和修改皮肤。")
+        RichText::new("管理账号，为角色换上新的模样。")
             .size(12.0)
             .color(theme::MUTED),
     );
@@ -248,25 +263,13 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
 }
 
 fn draw_card(ui: &Ui, rect: Rect) {
-    ui.painter().rect_filled(rect, 16.0, theme::CARD_BG);
+    ui.painter().rect_filled(rect, 18.0, theme::CARD_BG);
     ui.painter().rect_stroke(
         rect,
-        16.0,
+        18.0,
         Stroke::new(1.0, theme::CARD_BORDER),
         egui::StrokeKind::Inside,
     );
-}
-
-fn diamond(p: &egui::Painter, center: Pos2, radius: f32, color: Color32) {
-    p.add(egui::Shape::closed_line(
-        vec![
-            center + Vec2::new(0.0, -radius),
-            center + Vec2::new(radius, 0.0),
-            center + Vec2::new(0.0, radius),
-            center + Vec2::new(-radius, 0.0),
-        ],
-        Stroke::new(if radius > 10.0 { 3.0 } else { 1.0 }, color),
-    ));
 }
 
 // Vertex colors interpolate in the renderer: no noisy strips or stacked opaque rings.
@@ -286,40 +289,14 @@ fn glow(p: &egui::Painter, clip: Rect, center: Pos2, radius: Vec2, color: Color3
     p.with_clip_rect(clip).add(egui::Shape::mesh(mesh));
 }
 
-fn dashed_rect(p: &egui::Painter, rect: Rect, color: Color32) {
-    let rect = rect.shrink(1.0);
-    for y in [rect.top(), rect.bottom()] {
-        let mut x = rect.left() + 9.0;
-        while x < rect.right() - 9.0 {
-            let end = (x + 5.0).min(rect.right() - 9.0);
-            p.line_segment(
-                [Pos2::new(x, y), Pos2::new(end, y)],
-                Stroke::new(1.0, color),
-            );
-            x = end + 4.0;
-        }
-    }
-    for x in [rect.left(), rect.right()] {
-        let mut y = rect.top() + 9.0;
-        while y < rect.bottom() - 9.0 {
-            let end = (y + 5.0).min(rect.bottom() - 9.0);
-            p.line_segment(
-                [Pos2::new(x, y), Pos2::new(x, end)],
-                Stroke::new(1.0, color),
-            );
-            y = end + 4.0;
-        }
-    }
-}
-
 fn landscape(p: &egui::Painter, rect: Rect) {
     let mut mesh = egui::Mesh::default();
     // Curved upper corners, with a smooth diagonal sky gradient.
     for row in 0..=32 {
         let y = rect.top() + rect.height() * row as f32 / 32.0;
-        let dy = (16.0 - (y - rect.top())).max(0.0);
+        let dy = (18.0 - (y - rect.top())).max(0.0);
         let inset = if dy > 0.0 {
-            16.0 - (256.0 - dy * dy).sqrt()
+            18.0 - (324.0 - dy * dy).sqrt()
         } else {
             0.0
         };
@@ -329,7 +306,7 @@ fn landscape(p: &egui::Painter, rect: Rect) {
             let mix = |a: f32, b: f32| (a + (b - a) * k) as u8;
             mesh.colored_vertex(
                 Pos2::new(egui::lerp(rect.left() + inset..=rect.right() - inset, t), y),
-                Color32::from_rgb(mix(20.0, 33.0), mix(45.0, 74.0), mix(64.0, 85.0)),
+                Color32::from_rgb(mix(22.0, 58.0), mix(43.0, 79.0), mix(42.0, 64.0)),
             );
             if row > 0 && col > 0 {
                 let i = row * 33 + col;
@@ -344,20 +321,65 @@ fn landscape(p: &egui::Painter, rect: Rect) {
         rect,
         rect.min + Vec2::new(rect.width() * 0.72, rect.height() * 0.18),
         Vec2::new(rect.width() * 0.45, rect.height() * 0.9),
-        Color32::from_rgb(0x3c, 0x77, 0x7a),
-        0.4,
+        Color32::from_rgb(0xb3, 0xd6, 0x96),
+        0.16,
     );
+    let moon = rect.min + Vec2::new(rect.width() * 0.82, 57.0);
+    glow(p, rect, moon, Vec2::splat(68.0), theme::STAR, 0.13);
+    p.circle_filled(moon, 18.0, theme::STAR);
     mountain(p, rect, theme::MOUNTAIN_BACK, 1.2, 0.0, 19.0);
     mountain(p, rect, theme::MOUNTAIN_FRONT, 1.3, -0.12, 81.0);
-    let star = rect.min + Vec2::new(rect.width() * 0.745, 44.0);
-    theme::star4(p, star, 12.0, theme::STAR);
+    let art = p.with_clip_rect(rect);
+    for (x, height) in [
+        (0.61, 44.0),
+        (0.68, 62.0),
+        (0.76, 38.0),
+        (0.89, 76.0),
+        (0.96, 54.0),
+    ] {
+        let base = Pos2::new(rect.left() + rect.width() * x, rect.bottom() + 6.0);
+        for (offset, width) in [(0.0, 0.32), (0.25, 0.25), (0.5, 0.18)] {
+            let bottom = base.y - height * offset;
+            art.add(egui::Shape::convex_polygon(
+                vec![
+                    Pos2::new(base.x, bottom - height * 0.5),
+                    Pos2::new(base.x + height * width, bottom),
+                    Pos2::new(base.x - height * width, bottom),
+                ],
+                Color32::from_rgb(0x16, 0x35, 0x2d),
+                Stroke::NONE,
+            ));
+        }
+    }
+    for (x, y, radius) in [(0.71, 30.0, 2.0), (0.91, 32.0, 2.5), (0.95, 88.0, 1.5)] {
+        theme::star4(
+            p,
+            rect.min + Vec2::new(rect.width() * x, y),
+            radius,
+            theme::STAR.gamma_multiply(0.7),
+        );
+    }
     theme::spaced_text(
         p,
-        rect.min + Vec2::new(30.0, rect.height() - 38.0),
-        "FIND YOUR NORTH",
-        11.0,
-        5.0,
-        Color32::from_rgb(0xb0, 0xdb, 0xdf),
+        rect.min + Vec2::new(28.0, 30.0),
+        "MINECRAFT JAVA EDITION",
+        10.0,
+        1.5,
+        Color32::from_rgb(0xb4, 0xd2, 0xbf),
+    );
+    p.text(
+        rect.min + Vec2::new(28.0, 59.0),
+        egui::Align2::LEFT_TOP,
+        "下一站，你的世界。",
+        FontId::new(28.0, theme::bold_family()),
+        theme::HEADING,
+    );
+    p.text(
+        rect.min + Vec2::new(28.0, 105.0),
+        egui::Align2::LEFT_TOP,
+        "从这里出发，探索无限可能。",
+        FontId::proportional(13.0),
+        Color32::from_rgb(0xb8, 0xd2, 0xc3),
     );
 }
 
@@ -403,245 +425,7 @@ fn page_card(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
 }
 
 pub fn account(ui: &mut Ui, app: &mut NsclApp) {
-    page_card(ui, |ui| {
-        theme::toolbar(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = theme::TAB_GAP;
-            for (index, label) in ["账号管理", "皮肤与预览"].iter().enumerate() {
-                if app::tab_button(ui, label, app.account_tab == index as u8) {
-                    app.account_tab = index as u8;
-                }
-            }
-        });
-        ui.add_space(20.0);
-        if app.account_tab == 1 {
-            crate::skin_ui::controls(ui, app);
-            return;
-        }
-        app::eyebrow(ui, "ACCOUNT & SKIN");
-        ui.add_space(12.0);
-        app::heading(ui, "让冒险拥有你的名字");
-        ui.add_space(10.0);
-        app::body(ui, "登录 Microsoft 正版账号，或创建独立的离线账号。");
-        ui.add_space(24.0);
-        let editable = !app.accounts.pending && !app.service.busy() && app.service.game.is_none();
-        ui.add_enabled_ui(editable, |ui| {
-            if app::primary_button(ui, "＋  登录 Microsoft 账号") {
-                app.accounts.login(
-                    &app.settings.microsoft_client_id,
-                    &app.settings.microsoft_redirect_uri,
-                    ui.ctx(),
-                );
-            }
-            ui.add_space(theme::CONTROL_GAP);
-            egui::CollapsingHeader::new("其他登录方式").show(ui, |ui| {
-                if ui.button("设备代码登录（需应用启用对应流程）").clicked() {
-                    app.accounts
-                        .login_device(&app.settings.microsoft_client_id, ui.ctx());
-                }
-            });
-            ui.add_space(16.0);
-            let mut create = false;
-            theme::toolbar(ui, |ui| {
-                let name = ui.add(
-                    egui::TextEdit::singleline(&mut app.offline_name)
-                        .hint_text("离线账号玩家名")
-                        .desired_width(260.0),
-                );
-                create = ui.button("创建离线账号").clicked()
-                    || (name.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-            });
-            ui.add_space(8.0);
-            app::hint(
-                ui,
-                "玩家名为 1–16 位英文字母、数字或下划线。离线账号无法进入要求正版认证的服务器。",
-            );
-            if create {
-                match app
-                    .accounts
-                    .add_offline(&app.offline_name, &mut app.settings)
-                {
-                    Ok(()) => app.offline_name.clear(),
-                    Err(error) => app.service.error = Some(error),
-                }
-            }
-        });
-        ui.add_space(12.0);
-        app::hint(
-            ui,
-            "密码只在 Microsoft 官方网页输入；启动器将刷新令牌保存在系统凭据库。切换到「皮肤与预览」可管理角色皮肤。",
-        );
-        if app.accounts.pending {
-            ui.add_space(20.0);
-            if let Some(prompt) = app.accounts.browser_prompt.clone() {
-                egui::Frame::NONE
-                    .fill(theme::TOPBAR_BG)
-                    .corner_radius(10.0)
-                    .inner_margin(20)
-                    .show(ui, |ui| {
-                        app::body(ui, "在 Microsoft 官方网页完成登录与授权，然后返回启动器。");
-                        ui.add_space(12.0);
-                        theme::toolbar(ui, |ui| {
-                            if ui
-                                .add_enabled(
-                                    !app.accounts.browser_opening,
-                                    egui::Button::new("重新打开浏览器 ↗"),
-                                )
-                                .clicked()
-                            {
-                                app.accounts.open_browser(ui.ctx());
-                            }
-                            if ui.button("复制登录链接").clicked() {
-                                app.accounts.copy_login_link(ui.ctx());
-                            }
-                        });
-                        ui.add_space(10.0);
-                        app::hint(
-                            ui,
-                            "浏览器未弹出时，可复制链接到浏览器地址栏。请保持启动器打开。",
-                        );
-                        app::hint(
-                            ui,
-                            "若 Edge 提示现有实例以管理员权限运行，请保存网页后按提示以普通权限重启 Edge。",
-                        );
-                        ui.add_space(10.0);
-                        let remaining = prompt
-                            .expires
-                            .saturating_duration_since(std::time::Instant::now())
-                            .as_secs();
-                        app::hint(
-                            ui,
-                            &format!("剩余等待时间 {} 分 {} 秒", remaining / 60, remaining % 60),
-                        );
-                        ui.ctx()
-                            .request_repaint_after(std::time::Duration::from_secs(1));
-                    });
-            }
-            if let Some(prompt) = app.accounts.prompt.clone() {
-                egui::Frame::NONE
-                    .fill(theme::TOPBAR_BG)
-                    .corner_radius(10.0)
-                    .inner_margin(20)
-                    .show(ui, |ui| {
-                        app::body(ui, "在 Microsoft 页面输入以下代码：");
-                        ui.add_space(10.0);
-                        ui.label(
-                            RichText::new(&prompt.code)
-                                .size(28.0)
-                                .monospace()
-                                .color(theme::ACCENT),
-                        );
-                        ui.add_space(10.0);
-                        theme::toolbar(ui, |ui| {
-                            if ui
-                                .add_enabled(
-                                    !app.accounts.browser_opening,
-                                    egui::Button::new("打开 Microsoft 授权页面 ↗"),
-                                )
-                                .clicked()
-                            {
-                                app.accounts.open_browser(ui.ctx());
-                            }
-                            if ui.button("复制登录链接").clicked() {
-                                app.accounts.copy_login_link(ui.ctx());
-                            }
-                            if ui.button("复制代码").clicked() {
-                                ui.ctx().copy_text(prompt.code.clone());
-                            }
-                        });
-                        ui.add_space(10.0);
-                        let remaining = prompt
-                            .expires
-                            .saturating_duration_since(std::time::Instant::now())
-                            .as_secs();
-                        app::hint(
-                            ui,
-                            &format!("代码剩余有效期 {} 分 {} 秒", remaining / 60, remaining % 60),
-                        );
-                        ui.ctx()
-                            .request_repaint_after(std::time::Duration::from_secs(1));
-                    });
-            }
-            ui.add_space(12.0);
-            ui.horizontal(|ui| {
-                ui.spinner();
-                app::body(ui, &app.accounts.status);
-            });
-            ui.add_space(10.0);
-            if ui.button("取消登录").clicked() {
-                app.accounts.cancel();
-            }
-        } else if !app.accounts.status.is_empty() {
-            ui.add_space(16.0);
-            app::body(ui, &app.accounts.status);
-        }
-        ui.add_space(28.0);
-        let mut select = None;
-        let mut remove = None;
-        for account in app.accounts.list.accounts.clone() {
-            egui::Frame::NONE
-                .fill(theme::TOPBAR_BG)
-                .corner_radius(10.0)
-                .inner_margin(18)
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(&account.name)
-                                .size(17.0)
-                                .family(theme::bold_family()),
-                        );
-                        app::badge_muted(
-                            ui,
-                            if account.is_online() {
-                                "Microsoft"
-                            } else {
-                                "离线账号"
-                            },
-                        );
-                        if app.accounts.list.selected.as_deref() == Some(&account.id) {
-                            app::badge_muted(ui, "当前账号");
-                        }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if download_button(ui, "移除", editable) {
-                                remove = Some(account.id.clone());
-                            }
-                            if download_button(ui, "使用此账号", editable) {
-                                select = Some(account.id.clone());
-                            }
-                        });
-                    });
-                    ui.add_space(10.0);
-                    app::hint(
-                        ui,
-                        &format!(
-                            "UUID：{} · {}",
-                            account.id,
-                            if account.is_online() {
-                                "启动时在线验证身份"
-                            } else {
-                                "使用此玩家名和固定离线 UUID 启动"
-                            }
-                        ),
-                    );
-                });
-            ui.add_space(12.0);
-        }
-        if let Some(id) = select
-            && let Err(error) = app.accounts.select(&id, &mut app.settings)
-        {
-            app.service.error = Some(error);
-        }
-        if let Some(id) = remove
-            && let Err(error) = app.accounts.remove(&id, &mut app.settings)
-        {
-            app.service.error = Some(error);
-        }
-        ui.add_space(16.0);
-        app::hint(
-            ui,
-            "通过「使用此账号」切换启动身份；正版身份验证失败时不会自动切换离线账号。",
-        );
-    });
+    crate::account_ui::show(ui, app);
 }
 
 pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
@@ -683,234 +467,7 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
 }
 
 pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
-    page_card(ui, |ui| {
-        if app.service.busy() {
-            app::hint(ui, "后台任务进行中，请等待或取消后再修改设置。");
-            task_status(ui, app);
-            return;
-        }
-        app::eyebrow(ui, "PREFERENCES");
-        ui.add_space(12.0);
-        app::heading(ui, "为你的冒险做好准备");
-        ui.add_space(10.0);
-        app::body(ui, "配置游戏下载源、独立实例目录及 Java 启动环境。");
-        ui.add_space(30.0);
-        ui.scope(|ui| {
-            let width = ui.available_width().min(580.0);
-            ui.set_max_width(width);
-            ui.label(RichText::new("Java 可执行文件路径").size(14.0));
-            ui.add_space(10.0);
-            ui.checkbox(&mut app.settings.auto_java, "按游戏版本自动选择 Java");
-            ui.add_space(10.0);
-            let edit = egui::TextEdit::singleline(&mut app.settings.java_path)
-                .font(FontId::proportional(14.0))
-                .hint_text("例如 C:\\Program Files\\Java\\bin\\javaw.exe")
-                .frame(input_frame())
-                .margin(Vec2::new(14.0, 12.0))
-                .desired_width(width);
-            let response = ui.add_enabled(!app.settings.auto_java, edit);
-            input_focus(ui, &response);
-            if response.changed() {
-                app.save_status.clear();
-            }
-            ui.add_space(10.0);
-            app::hint(
-                ui,
-                "默认按实例要求自动选择已安装的 Java 主版本和架构；关闭自动选择后可手动指定。",
-            );
-            ui.add_space(12.0);
-            theme::toolbar(ui, |ui| {
-                if download_button(ui, "扫描 Java", !app.service.java_busy) {
-                    app.service.inspect_java(None, ui.ctx());
-                }
-                if download_button(
-                    ui,
-                    "检测当前路径",
-                    !app.service.java_busy && !app.settings.java_path.trim().is_empty(),
-                ) {
-                    app.service
-                        .inspect_java(Some(app.settings.java_path.clone()), ui.ctx());
-                }
-                if ui.button("恢复自动匹配").clicked() {
-                    app.settings.auto_java = true;
-                    app.settings.java_path.clear();
-                }
-            });
-            if !app.service.java_runtimes.is_empty() {
-                ui.add_space(12.0);
-                egui::ComboBox::from_id_salt("detected-java")
-                    .width(width)
-                    .selected_text("从检测到的 Java 中选择……")
-                    .show_ui(ui, |ui| {
-                        for runtime in &app.service.java_runtimes {
-                            if ui
-                                .selectable_label(
-                                    false,
-                                    format!("{}\n{}", runtime.label(), runtime.path.display()),
-                                )
-                                .clicked()
-                            {
-                                app.settings.java_path =
-                                    runtime.path.to_string_lossy().into_owned();
-                                app.settings.auto_java = false;
-                            }
-                        }
-                    });
-            }
-            ui.add_space(14.0);
-            theme::toolbar(ui, |ui| {
-                ui.label("自动安装 Java");
-                egui::ComboBox::from_id_salt("install-java-major")
-                    .width(110.0)
-                    .selected_text(format!("Java {}",app.service.java_install_major))
-                    .show_ui(ui,|ui| {for major in [8,11,17,21,25] {ui.selectable_value(&mut app.service.java_install_major,major,format!("Java {major}"));}});
-                if ui.add_enabled(!app.service.java_busy,egui::Button::new("下载并安装")).clicked() {app.service.install_java(ui.ctx());}
-                let required=app.service.instances.iter().find(|i|i.id==app.service.selected).and_then(|i|app.service.installed.iter().find(|v|v.id==i.version_id)).map(|v|v.java_major);
-                if ui.add_enabled(required.is_some(),egui::Button::new("按当前实例选择")).clicked()
-                    && let Some(major)=required
-                {app.service.java_install_major=major;}
-            });
-            app::hint(ui,"下载 Eclipse Temurin JRE，校验后安装到启动器数据目录，启用自动选择后即可匹配。支持 Windows。");
-            if !app.service.java_status.is_empty() {
-                ui.add_space(10.0);
-                app::body(ui, &app.service.java_status);
-            }
-            ui.add_space(24.0);
-            ui.label(RichText::new("游戏内存（MiB）").size(14.0));
-            ui.add_space(10.0);
-            ui.checkbox(&mut app.settings.auto_memory, "自动分配游戏内存");
-            ui.add_space(10.0);
-            let response = ui.add_enabled(!app.settings.auto_memory,
-                egui::TextEdit::singleline(&mut app.memory_input)
-                    .font(FontId::proportional(14.0))
-                    .frame(input_frame())
-                    .margin(Vec2::new(14.0, 12.0))
-                    .desired_width(width),
-            );
-            input_focus(ui, &response);
-            if response.changed() {
-                app.save_status.clear();
-            }
-            ui.add_space(10.0);
-            if app.settings.auto_memory {
-                let version = app.service.instances.iter().find(|i| i.id == app.service.selected)
-                    .and_then(|i| app.service.installed.iter().find(|v| v.id == i.version_id));
-                let (major, modded) = version.map(|v| (v.java_major, v.loader.is_some())).unwrap_or((17, false));
-                match nscl::memory::automatic(major, modded) {
-                    Ok(memory) => app::hint(ui, &format!("当前实例预计分配 {memory} MiB，启动时按可用物理内存重新计算并为系统保留空间。")),
-                    Err(error) => app::hint(ui, &error),
-                }
-            } else {
-                app::hint(ui, "范围 1024–32768 MiB；实例的单独配置优先于此处设置。");
-            }
-            ui.add_space(24.0);
-            ui.label("Minecraft 游戏目录");
-            ui.add_space(10.0);
-            egui::ComboBox::from_id_salt("game-directories").width(width)
-                .selected_text(if app.settings.game_directory.trim().is_empty() { "默认：启动器所在目录" } else { &app.settings.game_directory })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut app.settings.game_directory, String::new(), "默认：启动器所在目录");
-                    for path in app.settings.game_directories.clone() {
-                        ui.selectable_value(&mut app.settings.game_directory, path.clone(), &path);
-                    }
-                });
-            ui.add_space(10.0);
-            theme::toolbar(ui, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut app.new_game_directory).hint_text("添加 MC 路径，例如 D:\\Minecraft 或已有 .minecraft 目录").desired_width((width - 100.0).max(180.0)));
-                if ui.button("添加路径").clicked() {
-                    match crate::store::add_game_directory(&mut app.settings, &app.new_game_directory) {
-                        Ok(()) => { app.new_game_directory.clear(); app.save_status = "目录已添加并选中，保存设置后应用。".into(); }
-                        Err(error) => app.save_status = error,
-                    }
-                }
-            });
-            app::hint(ui, "默认使用启动器所在目录；目录中已有 .minecraft 文件夹时优先使用它。可直接添加 .minecraft 路径，切换不会移动或删除已有文件。");
-            app::hint(ui, "保存后扫描 versions 目录，自动识别其他启动器安装的已有版本。");
-            app::hint(
-                ui,
-                &format!(
-                    "当前目录：{}",
-                    crate::store::game_directory(&app.settings).display()
-                ),
-            );
-            ui.add_space(20.0);
-            ui.label("新实例默认隔离模式");
-            egui::ComboBox::from_id_salt("default-isolation")
-                .selected_text(app.settings.default_isolation.label())
-                .show_ui(ui, |ui| {
-                    for mode in crate::instances::Isolation::ALL {
-                        ui.selectable_value(&mut app.settings.default_isolation, mode, mode.label());
-                    }
-                });
-            app::hint(ui, "仅用于新安装版本与新建实例。隔离模式分别保存存档、模组、配置和截图；共享模式共用当前游戏根目录。已有实例可在「管理实例 → 配置」修改，整合包始终隔离。");
-            ui.add_space(24.0);
-            ui.label("下载源");
-            ui.add_space(10.0);
-            egui::ComboBox::from_id_salt("download-source")
-                .width(width)
-                .selected_text(app.settings.source.kind.label())
-                .show_ui(ui, |ui| {
-                    for kind in crate::minecraft::SourceKind::ALL {
-                        ui.selectable_value(&mut app.settings.source.kind, kind, kind.label());
-                    }
-                });
-            if app.settings.source.kind == crate::minecraft::SourceKind::Custom {
-                ui.add_space(12.0);
-                settings_input(
-                    ui,
-                    "自定义镜像根地址（BMCLAPI 兼容）",
-                    &mut app.settings.source.custom_base,
-                    width,
-                );
-                app::hint(
-                    ui,
-                    "例如 https://example.com；需支持 /mc/game、/v1、/maven、/assets，Fabric 还需 /fabric-meta。",
-                );
-            }
-            ui.add_space(10.0);
-            ui.checkbox(
-                &mut app.settings.source.fallback_to_official,
-                "镜像失败或校验不通过时回退到官方源",
-            );
-            ui.add_space(26.0);
-            if app::primary_button(ui, "保存设置") {
-                let memory = app.memory_input.trim().parse::<u32>().ok().filter(|m| (1024..=32768).contains(m));
-                if app.settings.auto_memory || memory.is_some() {
-                    if let Err(error) = app.settings.source.base() {
-                        app.save_status = error;
-                        return;
-                    }
-                    if let Err(error) =
-                        crate::accounts::validate_client_id(app.settings.microsoft_client_id.trim())
-                    {
-                        app.save_status = error;
-                        return;
-                    }
-                    if let Err(error) = crate::accounts::validate_redirect_uri(app.settings.microsoft_redirect_uri.trim()) { app.save_status = error; return; }
-                    if let Some(memory) = memory { app.settings.memory = memory; }
-                    app.settings.java_path = app.settings.java_path.trim().to_owned();
-                    app.settings.microsoft_client_id =
-                        app.settings.microsoft_client_id.trim().to_owned();
-                    app.settings.microsoft_redirect_uri = app.settings.microsoft_redirect_uri.trim().to_owned();
-                    app.save_status = match crate::store::save(&app.settings) {
-                        Ok(()) => {
-                            app.service.refresh(&app.settings);
-                            app.service.invalidate_versions();
-                            app.service.notice.clear();
-                            "设置已保存，新任务将使用当前下载源和游戏目录。".to_owned()
-                        }
-                        Err(e) => e,
-                    };
-                } else {
-                    app.save_status = "内存必须为 1024–32768 MiB 之间的整数。".to_owned();
-                }
-            }
-            if !app.save_status.is_empty() {
-                ui.add_space(12.0);
-                app::body(ui, &app.save_status);
-            }
-        });
-    });
+    crate::settings_ui::show(ui, app);
 }
 
 pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
@@ -1269,19 +826,6 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                 });
             });
     }
-}
-
-fn settings_input(ui: &mut Ui, label: &str, value: &mut String, width: f32) {
-    ui.label(label);
-    ui.add_space(10.0);
-    let response = ui.add(
-        egui::TextEdit::singleline(value)
-            .font(FontId::proportional(14.0))
-            .frame(input_frame())
-            .desired_width(width),
-    );
-    input_focus(ui, &response);
-    ui.add_space(10.0);
 }
 
 fn installation_options(ui: &mut Ui, app: &mut NsclApp) {
@@ -1841,9 +1385,9 @@ pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
 
 pub(crate) fn input_frame() -> egui::Frame {
     egui::Frame::NONE
-        .fill(Color32::from_rgb(0x0c, 0x16, 0x22))
-        .stroke(Stroke::new(1.0, Color32::from_rgb(0x2b, 0x39, 0x47)))
-        .corner_radius(7.0)
+        .fill(theme::INPUT_BG)
+        .stroke(Stroke::new(1.0, theme::CARD_BORDER))
+        .corner_radius(10.0)
         .inner_margin(egui::Margin::symmetric(14, 12))
 }
 
@@ -1860,14 +1404,32 @@ pub(crate) fn input_focus(ui: &Ui, response: &egui::Response) {
 
 pub fn about(ui: &mut Ui, app: &mut NsclApp) {
     page_card(ui, |ui| {
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 50.0), Sense::hover());
-        theme::star4(ui.painter(), rect.center(), 23.0, theme::ACCENT);
+        ui.horizontal(|ui| {
+            let (rect, _) = ui.allocate_exact_size(Vec2::splat(56.0), Sense::hover());
+            ui.painter().rect_filled(rect, 16.0, theme::nav_active_bg());
+            theme::star4(ui.painter(), rect.center(), 20.0, theme::ACCENT);
+            ui.add_space(8.0);
+            ui.vertical(|ui| {
+                app::heading(ui, "NorthStar Minecraft Launcher");
+                ui.add_space(8.0);
+                app::body(
+                    ui,
+                    &format!(
+                        "NSCL v{} · Minecraft Java Edition",
+                        env!("CARGO_PKG_VERSION")
+                    ),
+                );
+            });
+        });
+        ui.add_space(28.0);
+        ui.separator();
+        ui.add_space(22.0);
+        ui.label(
+            RichText::new("启动器更新")
+                .size(16.0)
+                .family(theme::bold_family()),
+        );
         ui.add_space(10.0);
-        app::heading(ui, "NorthStar Minecraft Launcher");
-        ui.add_space(10.0);
-        app::body(ui, &format!("NSCL · v{}", env!("CARGO_PKG_VERSION")));
-        ui.add_space(16.0);
-        ui.label("启动器更新 · GitHub Releases");
         let before = app.settings.check_updates;
         ui.checkbox(&mut app.settings.check_updates, "启动时检查更新");
         if before != app.settings.check_updates {
@@ -1938,28 +1500,12 @@ pub fn about(ui: &mut Ui, app: &mut NsclApp) {
                 );
             });
         }
-        ui.add_space(10.0);
-        app::body(ui, "一个以 Rust 为核心的 Minecraft Java Edition 启动器。");
-        ui.add_space(30.0);
-        ui.set_max_width(690.0);
-        ui.label(
-            RichText::new("本版本")
-                .size(16.0)
-                .family(theme::bold_family()),
-        );
-        ui.add_space(10.0);
-        app::body(
-            ui,
-            "支持原版与 Forge / Fabric / NeoForge 安装启动、Microsoft 正版登录、Java 自动安装、多账号与独立实例、Modrinth 模组与整合包、模组更新及卸载，以及皮肤上传和可旋转的 3D 角色预览。",
-        );
-        ui.add_space(22.0);
-        ui.label(
-            RichText::new("项目声明")
-                .size(16.0)
-                .family(theme::bold_family()),
-        );
-        ui.add_space(10.0);
-        app::body(
+        ui.add_space(20.0);
+        egui::CollapsingHeader::new("功能概览").show(ui, |ui| {
+            app::body(ui, "原版与 Forge / Fabric / NeoForge · Microsoft 正版与离线账号 · Java 与内存自动配置 · 独立实例 · Modrinth 模组与整合包 · 皮肤上传与 3D 预览。");
+        });
+        ui.add_space(18.0);
+        app::hint(
             ui,
             "本项目与 Mojang Studios 或 Microsoft 无隶属或背书关系。",
         );
