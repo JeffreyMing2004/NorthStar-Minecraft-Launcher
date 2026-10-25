@@ -29,7 +29,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo test --locked --all-targets
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          cargo build --release --locked --bin nscl --bin nscl-cli
+          cargo build --release --locked --bin nscl
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Package portable launcher
         shell: pwsh
@@ -45,7 +45,6 @@ jobs:
           }
           New-Item -ItemType Directory -Path dist/portable -Force | Out-Null
           Copy-Item -LiteralPath target/release/nscl.exe -Destination dist/portable/NSCL.exe
-          Copy-Item -LiteralPath target/release/nscl-cli.exe -Destination dist/portable/nscl-cli.exe
           $archive = "nscl-v$version-windows-x86_64.zip"
           Compress-Archive -Path dist/portable/* -DestinationPath "dist/$archive"
           $hash = (Get-FileHash -LiteralPath "dist/$archive" -Algorithm SHA256).Hash.ToLowerInvariant()

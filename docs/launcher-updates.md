@@ -22,7 +22,7 @@
 
 `.github/workflows/release.yml` 在推送 `v*` 标签时执行格式、Clippy、自动测试及 Windows x86_64 Release 构建，然后通过 GitHub CLI 创建 Release，附带：
 
-- `nscl-v<版本>-windows-x86_64.zip`，内含 `NSCL.exe` 和 `nscl-cli.exe`。
+- `nscl-v<版本>-windows-x86_64.zip`，内含 `NSCL.exe`。
 - `SHA256SUMS`，UTF-8 格式的 SHA-256 清单。
 
 发布标签必须与 `Cargo.toml` 中的稳定版本完全一致，例如 `v0.1.1` 对应 `version = "0.1.1"`。维护者先完成版本号及锁文件更新、检查和双仓库推送，再创建标签并推送到两个远程。工作流失败时不会创建 Release。手动运行工作流只上传构建产物，不发布版本。

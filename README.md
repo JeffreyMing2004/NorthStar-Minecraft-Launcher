@@ -22,7 +22,7 @@
 
 | 文件 | 内容 |
 | --- | --- |
-| `nscl-v<版本>-windows-x86_64.zip` | `NSCL.exe` 与 `nscl-cli.exe` |
+| `nscl-v<版本>-windows-x86_64.zip` | `NSCL.exe` |
 | `SHA256SUMS` | 发布产物校验值 |
 
 项目当前处于开发阶段，尚无稳定版本发布，可从源码构建。
