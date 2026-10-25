@@ -27,15 +27,6 @@ impl Page {
             Page::About => "更多",
         }
     }
-    fn subtitle(self) -> &'static str {
-        match self {
-            Page::Home => "选择一个世界，继续你的旅程。",
-            Page::Account => "管理你的游戏身份与角色外观。",
-            Page::Downloads => "发现新版本、模组与整合包。",
-            Page::Settings => "让启动器按你的习惯运行。",
-            Page::About => "关于 NorthStar，以及接下来的更新。",
-        }
-    }
     fn icon(self) -> theme::Icon {
         match self {
             Page::Home => theme::Icon::Play,
@@ -261,13 +252,10 @@ impl eframe::App for NsclApp {
             )
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
-                self.page_heading(ui);
                 if self.page == Page::Downloads {
-                    ui.add_space(20.0);
                     pages::downloads(ui, self);
                     return;
                 }
-                ui.add_space(20.0);
                 if self.page == Page::Settings {
                     pages::settings(ui, self);
                     return;
@@ -349,25 +337,6 @@ impl NsclApp {
             Ok(text) => self.log_view = Some(text),
             Err(error) => self.service.error = Some(format!("读取日志失败：{error}")),
         }
-    }
-
-    fn page_heading(&mut self, ui: &mut Ui) {
-        let (rect, _) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), 60.0), Sense::hover());
-        ui.painter().text(
-            rect.left_top(),
-            egui::Align2::LEFT_TOP,
-            self.page.title(),
-            egui::FontId::new(26.0, theme::bold_family()),
-            theme::HEADING,
-        );
-        ui.painter().text(
-            rect.left_top() + Vec2::new(0.0, 38.0),
-            egui::Align2::LEFT_TOP,
-            self.page.subtitle(),
-            egui::FontId::proportional(13.0),
-            theme::MUTED,
-        );
     }
 
     fn top_bar(&mut self, ui: &mut Ui, ctx: &Context) {
