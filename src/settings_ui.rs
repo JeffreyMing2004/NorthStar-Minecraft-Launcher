@@ -339,6 +339,22 @@ fn network(ui: &mut Ui, app: &mut NsclApp) {
             &mut app.settings.source.fallback_to_official,
             "镜像失败或校验不通过时回退到官方源",
         );
+        ui.add_space(16.0);
+        ui.label("下载连接方式");
+        ui.add_space(10.0);
+        egui::ComboBox::from_id_salt("download-proxy-mode")
+            .width(width)
+            .selected_text(app.settings.source.proxy_mode.label())
+            .show_ui(ui, |ui| {
+                for mode in crate::minecraft::ProxyMode::ALL {
+                    ui.selectable_value(&mut app.settings.source.proxy_mode, mode, mode.label());
+                }
+            });
+        ui.add_space(10.0);
+        app::hint(
+            ui,
+            "直连仅影响游戏下载、加载器与 Modrinth 请求，不修改系统代理设置。",
+        );
     });
 }
 

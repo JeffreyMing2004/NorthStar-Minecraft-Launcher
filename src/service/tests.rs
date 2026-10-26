@@ -187,6 +187,102 @@ fn installation_controls_fit_the_minimum_window_during_query_and_install() {
 }
 
 #[test]
+fn manifest_failure_preserves_the_catalog_and_does_not_retry_during_rendering() {
+    let (_root, mut app, ctx) = fixture();
+    app.service.task = Task::Manifest;
+    app.service
+        .sender
+        .send(Event::Failed("network timeout".into()))
+        .unwrap();
+    app.service.poll(&app.settings);
+    assert_eq!(
+        app.service.manifest_error.as_deref(),
+        Some("network timeout")
+    );
+    assert!(!app.service.busy());
+    assert_eq!(app.service.versions[0].id, "1.20.1");
+    let output = frame(&ctx, &mut app, Vec2::new(876.0, 390.0), vec![]);
+    for label in ["刷新列表", "网络设置", "跟随系统代理", "1.20.1"] {
+        let rect = text_rect(&output, label);
+        assert!(rect.min.y >= 0.0 && rect.max.y < 390.0 && rect.max.x < 876.0);
+    }
+    output.drop_without_applying_deltas();
+    assert!(
+        !app.service.busy(),
+        "a failed manifest must not cause a retry loop"
+    );
+}
+
+#[test]
+fn proxy_error_offers_explicit_direct_retry_without_restarting_an_install() {
+    let (_root, mut app, ctx) = fixture();
+    let error = "error sending request: tunnel error: tcp connect error: (os error 10013)";
+    let render = |app: &mut NsclApp, events| {
+        ctx.run_ui(
+            RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(960.0, 640.0))),
+                events,
+                ..Default::default()
+            },
+            |ui| crate::error_ui::show(ui.ctx(), app),
+        )
+    };
+    app.service.error = Some(error.into());
+    app.service.manifest_error = None;
+    render(&mut app, vec![]).drop_without_applying_deltas();
+    let output = render(&mut app, vec![]);
+    text_rect(&output, "网络连接被系统拒绝（10013）");
+    text_rect(&output, "技术详情");
+    assert!(
+        !output.shapes.iter().any(
+            |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text.contains("并重试"))
+        )
+    );
+    output.drop_without_applying_deltas();
+
+    app.service.manifest_error = Some(error.into());
+    // Invalid configuration fails before any network access; the click itself is tested below.
+    app.settings.source.kind = crate::minecraft::SourceKind::Custom;
+    app.settings.source.custom_base = "invalid".into();
+    let output = render(&mut app, vec![]);
+    let pos = text_rect(&output, "切换直连并重试").center();
+    text_rect(&output, "重试");
+    assert!(
+        !output
+            .shapes
+            .iter()
+            .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text == error))
+    );
+    output.drop_without_applying_deltas();
+    render(
+        &mut app,
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            },
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            },
+        ],
+    )
+    .drop_without_applying_deltas();
+    assert_eq!(
+        app.settings.source.proxy_mode,
+        crate::minecraft::ProxyMode::Direct
+    );
+    assert!(app.service.task == Task::Manifest);
+    assert!(app.service.error.is_none());
+    assert_eq!(app.service.versions[0].id, "1.20.1");
+}
+
+#[test]
 fn switching_modpack_and_mod_tabs_keeps_the_ui_responsive() {
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::spawn(move || {

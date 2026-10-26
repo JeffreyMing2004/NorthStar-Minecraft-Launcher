@@ -1097,7 +1097,45 @@ pub(crate) fn download_status_height(app: &NsclApp) -> f32 {
 }
 
 fn minecraft_downloads(ui: &mut Ui, app: &mut NsclApp) {
+    let before = (app.settings.source.kind, app.settings.source.proxy_mode);
+    let mut refresh = false;
+    ui.add_enabled_ui(!app.service.busy(), |ui| {
+        theme::toolbar(ui, |ui| {
+            ui.label("下载源");
+            egui::ComboBox::from_id_salt("catalog-download-source")
+                .width(165.0)
+                .selected_text(app.settings.source.kind.label())
+                .show_ui(ui, |ui| {
+                    for kind in crate::minecraft::SourceKind::ALL {
+                        ui.selectable_value(&mut app.settings.source.kind, kind, kind.label());
+                    }
+                });
+            egui::ComboBox::from_id_salt("catalog-proxy-mode")
+                .width(175.0)
+                .selected_text(app.settings.source.proxy_mode.label())
+                .show_ui(ui, |ui| {
+                    for mode in crate::minecraft::ProxyMode::ALL {
+                        ui.selectable_value(
+                            &mut app.settings.source.proxy_mode,
+                            mode,
+                            mode.label(),
+                        );
+                    }
+                });
+            refresh = download_button(ui, "刷新列表", true);
+            if download_button(ui, "网络设置", true) {
+                app.page = Page::Settings;
+            }
+        });
+    });
+    if before != (app.settings.source.kind, app.settings.source.proxy_mode) {
+        app.service.invalidate_versions();
+    }
+    if refresh {
+        app.service.load_versions(&app.settings, ui.ctx());
+    }
     app.service.ensure_versions_loaded(&app.settings, ui.ctx());
+    ui.add_space(14.0);
     let search_width = (ui.available_width() * 0.42).clamp(240.0, 400.0);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 20.0;
@@ -1503,6 +1541,36 @@ pub fn about(ui: &mut Ui, app: &mut NsclApp) {
         ui.add_space(20.0);
         egui::CollapsingHeader::new("功能概览").show(ui, |ui| {
             app::body(ui, "原版与 Forge / Fabric / NeoForge · Microsoft 正版与离线账号 · Java 与内存自动配置 · 独立实例 · Modrinth 模组与整合包 · 皮肤上传与 3D 预览。");
+        });
+        ui.add_space(18.0);
+        app::heading(ui, "设计参考与致谢");
+        ui.add_space(10.0);
+        app::body(
+            ui,
+            "感谢以下启动器在安装流程、资源分类与实例管理方面提供的设计参考。",
+        );
+        ui.add_space(10.0);
+        theme::toolbar(ui, |ui| {
+            for (name, url) in [
+                (
+                    "HMCL · Hello Minecraft! Launcher",
+                    "https://github.com/HMCL-dev/HMCL",
+                ),
+                (
+                    "PCL · Plain Craft Launcher",
+                    "https://github.com/Meloong-Git/PCL",
+                ),
+                (
+                    "Axolotl Launcher",
+                    "https://github.com/Axolotl-Launcher/Axolotl",
+                ),
+            ] {
+                if ui.link(name).clicked()
+                    && let Err(error) = nscl::browser::open(url)
+                {
+                    app.service.error = Some(error);
+                }
+            }
         });
         ui.add_space(18.0);
         app::hint(

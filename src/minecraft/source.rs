@@ -13,12 +13,31 @@ pub enum SourceKind {
     Custom,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub enum ProxyMode {
+    #[default]
+    System,
+    Direct,
+}
+
+impl ProxyMode {
+    pub const ALL: [Self; 2] = [Self::System, Self::Direct];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::System => "跟随系统代理",
+            Self::Direct => "直连（不使用代理）",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Source {
     pub kind: SourceKind,
     pub custom_base: String,
     pub fallback_to_official: bool,
+    pub proxy_mode: ProxyMode,
 }
 
 impl Default for Source {
@@ -27,6 +46,7 @@ impl Default for Source {
             kind: SourceKind::Official,
             custom_base: String::new(),
             fallback_to_official: true,
+            proxy_mode: ProxyMode::System,
         }
     }
 }

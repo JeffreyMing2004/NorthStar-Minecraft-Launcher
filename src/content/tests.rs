@@ -91,6 +91,7 @@ impl Server {
                 kind: SourceKind::Custom,
                 custom_base: self.base.clone(),
                 fallback_to_official: false,
+                ..Default::default()
             },
             Arc::new(AtomicBool::new(false)),
             Arc::new(|_| {}),

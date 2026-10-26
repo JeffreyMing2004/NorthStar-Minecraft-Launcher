@@ -76,6 +76,7 @@ impl Server {
                 kind: SourceKind::Custom,
                 custom_base: self.base.clone(),
                 fallback_to_official: false,
+                ..Default::default()
             },
             Arc::new(AtomicBool::new(false)),
             Arc::new(|_| {}),
@@ -221,6 +222,7 @@ fn mirror_routing_and_official_fallback() {
         kind: SourceKind::Custom,
         custom_base: "https://mirror.example/repository/".into(),
         fallback_to_official: false,
+        ..Default::default()
     };
     assert_eq!(
         source
@@ -234,6 +236,48 @@ fn mirror_routing_and_official_fallback() {
             .unwrap(),
         ["https://piston-meta.mojang.com/v1/packages/hash/test.json"]
     );
+}
+
+#[test]
+fn old_source_settings_keep_system_proxy_and_direct_mode_roundtrips() {
+    let mut source: Source = serde_json::from_value(json!({
+        "kind": "Official", "custom_base": "", "fallback_to_official": true
+    }))
+    .unwrap();
+    assert_eq!(source.proxy_mode, ProxyMode::System);
+    source.proxy_mode = ProxyMode::Direct;
+    let restored: Source = serde_json::from_value(serde_json::to_value(&source).unwrap()).unwrap();
+    assert_eq!(restored.proxy_mode, ProxyMode::Direct);
+    assert_eq!(
+        restored.candidates(source::MANIFEST_URL).unwrap(),
+        [source::MANIFEST_URL]
+    );
+}
+
+#[test]
+#[ignore = "queries the public Mojang version list using both download connection modes"]
+fn live_mojang_version_manifest() {
+    let mut successes = 0;
+    for proxy_mode in ProxyMode::ALL {
+        let downloader = Downloader::new(
+            Source {
+                proxy_mode,
+                ..Default::default()
+            },
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+        match manifest(&downloader) {
+            Ok(list) => {
+                assert!(!list.versions.is_empty());
+                println!("{}: {} versions", proxy_mode.label(), list.versions.len());
+                successes += 1;
+            }
+            Err(error) => println!("{} failed: {error}", proxy_mode.label()),
+        }
+    }
+    assert!(successes > 0, "both download connection modes failed");
 }
 
 #[test]

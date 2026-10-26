@@ -19,7 +19,7 @@ pub use launch::{
 };
 pub use loaders::{LoaderKind, LoaderVersion, install_loader, loader_versions};
 pub use model::{VersionEntry, VersionManifest};
-pub use source::{Source, SourceKind};
+pub use source::{ProxyMode, Source, SourceKind};
 
 pub type Result<T> = std::result::Result<T, String>;
 

@@ -58,6 +58,7 @@ pub struct GameService {
     pub loaders: Vec<LoaderVersion>,
     pub progress: Progress,
     pub error: Option<String>,
+    pub manifest_error: Option<String>,
     pub notice: String,
     pub task: Task,
     pub game: Option<(u32, PathBuf)>,
@@ -97,6 +98,7 @@ impl GameService {
             loaders: Vec::new(),
             progress: Progress::default(),
             error: None,
+            manifest_error: None,
             notice: String::new(),
             task: Task::Idle,
             game: None,
@@ -140,6 +142,7 @@ impl GameService {
         self.cancel = Arc::new(AtomicBool::new(false));
         self.task = task;
         self.error = None;
+        self.manifest_error = None;
         self.notice.clear();
         self.progress = Progress::default();
     }
@@ -188,10 +191,14 @@ impl GameService {
                     );
                 }
                 Event::Failed(error) => {
+                    let failed_task = self.task;
                     self.task = Task::Idle;
                     if error == "操作已取消。" {
+                        self.manifest_error = None;
                         self.notice = error;
                     } else {
+                        self.manifest_error =
+                            (failed_task == Task::Manifest).then(|| error.clone());
                         self.error = Some(error);
                     }
                 }
@@ -260,7 +267,6 @@ impl GameService {
         }
         self.versions_requested = true;
         self.begin(Task::Manifest);
-        self.versions.clear();
         let source = settings.source.clone();
         let cancel = self.cancel.clone();
         let sender = self.sender.clone();

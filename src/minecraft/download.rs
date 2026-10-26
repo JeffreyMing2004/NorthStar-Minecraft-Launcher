@@ -1,5 +1,5 @@
-use super::{Result, Source};
-use reqwest::blocking::Client;
+use super::{ProxyMode, Result, Source};
+use reqwest::blocking::{Client, ClientBuilder};
 use serde::de::DeserializeOwned;
 use sha1::{Digest, Sha1};
 use std::{
@@ -45,19 +45,23 @@ pub struct Job {
 impl Downloader {
     pub fn new(source: Source, cancel: Arc<AtomicBool>, reporter: Reporter) -> Result<Self> {
         let base = source.base()?;
-        let mut builder = Client::builder()
+        let builder = Client::builder()
             .user_agent(concat!("NSCL/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(180))
             .redirect(reqwest::redirect::Policy::limited(8));
-        if base
+        let local = base
             .as_ref()
             .and_then(|url| url.host_str())
-            .is_some_and(|host| matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "::1"))
-        {
-            builder = builder.no_proxy();
-        }
-        let client = builder.build().map_err(|e| e.to_string())?;
+            .is_some_and(|host| matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "::1"));
+        let proxy_mode = if local {
+            ProxyMode::Direct
+        } else {
+            source.proxy_mode
+        };
+        let client = configure_proxy(builder, proxy_mode)
+            .build()
+            .map_err(|e| e.to_string())?;
         Ok(Self {
             source,
             cancel,
@@ -289,6 +293,13 @@ impl Downloader {
     }
 }
 
+fn configure_proxy(builder: ClientBuilder, mode: ProxyMode) -> ClientBuilder {
+    match mode {
+        ProxyMode::System => builder,
+        ProxyMode::Direct => builder.no_proxy(),
+    }
+}
+
 fn network_error(error: reqwest::Error) -> String {
     let mut message = error.to_string();
     let mut cause = error.source();
@@ -389,4 +400,42 @@ pub fn write_json(path: &Path, data: &impl serde::Serialize) -> Result<()> {
     )
     .map_err(|e| e.to_string())?;
     replace_file(&temporary, path)
+}
+
+#[cfg(test)]
+mod proxy_tests {
+    use super::*;
+
+    #[test]
+    fn direct_mode_bypasses_a_proxy_while_system_mode_preserves_it() {
+        let target = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let proxy = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let target_url = format!("http://{}", target.server_addr());
+        let proxy_url = format!("http://{}", proxy.server_addr());
+        std::thread::scope(|scope| {
+            for server in [&target, &proxy] {
+                scope.spawn(move || {
+                    let request = server
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap()
+                        .unwrap();
+                    request
+                        .respond(tiny_http::Response::from_string("ok"))
+                        .unwrap();
+                });
+            }
+            for mode in [ProxyMode::System, ProxyMode::Direct] {
+                let client = configure_proxy(
+                    Client::builder().proxy(reqwest::Proxy::all(&proxy_url).unwrap()),
+                    mode,
+                )
+                .build()
+                .unwrap();
+                assert_eq!(
+                    client.get(&target_url).send().unwrap().text().unwrap(),
+                    "ok"
+                );
+            }
+        });
+    }
 }

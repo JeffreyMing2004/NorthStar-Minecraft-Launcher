@@ -162,28 +162,7 @@ impl eframe::App for NsclApp {
                 self.open_log();
             }
         }
-        if let Some(error) = self.service.error.clone() {
-            let mut open = true;
-            egui::Window::new("操作未完成")
-                .open(&mut open)
-                .default_width(600.0)
-                .show(&ctx, |ui| {
-                    egui::ScrollArea::vertical()
-                        .max_height(300.0)
-                        .show(ui, |ui| {
-                            ui.label(&error);
-                        });
-                    if let Some(path) = &self.service.last_log {
-                        ui.label(format!("启动日志：{}", path.display()));
-                    }
-                    if ui.button("复制错误信息").clicked() {
-                        ctx.copy_text(error);
-                    }
-                });
-            if !open {
-                self.service.error = None;
-            }
-        }
+        crate::error_ui::show(&ctx, self);
         #[cfg(debug_assertions)]
         if self.screenshot_pending
             && (self.page != Page::Downloads

@@ -87,6 +87,7 @@ fn home_drop_installs_a_detected_modrinth_zip_without_confirmation() {
         kind: minecraft::SourceKind::Custom,
         custom_base: base,
         fallback_to_official: false,
+        ..Default::default()
     };
     let path = root.path().join("dropped.zip");
     archive(&path, "modrinth.index.json", &serde_json::to_vec(&json!({"formatVersion":1,"game":"minecraft","versionId":"1","name":"Dropped pack","dependencies":{"minecraft":"test-drop"},"files":[]})).unwrap());

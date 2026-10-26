@@ -63,6 +63,8 @@ cargo test --locked --all-targets
 
 ## 反馈
 
+界面参考、功能对比和下载连接故障排查见 [启动器界面参考与本次改进](docs/launcher-ui-references.md)。
+
 欢迎在 [GitHub Issues](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues) 反馈问题。提交时请附启动器版本、操作系统、Minecraft 与加载器版本、复现步骤及已脱敏日志，不要提交令牌或浏览器授权链接。
 
 ## 声明
