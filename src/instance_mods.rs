@@ -297,33 +297,52 @@ fn search(ui: &mut Ui, app: &mut NsclApp) {
                 "输入关键词后搜索，留空可浏览热门模组。"
             },
         );
-        return;
-    }
-    egui::ScrollArea::vertical()
-        .id_salt("instance-mod-search")
-        .max_height(260.0)
-        .min_scrolled_height(0.0)
-        .auto_shrink([false, true])
-        .show(ui, |ui| {
-            for project in &hits {
-                if ui
-                    .push_id(&project.project_id, |ui| {
-                        row(
-                            ui,
-                            &project.title,
-                            &project.description,
-                            &format!("{} · {} 次下载", project.author, project.downloads),
-                            "查看版本",
-                            !busy,
-                        )
-                    })
-                    .inner
-                {
-                    app.service
-                        .content_versions(project.clone(), &app.settings, ui.ctx());
+    } else {
+        egui::ScrollArea::vertical()
+            .id_salt("instance-mod-search")
+            .max_height(260.0)
+            .min_scrolled_height(0.0)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                for project in &hits {
+                    if ui
+                        .push_id(&project.project_id, |ui| {
+                            row(
+                                ui,
+                                &project.title,
+                                &project.description,
+                                &format!("{} · {} 次下载", project.author, project.downloads),
+                                "查看版本",
+                                !busy,
+                            )
+                        })
+                        .inner
+                    {
+                        app.service
+                            .content_versions(project.clone(), &app.settings, ui.ctx());
+                    }
                 }
-            }
-        });
+            });
+    }
+    ui.add_space(8.0);
+    let page = &app.service.content.results;
+    if let Some(offset) = pagination(ui, page.offset, page.total_hits, app.service.busy()) {
+        app.service.content_search(offset, &app.settings, ui.ctx());
+    }
+}
+
+fn pagination(ui: &mut Ui, offset: usize, total: usize, busy: bool) -> Option<usize> {
+    let mut requested = None;
+    theme::toolbar(ui, |ui| {
+        if download_button(ui, "上一页", offset > 0 && !busy) {
+            requested = Some(offset.saturating_sub(20));
+        }
+        if download_button(ui, "下一页", offset.saturating_add(20) < total && !busy) {
+            requested = Some(offset.saturating_add(20));
+        }
+        app::hint(ui, &format!("{} 条结果 · 第 {} 页", total, offset / 20 + 1));
+    });
+    requested
 }
 
 fn versions(ui: &mut Ui, app: &mut NsclApp) {
@@ -612,3 +631,6 @@ fn audit(ctx: &egui::Context, app: &mut NsclApp) {
         app.service.content.audit = None;
     }
 }
+
+#[cfg(test)]
+mod tests;

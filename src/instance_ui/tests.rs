@@ -103,7 +103,7 @@ fn click_file_chip(ctx: &Context, app: &mut NsclApp, label: &str) {
             }
             _ => None,
         })
-        .last()
+        .next_back()
         .unwrap_or_else(|| panic!("missing text: {label}"))
         .center();
     output.drop_without_applying_deltas();
@@ -416,5 +416,195 @@ fn mod_update_opens_the_existing_installation_plan_flow() {
     assert!(app.page == Page::Instances);
     assert_eq!(app.instance_browser.tab, DetailTab::Mods);
     assert!(app.service.busy());
+    assert_eq!(app.service.selected, "vanilla");
+}
+
+fn removal_fixture() -> (
+    tempfile::TempDir,
+    NsclApp,
+    Context,
+    crate::content::RemovalPlan,
+    PathBuf,
+) {
+    use sha1::{Digest, Sha1};
+    use sha2::Sha512;
+    let (root, app, ctx) = populated();
+    let instance = app
+        .service
+        .instances
+        .iter()
+        .find(|i| i.id == "modded")
+        .unwrap();
+    let installed = app
+        .service
+        .installed
+        .iter()
+        .find(|v| v.id == instance.version_id)
+        .unwrap();
+    let target = crate::content::Target::from_installed(instance, installed).unwrap();
+    let directory = instance.game_directory(root.path()).unwrap();
+    std::fs::create_dir_all(directory.join("mods")).unwrap();
+    let file = directory.join("mods/example.jar");
+    std::fs::write(&file, b"keep this mod").unwrap();
+    let version = serde_json::from_value(serde_json::json!({"id":"v1","project_id":"example","name":"Example mod","version_number":"1.0","version_type":"release","date_published":"2026-01-01","game_versions":["1.20.1"],"loaders":["fabric"],"files":[]})).unwrap();
+    crate::store::write_json(
+        &directory.join(".nscl-content.json"),
+        &crate::content::Registry {
+            mods: std::collections::BTreeMap::from([(
+                "example".into(),
+                crate::content::ManagedMod {
+                    version,
+                    file: crate::content::InstalledFile {
+                        path: "mods/example.jar".into(),
+                        hashes: std::collections::BTreeMap::from([
+                            (
+                                "sha1".into(),
+                                format!("{:x}", Sha1::digest(b"keep this mod")),
+                            ),
+                            (
+                                "sha512".into(),
+                                format!("{:x}", Sha512::digest(b"keep this mod")),
+                            ),
+                        ]),
+                        size: 13,
+                    },
+                },
+            )]),
+            pack: None,
+        },
+    )
+    .unwrap();
+    let plan = crate::content::plan_removal(
+        root.path(),
+        &target,
+        &std::collections::BTreeSet::from(["example".into()]),
+    )
+    .unwrap();
+    (root, app, ctx, plan, file)
+}
+
+#[test]
+fn mod_removal_plan_never_becomes_a_pack_installation_when_switching_pages() {
+    let (_root, mut app, ctx, plan, file) = removal_fixture();
+    app.service.content.mode = ContentMode::Instance;
+    app.service.content.target = "modded".into();
+    app.service.content.plan = Some(crate::service::ContentPlan::Remove(plan));
+    app.category = 1;
+    app.page = Page::Downloads;
+    for task in [crate::service::Task::Content, crate::service::Task::Idle] {
+        app.service.task = task;
+        let mut output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1100.0, 760.0))),
+                ..Default::default()
+            },
+            |ui| crate::pages::downloads(ui, &mut app),
+        );
+        output.textures_delta.clear();
+        assert!(!output.shapes.iter().any(
+            |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text == "安装整合包")
+        ));
+        text_rect(&output, "搜索");
+        output.drop_without_applying_deltas();
+    }
+    assert!(app.service.content.plan.is_none());
+    assert_eq!(app.service.content.mode, ContentMode::Download);
+    assert!(app.service.content.target.is_empty());
+    assert_eq!(app.service.selected, "vanilla");
+    assert_eq!(std::fs::read(file).unwrap(), b"keep this mod");
+}
+
+#[test]
+fn executing_a_plan_from_another_surface_or_instance_is_rejected() {
+    let (_root, mut app, ctx, plan, file) = removal_fixture();
+    app.service.content.plan = Some(crate::service::ContentPlan::Remove(plan));
+    for (mode, kind, target) in [
+        (
+            ContentMode::Download,
+            crate::content::ContentKind::Modpack,
+            "",
+        ),
+        (
+            ContentMode::Instance,
+            crate::content::ContentKind::Mod,
+            "pack-example",
+        ),
+    ] {
+        app.service.content.mode = mode;
+        app.service.content.kind = kind;
+        app.service.content.target = target.into();
+        app.service.error = None;
+        app.service.content_install(&app.settings, &ctx);
+        assert!(!app.service.busy());
+        assert!(app.service.error.as_ref().unwrap().contains("方案不属于"));
+        assert_eq!(std::fs::read(&file).unwrap(), b"keep this mod");
+    }
+    // Even a valid removal context must never run through the pack-install action.
+    app.service.content.mode = ContentMode::Instance;
+    app.service.content.target = "modded".into();
+    app.service.error = None;
+    app.service.content_install_pack(&app.settings, &ctx);
+    assert!(!app.service.busy());
+    assert!(
+        app.service
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("不是下载页的整合包")
+    );
+    assert_eq!(std::fs::read(file).unwrap(), b"keep this mod");
+}
+
+#[test]
+fn executing_a_removal_plan_in_its_own_instance_still_works() {
+    let (root, mut app, ctx, plan, file) = removal_fixture();
+    app.service.content_instance("modded");
+    app.service.content.plan = Some(crate::service::ContentPlan::Remove(plan));
+    app.settings.source.kind = crate::minecraft::SourceKind::Official;
+    app.service.content_install(&app.settings, &ctx);
+    assert!(app.service.busy());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.service.busy() && std::time::Instant::now() < deadline {
+        app.service.poll(&app.settings);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(!app.service.busy());
+    assert!(app.service.error.is_none(), "{:?}", app.service.error);
+    assert!(!file.exists());
+    let directory = root.path().join("instances/modded");
+    assert!(
+        crate::content::registry(&directory)
+            .unwrap()
+            .mods
+            .is_empty()
+    );
+}
+
+#[test]
+fn instance_search_exposes_paging_without_binding_the_launch_selection() {
+    let (_root, mut app, ctx) = populated();
+    app.instance_browser.tab = DetailTab::Mods;
+    app.service.content_instance("modded");
+    app.service.content.adding = true;
+    app.service.content.results = crate::content::SearchPage {
+        hits: vec![crate::content::Project {
+            project_id: "example".into(),
+            title: "Example mod".into(),
+            description: String::new(),
+            author: String::new(),
+            downloads: 1,
+            icon_url: None,
+        }],
+        offset: 0,
+        total_hits: 45,
+    };
+    frame(&ctx, &mut app, Vec2::new(1100.0, 1000.0), vec![]).drop_without_applying_deltas();
+    let output = frame(&ctx, &mut app, Vec2::new(1100.0, 1000.0), vec![]);
+    text_rect(&output, "上一页");
+    text_rect(&output, "下一页");
+    text_rect(&output, "45 条结果 · 第 1 页");
+    output.drop_without_applying_deltas();
+    assert!(!app.service.busy());
+    assert_eq!(app.service.content.target, "modded");
     assert_eq!(app.service.selected, "vanilla");
 }

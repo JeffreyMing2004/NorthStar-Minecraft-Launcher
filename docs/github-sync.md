@@ -1,125 +1,50 @@
-# CNB → GitHub 自动同步
+# GitHub 与 CNB 双仓库推送
 
-代码推到 CNB 后，由 CNB 流水线自动推一份到 GitHub，以 CNB 为主仓库、GitHub 为镜像。
+GitHub 仓库为 [JeffreyMing2004/NorthStar-Minecraft-Launcher](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher)，CNB 仓库为 [JeffreyMing/NorthStar-Minecraft-Launcher](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)，默认分支均为 `master`。
 
-## 一、准备 GitHub 凭据
+## 本地提交与推送
 
-1. 打开 GitHub → Settings → Developer settings → Personal access tokens。
-2. 新建 token：
-   - 经典 token：勾 `repo`（公开仓库只需 `public_repo`）。
-   - 细粒度 token：仅授权目标仓库，权限给 `Contents: Read and write`。
-3. 记下用户名（`GITHUB_USERNAME`）和 token（`GITHUB_TOKEN`）。
+先使用 GitHub CLI 登录并配置 Git 凭据：
 
-## 二、在 CNB 存密钥
-
-两条路，任选其一。**没有密钥仓库也能先用**，凑齐凭据后同步才会成功。
-
-### 方式 A：密钥仓库（推荐）
-
-密钥仓库不是现成的入口，要自己新建一个：
-
-1. 打开 <https://cnb.cool/new/repos>，**仓库类型选「密钥仓库」**，名字随意，例如 `ci-credentials`。
-2. 建好后进入该仓库，Web 界面新建文件 `github.yml`（密钥仓库禁止 clone，只能在网页上编辑），内容照抄 [`docs/ci/github.yml`](ci/github.yml)，把 `GITHUB_TOKEN` 换成真实 token：
-
-```yaml
-GITHUB_USERNAME: JeffreyMing
-GITHUB_TOKEN: ghp_xxxxxxxxxxxxxxxx
-
-allow_slugs: JeffreyMing/NorthStar-Minecraft-Launcher
-allow_branches: "**"
-allow_events: "push,tag_push,web_trigger_sync"
-allow_images: "tencentcom/git-sync"
+```powershell
+gh auth login --hostname github.com
+gh auth setup-git --hostname github.com
+git remote add github https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher.git
+git remote add origin https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher
 ```
 
-3. 打开这个文件的页面，复制地址栏 URL，形如
-   `https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml`。
-4. 在 `.cnb.yml` 里，把三个 pipeline `env` 下的 `CNB_SECRETS_IMPORTS` 都填成这个地址：
+已有远程时使用 `git remote set-url` 更新地址。每完成一项项目修改，执行相应检查，只暂存相关文件，再提交并推送两个远程：
 
-```yaml
-env:
-  CNB_SECRETS_IMPORTS: https://cnb.cool/JeffreyMing/ci-credentials/-/blob/main/github.yml
+```powershell
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked --all-targets
+git add <本次相关文件>
+git commit -m "准确概括本次修改"
+git push github HEAD
+git push origin HEAD
 ```
 
-`imports` 会把 YAML 的键值注入为环境变量。**地址留空时 `imports` 是空串，不会报错**，同步任务只是拿不到凭据而失败。
+GitHub CLI 负责登录及 Git 凭据，提交由 `git commit` 完成；`gh` 没有提交子命令。推送使用正常快进，不使用强制推送。任一远程失败时保留本地提交，检查网络或先拉取并合并远程变更后重试，避免覆盖历史。没有改动时不创建空提交。
 
-### 方式 B：仓库环境变量（最省事）
+`HEAD` 推送当前分支；在 `deepseek/nscl` 等开发分支上修复时推送同名分支，合并到 `master` 另行处理。
 
-在 CNB 仓库页 `设置 → 环境变量` 里直接加 `GITHUB_USERNAME`、`GITHUB_TOKEN`，不用改 `.cnb.yml`。
+`AGENTS.md` 只留本地，通过 `.git/info/exclude` 的 `/AGENTS.md` 排除；设置、账号、令牌、下载的游戏与构建产物都不加入提交。
 
-密钥仓库的优势是引用有审计日志、可跨仓库复用，因此长期看更推荐 A。
+## CNB 后备同步
 
-## 三、引用权限（最容易卡住的一步）
+`.cnb.yml` 保留 CNB 到 GitHub 的同步任务，作为后备同步入口。目标地址与本地 `github` 相同，`force: false`，遇到分叉会失败并保留 GitHub 历史。本地已直接推送时通常无需额外同步。
 
-默认**只有密钥仓库的管理员/负责人**触发的流水线才能引用里面的文件，别人推代码触发同步会直接报无权限。
+流水线凭据从现有 CNB 密钥仓库文件导入：`https://cnb.cool/JeffreyMing/ci-github/-/blob/main/github.yml`。模板见 [docs/ci/github.yml](ci/github.yml)，`GITHUB_USERNAME` 应为 GitHub 账号 `JeffreyMing2004`，`GITHUB_TOKEN` 由仓库维护者保存在密钥仓库；本项目只保留占位模板。
 
-所以 `github.yml` 里必须声明 `allow_*` 放行规则。一旦写了 `allow_*`，平台就只按规则校验，不再看触发者角色。
+密钥文件中的 `allow_slugs` 使用 CNB 路径 `JeffreyMing/NorthStar-Minecraft-Launcher`，并允许现有的 `push,tag_push,web_trigger_sync` 事件及 `tencentcom/git-sync` 镜像。若更换密钥文件地址，应同时修改 `.cnb.yml` 中三处 `CNB_SECRETS_IMPORTS`。凭据需要允许写入目标仓库内容；同步 GitHub 工作流还需具备对应工作流写入权限。
 
-```yaml
-allow_slugs: JeffreyMing/NorthStar-Minecraft-Launcher   # 只允许本仓库
-allow_branches: "**"                                     # 全部分支
-allow_events: "push,tag_push,web_trigger_sync"           # 与 .cnb.yml 的触发事件对应
-allow_images: "tencentcom/git-sync"                      # 必须：文件被第三方镜像任务引用
-```
+普通 push 同步当前分支，tag push 同步标签；CNB 页面手动入口用于补推分支和标签。GitHub Releases 由 GitHub 的发布工作流构建，详见[启动器更新](launcher-updates.md)。
 
-三条容易漏的：
+## 同步失败排查
 
-- `allow_images` 必须写。`github.yml` 被 `tencentcom/git-sync` 这个**镜像任务**引用，没写平台会按「插件任务引用」直接拒绝。镜像名不带 tag，匹配的是 `tencentcom/git-sync` 或 `tencentcom/git-sync:latest`。
-- `allow_events` 必须写。`push`、`tag_push`、`web_trigger_sync` 都是用户可控事件（不可信事件），没写同样拒绝。
-- `allow_slugs` 里多级组织路径要用 `**`，`*` 不跨 `/`。
+- **仓库地址或凭据错误**：先运行 `git remote -v`，确认 `github` 指向 `JeffreyMing2004/NorthStar-Minecraft-Launcher`，`origin` 指向 CNB 的 `JeffreyMing/NorthStar-Minecraft-Launcher`。再运行 `gh auth status --hostname github.com` 和 `gh auth setup-git --hostname github.com`，检查本地 GitHub 登录与凭据配置。
+- **CNB 流水线缺少凭据或引用被拒**：核对 `.cnb.yml` 的 `CNB_SECRETS_IMPORTS` 与实际密钥文件地址，并按 [密钥模板](ci/github.yml) 检查变量名、允许的仓库、分支、事件及镜像。GitHub 账号填 `JeffreyMing2004`，CNB 的 `allow_slugs` 使用 `JeffreyMing/NorthStar-Minecraft-Launcher`。
+- **远程历史分叉**：保留本地提交，获取远程更新并确认差异后正常合并、推送。保留 `force: false`，不要通过强制推送覆盖另一仓库的提交。
 
-## 四、行为说明
-
-| 场景 | 行为 |
-| --- | --- |
-| 任意分支 `push` | 把当前分支强制推到 GitHub 同名分支 |
-| 推 `tag` | 推送标签到 GitHub |
-| 页面「同步到 GitHub」按钮 | 全量推所有分支 + 标签，用于补推历史 |
-
-- `force: true`：CNB 为准，GitHub 上同名分支会被覆盖。**不要在 GitHub 侧直接改代码**，否则会被冲掉。
-- 只推当前分支通过 `branch: $CNB_BRANCH` 实现；去掉这一行则推所有远端跟踪分支。
-- 换目标仓库改 `.cnb.yml` 里的 `GITHUB_SYNC_URL` 即可，不必改其它地方。
-- CNB 能直连 GitHub；若推送超时，检查构建节点网络出站策略。
-
-## 五、常见故障
-
-### `remote: Repository not found` / `Failed to push branch master`
-
-```
-remote: Repository not found.
-fatal: repository 'https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher.git/' not found
-```
-
-GitHub 对「仓库不存在」和「没权限访问」返回**同一个 404**，故意不区分，所以这个报错有两种可能，按顺序排查：
-
-1. **目标仓库压根没建**（最常见）。同步任务只往已有的空仓库里推，不会替你建仓库。
-   打开 <https://github.com/new> 新建 `NorthStar-Minecraft-Launcher`，**不要**勾 README / .gitignore / License，保持空仓库，然后重跑流水线。
-2. **Token 没权限**。token 所属账号必须对目标仓库有写权限：
-   - 经典 token：勾 `repo`（私有仓库）或 `public_repo`（公开仓库）；且 token 未过期、未被吊销。
-   - 细粒度 token：`Repository access` 里要显式选中该仓库（新建仓库易漏），权限给 `Contents: Read and write`。
-   - 注意 token 属于**哪个账号**：`GITHUB_USERNAME` 必须与该 token 的属主一致。
-
-自己验证一下（在本地执行，能直接暴露是哪种 404）:
-
-```bash
-# 不带凭据：404 = 私有或不存在；200 = 公开仓库存在
-curl -s -o /dev/null -w "%{http_code}\n" https://github.com/JeffreyMing/NorthStar-Minecraft-Launcher
-
-# 带 token：404 = token 无权或无仓库；200 = 通了
-curl -s -o /dev/null -w "%{http_code}\n" \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  https://api.github.com/repos/JeffreyMing/NorthStar-Minecraft-Launcher
-```
-
-改完仓库或 token 后，用页面「同步到 GitHub」按钮（`web_trigger_sync`）补推，不必等下一次 push。
-
-### `Missing or invalid credentials` / 401
-
-`imports` 没取到 `GITHUB_USERNAME`、`GITHUB_TOKEN`。检查 `.cnb.yml` 里 `CNB_SECRETS_IMPORTS` 是否指向**真实存在**的密钥文件，以及密钥仓库文件里的变量名是否一字不差。
-
-### `Permission denied` / 引用密钥文件被拒
-
-密钥仓库里的 `allow_slugs` / `allow_branches` / `allow_events` / `allow_images` 没写或写错，见第三节。
-
-## 六、隐私
-
-**不建议**用这套流程同步私有仓库到公开 GitHub 仓库：会把全部提交历史、分支一起推过去。
+不要为排错把真实 token 写入项目文件、提交记录或分享的日志。

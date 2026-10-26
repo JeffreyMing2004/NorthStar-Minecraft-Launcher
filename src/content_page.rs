@@ -259,6 +259,9 @@ fn versions(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
 }
 
 pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
+    if app.service.content.download_pack_plan().is_none() {
+        return;
+    }
     let mut back = false;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
@@ -307,7 +310,7 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
     }
     ui.add_enabled_ui(!busy && app.service.game.is_none(), |ui| {
         if app::primary_button(ui, "安装整合包") {
-            app.service.content_install(&app.settings, ui.ctx());
+            app.service.content_install_pack(&app.settings, ui.ctx());
         }
     });
     task_status(ui, app);

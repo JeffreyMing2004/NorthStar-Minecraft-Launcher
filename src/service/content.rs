@@ -60,6 +60,35 @@ impl ContentState {
             ..Default::default()
         }
     }
+
+    fn accepts_plan(&self, plan: &ContentPlan) -> bool {
+        match plan {
+            ContentPlan::Pack(_) => {
+                self.mode == ContentMode::Download && self.kind == ContentKind::Modpack
+            }
+            ContentPlan::Mod(plan) => {
+                self.mode == ContentMode::Instance
+                    && self.kind == ContentKind::Mod
+                    && self.target == plan.target.instance.id
+            }
+            ContentPlan::Remove(plan) => {
+                self.mode == ContentMode::Instance
+                    && self.kind == ContentKind::Mod
+                    && self.target == plan.target.instance.id
+            }
+        }
+    }
+
+    pub fn download_pack_plan(&self) -> Option<&PackPlan> {
+        match self.plan.as_ref()? {
+            ContentPlan::Pack(plan)
+                if self.mode == ContentMode::Download && self.kind == ContentKind::Modpack =>
+            {
+                Some(plan)
+            }
+            _ => None,
+        }
+    }
 }
 
 pub(super) enum ContentEvent {
@@ -345,6 +374,18 @@ impl GameService {
         });
     }
 
+    /// The download-page confirmation can only execute a pack installation.
+    pub fn content_install_pack(&mut self, settings: &Settings, ctx: &egui::Context) {
+        if self.busy() {
+            return;
+        }
+        if self.content.download_pack_plan().is_none() {
+            self.error = Some("当前方案不是下载页的整合包安装方案，请重新选择。".into());
+            return;
+        }
+        self.content_install(settings, ctx);
+    }
+
     pub fn content_install(&mut self, settings: &Settings, ctx: &egui::Context) {
         if self.busy() {
             return;
@@ -356,6 +397,10 @@ impl GameService {
         let Some(plan) = self.content.plan.clone() else {
             return;
         };
+        if !self.content.accepts_plan(&plan) {
+            self.error = Some("方案不属于当前页面或实例，请返回对应实例重新生成方案。".into());
+            return;
+        }
         self.begin(Task::Content);
         let (settings, ctx, sender, cancel) = (
             settings.clone(),

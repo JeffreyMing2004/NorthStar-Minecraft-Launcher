@@ -398,10 +398,13 @@ fn local_pack_preview_waits_for_confirmation_and_optional_files_are_a_choice() {
         .unwrap();
     zip.finish().unwrap();
     app.category = 1;
+    app.service
+        .content_browse(crate::content::ContentKind::Modpack);
     app.service.content.plan = Some(super::ContentPlan::Pack(
         crate::content::inspect_pack(root.path(), &path).unwrap(),
     ));
-    let output = frame(&ctx, &mut app, size, vec![]);
+    let mut output = frame(&ctx, &mut app, size, vec![]);
+    output.textures_delta.clear();
     assert!(text_rect(&output, "安装整合包").max.y < size.y);
     let pos = text_rect(&output, "包含 1 个可选客户端文件").center();
     output.drop_without_applying_deltas();
