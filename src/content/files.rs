@@ -3,7 +3,7 @@ use crate::minecraft::{Downloader, Job, Result, safe_join};
 use sha1::{Digest, Sha1};
 use sha2::Sha512;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::Read,
     path::{Path, PathBuf},
@@ -188,6 +188,17 @@ impl Stage {
         changes: BTreeMap<String, Option<PathBuf>>,
         downloader: &Downloader,
     ) -> Result<()> {
+        self.commit_protected(directory, changes, &BTreeSet::new(), downloader)
+    }
+
+    /// New resource destinations must never replace a file that appeared while staging.
+    pub fn commit_protected(
+        &mut self,
+        directory: &Path,
+        changes: BTreeMap<String, Option<PathBuf>>,
+        protected: &BTreeSet<String>,
+        downloader: &Downloader,
+    ) -> Result<()> {
         let backup = self.directory("backup")?;
         let mut applied: Vec<(PathBuf, PathBuf, bool, bool)> = Vec::new();
         let mut changes: Vec<_> = changes.into_iter().collect();
@@ -200,6 +211,9 @@ impl Stage {
                 fs::create_dir_all(destination.parent().ok_or("资源目录无效。")?)
                     .map_err(|e| e.to_string())?;
                 let had_old = destination.exists();
+                if had_old && protected.contains(&relative) {
+                    return Err(format!("目标位置已有同名文件，未覆盖：{relative}"));
+                }
                 if had_old {
                     if !destination.is_file() {
                         return Err(format!("目标不是普通文件：{relative}"));
@@ -209,7 +223,30 @@ impl Stage {
                 }
                 applied.push((destination.clone(), old, had_old, false));
                 if let Some(source) = source {
-                    fs::rename(source, &destination).map_err(|e| e.to_string())?;
+                    if protected.contains(&relative) {
+                        match fs::hard_link(&source, &destination) {
+                            Ok(()) => {}
+                            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                                return Err(format!("目标位置已有同名文件，未覆盖：{relative}"));
+                            }
+                            Err(_) => {
+                                // Filesystems without hard links still use create_new to prevent replacement.
+                                let mut output = fs::OpenOptions::new()
+                                    .write(true)
+                                    .create_new(true)
+                                    .open(&destination)
+                                    .map_err(|e| e.to_string())?;
+                                applied.last_mut().unwrap().3 = true;
+                                let mut input =
+                                    fs::File::open(source).map_err(|e| e.to_string())?;
+                                std::io::copy(&mut input, &mut output)
+                                    .map_err(|e| e.to_string())?;
+                                output.sync_all().map_err(|e| e.to_string())?;
+                            }
+                        }
+                    } else {
+                        fs::rename(source, &destination).map_err(|e| e.to_string())?;
+                    }
                     applied.last_mut().unwrap().3 = true;
                 }
             }

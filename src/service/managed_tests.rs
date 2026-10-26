@@ -94,6 +94,7 @@ fn mod_tab_shows_update_preview_and_removal_controls_during_background_work() {
         .managed_selection
         .insert("example".into());
     app.service.content.updates_checked = true;
+    super::tests::seed_local_mod_catalog(&mut app);
     let size = egui::vec2(1116.0, 720.0);
     instance_frame(&ctx, &mut app, size).drop_without_applying_deltas();
     for task in [Task::Idle, Task::Content] {

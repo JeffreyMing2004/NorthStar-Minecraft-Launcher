@@ -417,7 +417,10 @@ impl GameService {
                     ContentPlan::Remove(plan) => content::remove_mods(&root, &plan, &d).map(|i| {
                         (
                             i,
-                            format!("已卸载 {} 个模组，存档与配置已保留。", plan.entries.len()),
+                            format!(
+                                "已卸载 {} 个模组，文件保留在本地回收目录。",
+                                plan.entries.len()
+                            ),
                         )
                     }),
                     ContentPlan::Pack(plan) => content::install_pack(&root, &plan, &settings, &d)
@@ -573,6 +576,10 @@ impl GameService {
             ContentEvent::Plan(plan) => self.content.plan = Some(*plan),
             ContentEvent::Audit(report) => self.content.audit = Some(report),
             ContentEvent::Installed(instance, message) => {
+                self.local.catalog = None;
+                self.local.requested = false;
+                self.local.remove = None;
+                self.local.notice = message.clone();
                 self.content.plan = None;
                 self.content.project = None;
                 self.content.versions.clear();

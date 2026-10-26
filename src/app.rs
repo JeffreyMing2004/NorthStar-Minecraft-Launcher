@@ -126,6 +126,7 @@ impl eframe::App for NsclApp {
             self.updates.check(&ctx);
         }
         self.handle_pack_drop(&ctx);
+        self.handle_resource_drop(&ctx);
         #[cfg(debug_assertions)]
         if std::env::var_os("NSCL_SCREENSHOT").is_some()
             && ctx.input(|input| input.key_pressed(egui::Key::F12))
@@ -264,6 +265,63 @@ impl eframe::App for NsclApp {
 }
 
 impl NsclApp {
+    pub(crate) fn handle_resource_drop(&mut self, ctx: &egui::Context) {
+        if self.page != Page::Instances {
+            return;
+        }
+        let kind = match self.instance_browser.tab {
+            crate::instance_ui::DetailTab::Mods => crate::content::LocalKind::Mods,
+            crate::instance_ui::DetailTab::ResourcePacks => {
+                crate::content::LocalKind::ResourcePacks
+            }
+            crate::instance_ui::DetailTab::Shaders => crate::content::LocalKind::Shaders,
+            _ => return,
+        };
+        let paths: Vec<_> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .collect()
+        });
+        if paths.is_empty() {
+            return;
+        }
+        ctx.input_mut(|i| i.raw.dropped_files.clear());
+        if self.instance_browser.filter == crate::instance_ui::Filter::Archived {
+            self.service.error = Some("请先恢复此实例，再导入资源。".into());
+            return;
+        }
+        if self.service.busy() || self.service.game.is_some() {
+            self.service.error = Some("请先结束当前任务并退出游戏，再导入资源。".into());
+            return;
+        }
+        let Some(instance) = self
+            .service
+            .instances
+            .iter()
+            .find(|i| i.id == self.instance_browser.selected)
+            .cloned()
+        else {
+            return;
+        };
+        if kind == crate::content::LocalKind::Mods
+            && !self
+                .service
+                .installed
+                .iter()
+                .any(|v| v.id == instance.version_id && v.loader.is_some())
+        {
+            self.service.error = Some("此实例未安装模组加载器。".into());
+            return;
+        }
+        self.service.content.adding = false;
+        self.service.content.project = None;
+        self.service.content.plan = None;
+        self.service
+            .local_import(&instance, kind, Some(paths), &self.settings, ctx);
+    }
+
     pub(crate) fn handle_pack_drop(&mut self, ctx: &egui::Context) {
         if !matches!(self.page, Page::Home | Page::Downloads) {
             return;

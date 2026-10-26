@@ -306,6 +306,7 @@ fn local_mod_links_open_the_correct_instances_file_details() {
         entries: vec![],
         other_files: vec!["local-example.jar".into()],
     });
+    crate::service::tests::seed_local_mod_catalog(&mut app);
     wait_for_text(&ctx, &mut app, "local-example.jar");
     click(&ctx, &mut app, "local-example.jar");
     assert!(app.instance_browser.tab == DetailTab::Files);
@@ -408,6 +409,7 @@ fn mod_update_opens_the_existing_installation_plan_flow() {
         current_version: "1.0".into(),
         available: version,
     }];
+    crate::service::tests::seed_local_mod_catalog(&mut app);
     // Fail before HTTP so this interaction test does not depend on external services.
     app.settings.source.kind = crate::minecraft::SourceKind::Custom;
     app.settings.source.custom_base = "invalid".into();
@@ -607,4 +609,130 @@ fn instance_search_exposes_paging_without_binding_the_launch_selection() {
     assert!(!app.service.busy());
     assert_eq!(app.service.content.target, "modded");
     assert_eq!(app.service.selected, "vanilla");
+}
+
+fn settle_local(
+    app: &mut NsclApp,
+    ctx: &Context,
+    predicate: impl Fn(&crate::content::LocalCatalog) -> bool,
+) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        app.service.poll(&app.settings);
+        frame(ctx, app, Vec2::new(1100.0, 760.0), vec![]).drop_without_applying_deltas();
+        if !app.service.busy()
+            && app
+                .service
+                .local
+                .catalog
+                .as_ref()
+                .is_some_and(|c| predicate(c))
+        {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "resource task timed out: {:?}",
+            app.service.error
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn resource_pack_management_imports_toggles_and_recycles_in_the_selected_instance() {
+    use std::io::Write;
+    let (root, mut app, ctx) = populated();
+    let source = root.path().join("Example Pack.zip");
+    let mut archive = zip::ZipWriter::new(std::fs::File::create(&source).unwrap());
+    archive
+        .start_file("pack.mcmeta", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    archive
+        .write_all(br#"{"pack":{"pack_format":15,"description":"Example"}}"#)
+        .unwrap();
+    archive.finish().unwrap();
+    app.instance_browser.tab = DetailTab::ResourcePacks;
+    let instance = app
+        .service
+        .instances
+        .iter()
+        .find(|i| i.id == "modded")
+        .unwrap()
+        .clone();
+    app.settings.source.kind = crate::minecraft::SourceKind::Custom;
+    app.settings.source.custom_base = "invalid".into();
+    app.service.local_import(
+        &instance,
+        crate::content::LocalKind::ResourcePacks,
+        Some(vec![source.clone()]),
+        &app.settings,
+        &ctx,
+    );
+    settle_local(&mut app, &ctx, |c| {
+        c.entries.len() == 1 && c.entries[0].enabled
+    });
+    click(&ctx, &mut app, "禁用");
+    settle_local(&mut app, &ctx, |c| {
+        c.entries.len() == 1 && !c.entries[0].enabled
+    });
+    assert!(
+        !root
+            .path()
+            .join("instances/modded/resourcepacks/Example Pack.zip")
+            .exists()
+    );
+    click(&ctx, &mut app, "启用");
+    settle_local(&mut app, &ctx, |c| {
+        c.entries.len() == 1 && c.entries[0].enabled
+    });
+    click(&ctx, &mut app, "移除");
+    assert!(app.service.local.remove.is_some());
+    click(&ctx, &mut app, "确认移除");
+    settle_local(&mut app, &ctx, |c| c.entries.is_empty());
+    let trash = root
+        .path()
+        .join("instances/modded/.nscl/trash/resourcepacks");
+    let directory = std::fs::read_dir(trash)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    assert_eq!(
+        std::fs::read(directory.join("Example Pack.zip")).unwrap(),
+        std::fs::read(source).unwrap()
+    );
+    assert_eq!(app.service.selected, "vanilla");
+}
+
+#[test]
+fn importing_resources_is_blocked_while_a_game_or_another_task_is_running() {
+    let (_root, mut app, ctx) = populated();
+    let instance = app
+        .service
+        .instances
+        .iter()
+        .find(|i| i.id == "modded")
+        .unwrap()
+        .clone();
+    app.service.game = Some((123, PathBuf::from("game.log")));
+    app.service.local_import(
+        &instance,
+        crate::content::LocalKind::Shaders,
+        Some(vec![PathBuf::from("absent.zip")]),
+        &app.settings,
+        &ctx,
+    );
+    assert!(!app.service.busy());
+    app.service.game = None;
+    app.service.task = crate::service::Task::Content;
+    app.service.local_import(
+        &instance,
+        crate::content::LocalKind::Shaders,
+        None,
+        &app.settings,
+        &ctx,
+    );
+    assert!(app.service.local.key.is_none());
 }

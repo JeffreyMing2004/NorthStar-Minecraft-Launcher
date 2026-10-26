@@ -21,6 +21,7 @@ mod isolation_tests;
 mod java_tests;
 #[cfg(test)]
 mod managed_tests;
+mod resources;
 pub use content::{ContentPlan, ContentState};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -46,6 +47,7 @@ enum Event {
     JavaChecked(Result<crate::java::JavaRuntime, String>),
     JavaInstalled(crate::java::JavaRuntime),
     Content(content::ContentEvent),
+    Local(resources::LocalEvent),
 }
 
 pub struct GameService {
@@ -70,6 +72,7 @@ pub struct GameService {
     pub java_status: String,
     pub java_install_major: u32,
     pub content: ContentState,
+    pub local: resources::LocalState,
     versions_requested: bool,
     loaders_requested: Option<(String, LoaderKind)>,
     cancel: Arc<AtomicBool>,
@@ -110,6 +113,7 @@ impl GameService {
             java_status: String::new(),
             java_install_major: 21,
             content: ContentState::default(),
+            local: resources::LocalState::default(),
             versions_requested: false,
             loaders_requested: None,
             cancel: Arc::new(AtomicBool::new(false)),
@@ -244,6 +248,7 @@ impl GameService {
                     self.java_runtimes.push(runtime);
                 }
                 Event::Content(event) => self.apply_content(event, settings),
+                Event::Local(event) => self.apply_local(event),
             }
         }
     }

@@ -25,11 +25,13 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool)
 
 fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) {
     let busy = app.service.busy();
-    // One request per bound instance keeps rendering from starting tasks every frame.
-    if app.service.content.managed.is_none() && !app.service.content.managed_requested && !busy {
+    if app.service.content.managed.is_none()
+        && !app.service.content.managed_requested
+        && !busy
+        && app.service.error.is_none()
+    {
         app.service.content_manage(&app.settings, ui.ctx(), false);
     }
-    let catalog = app.service.content.managed.clone();
     theme::toolbar(ui, |ui| {
         if download_button(ui, "添加模组", !busy) {
             app.service.content.adding = true;
@@ -38,13 +40,16 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) 
             app.service.content.results = Default::default();
             app.service.content.searched = false;
         }
-        if download_button(ui, "刷新列表", !busy) {
-            app.service.content_manage(&app.settings, ui.ctx(), false);
-        }
         if download_button(
             ui,
             "检查更新",
-            !busy && catalog.as_ref().is_some_and(|c| !c.entries.is_empty()),
+            !busy
+                && app
+                    .service
+                    .content
+                    .managed
+                    .as_ref()
+                    .is_some_and(|c| !c.entries.is_empty()),
         ) {
             app.service.content_manage(&app.settings, ui.ctx(), true);
         }
@@ -58,180 +63,18 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) 
         ) {
             app.service.content_remove_preview(&app.settings, ui.ctx());
         }
-        if download_button(ui, "打开 mods 目录", true) {
-            open_mods(app, instance);
-        }
     });
-    ui.add_space(10.0);
-    let Some(catalog) = catalog else {
+    ui.add_space(8.0);
+    if app.service.content.updates_checked {
         app::hint(
             ui,
-            if busy {
-                "正在读取模组列表……"
-            } else {
-                "尚未读取此实例的模组列表。"
-            },
-        );
-        return;
-    };
-    let status = if app.service.content.updates_checked {
-        format!(
-            "发现 {} 项更新 · 自动检查仅选择适用于当前实例的较新正式版",
-            app.service.content.updates.available.len()
-        )
-    } else {
-        "更新前先查看依赖方案；卸载前检查已登记模组的必需依赖。".to_owned()
-    };
-    app::hint(ui, &status);
-    app::hint(
-        ui,
-        &format!(
-            "单独安装 {} 个 · 其他本地 {} 个 · 已选 {} 个",
-            catalog.entries.len(),
-            catalog.other_files.len(),
-            app.service.content.managed_selection.len()
-        ),
-    );
-    ui.add_space(10.0);
-    if catalog.entries.is_empty() {
-        app::body(
-            ui,
-            if catalog.other_files.is_empty() {
-                "此实例尚无模组文件，点击「添加模组」从 Modrinth 安装。"
-            } else {
-                "此实例的模组来自整合包或手动添加，文件列在下方。"
-            },
+            &format!(
+                "发现 {} 项更新",
+                app.service.content.updates.available.len()
+            ),
         );
     }
-    egui::ScrollArea::vertical()
-        .id_salt("instance-managed-mods")
-        .max_height(220.0)
-        .min_scrolled_height(0.0)
-        .auto_shrink([false, true])
-        .show(ui, |ui| {
-            for entry in &catalog.entries {
-                let version = &entry.installed.version;
-                egui::Frame::NONE
-                    .fill(theme::TOPBAR_BG)
-                    .corner_radius(8.0)
-                    .inner_margin(10)
-                    .show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-                        let mut selected = app
-                            .service
-                            .content
-                            .managed_selection
-                            .contains(&version.project_id);
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add_enabled(!busy, egui::Checkbox::without_text(&mut selected))
-                                .changed()
-                            {
-                                if selected {
-                                    app.service
-                                        .content
-                                        .managed_selection
-                                        .insert(version.project_id.clone());
-                                } else {
-                                    app.service
-                                        .content
-                                        .managed_selection
-                                        .remove(&version.project_id);
-                                }
-                            }
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&version.name)
-                                        .size(14.0)
-                                        .color(theme::HEADING),
-                                )
-                                .truncate(),
-                            );
-                        });
-                        theme::toolbar(ui, |ui| {
-                            ui.label(
-                                RichText::new(&version.version_number)
-                                    .size(12.0)
-                                    .color(theme::MUTED),
-                            );
-                            if !entry.intact {
-                                ui.label(
-                                    RichText::new("文件缺失或已修改")
-                                        .size(12.0)
-                                        .color(theme::ACCENT),
-                                );
-                            }
-                            if let Some(candidate) = app
-                                .service
-                                .content
-                                .updates
-                                .available
-                                .iter()
-                                .find(|u| u.project_id == version.project_id)
-                            {
-                                ui.label(
-                                    RichText::new(format!(
-                                        "→ {}",
-                                        candidate.available.version_number
-                                    ))
-                                    .size(12.0)
-                                    .color(theme::ACCENT),
-                                );
-                                if ui
-                                    .add_enabled(
-                                        !busy && editable,
-                                        egui::Button::new("查看更新方案"),
-                                    )
-                                    .clicked()
-                                {
-                                    app.service.content_preview(
-                                        candidate.available.clone(),
-                                        &app.settings,
-                                        ui.ctx(),
-                                    );
-                                }
-                            }
-                        });
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(&entry.installed.file.path)
-                                    .size(11.0)
-                                    .color(theme::HINT),
-                            )
-                            .truncate(),
-                        );
-                    });
-                ui.add_space(8.0);
-            }
-        });
-    if !catalog.other_files.is_empty() {
-        egui::CollapsingHeader::new(format!("其他本地模组（{} 个）", catalog.other_files.len()))
-            .default_open(catalog.entries.is_empty())
-            .show(ui, |ui| {
-                app::hint(
-                    ui,
-                    "这些 JAR 没有 NSCL 单独安装记录，不影响游戏读取；点击文件名查看位置和大小。",
-                );
-                for name in &catalog.other_files {
-                    if ui
-                        .add(
-                            egui::Label::new(RichText::new(name).color(theme::ACCENT))
-                                .truncate()
-                                .sense(Sense::click()),
-                        )
-                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .on_hover_text("在文件页查看位置和大小")
-                        .clicked()
-                    {
-                        app.instance_browser.tab = crate::instance_ui::DetailTab::Files;
-                        app.instance_browser.files.select(
-                            crate::instance_files::Folder::Mods,
-                            Some(name.as_str().into()),
-                        );
-                    }
-                }
-            });
-    }
+    crate::instance_resources::show(ui, app, instance, crate::content::LocalKind::Mods, editable);
     for warning in &app.service.content.updates.warnings {
         ui.label(RichText::new(warning).size(12.0).color(theme::MUTED));
     }
@@ -495,7 +338,7 @@ fn plan(ui: &mut Ui, app: &mut NsclApp, editable: bool) {
             }
             app::hint(
                 ui,
-                "仅移除以上 JAR 和对应安装记录；存档、配置与未选择的依赖保留。手动修改的文件会阻止卸载。",
+                "以上 JAR 会移入此实例的本地回收目录，并移除对应安装记录。手动修改的文件会阻止卸载。",
             );
             if plan.unmanaged_count > 0 {
                 app::hint(
@@ -573,19 +416,6 @@ fn row(
     let clicked = download_button(&mut button, action, enabled);
     ui.add_space(4.0);
     clicked
-}
-
-fn open_mods(app: &mut NsclApp, instance: &Instance) {
-    let result = instance
-        .game_directory(&crate::store::game_directory(&app.settings))
-        .and_then(|directory| {
-            let path = directory.join("mods");
-            std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-            open::that_detached(path).map_err(|e| e.to_string())
-        });
-    if let Err(error) = result {
-        app.service.error = Some(error);
-    }
 }
 
 fn audit(ctx: &egui::Context, app: &mut NsclApp) {

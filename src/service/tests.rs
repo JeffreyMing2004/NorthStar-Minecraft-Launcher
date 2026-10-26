@@ -60,6 +60,57 @@ pub(crate) fn text_rect(output: &FullOutput, label: &str) -> Rect {
         .unwrap_or_else(|| panic!("missing text: {label}"))
 }
 
+pub(crate) fn seed_local_mod_catalog(app: &mut NsclApp) {
+    use crate::content::{LocalCatalog, LocalEntry, LocalKind};
+    let managed = app.service.content.managed.as_ref().unwrap();
+    let root = crate::store::game_directory(&app.settings);
+    let instance = managed.target.instance.clone();
+    let game = instance.game_directory(&root).unwrap();
+    let mut entries: Vec<_> = managed
+        .entries
+        .iter()
+        .map(|entry| LocalEntry {
+            relative: entry.installed.file.path.clone(),
+            filename: std::path::Path::new(&entry.installed.file.path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            name: entry.installed.version.name.clone(),
+            version: entry.installed.version.version_number.clone(),
+            enabled: entry.installed.enabled(),
+            directory: false,
+            size: entry.installed.file.size,
+            project: Some(entry.installed.version.project_id.clone()),
+            missing: false,
+            modified: None,
+        })
+        .collect();
+    entries.extend(managed.other_files.iter().map(|name| LocalEntry {
+        relative: format!("mods/{name}"),
+        filename: name.clone(),
+        name: name.clone(),
+        version: String::new(),
+        enabled: true,
+        directory: false,
+        size: 0,
+        project: None,
+        missing: false,
+        modified: None,
+    }));
+    app.service.local.key = Some((root.clone(), instance.id.clone(), LocalKind::Mods));
+    app.service.local.requested = true;
+    app.service.local.catalog = Some(std::sync::Arc::new(LocalCatalog {
+        root,
+        instance,
+        kind: LocalKind::Mods,
+        game_directory: game,
+        entries,
+        truncated: false,
+        has_trash: false,
+    }));
+}
+
 fn click(ctx: &Context, app: &mut NsclApp, size: Vec2, pos: Pos2) {
     frame(
         ctx,

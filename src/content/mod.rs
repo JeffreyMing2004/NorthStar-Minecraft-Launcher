@@ -1,11 +1,16 @@
 mod download;
 mod files;
+mod local;
 mod manager;
 mod mods;
 mod pack;
 mod platform;
 
 pub use download::download_mod;
+pub use local::{
+    LocalAction, LocalCatalog, LocalEntry, LocalKind, change_local, import_local, list_local,
+    local_directory,
+};
 pub use manager::{
     ManagedCatalog, ManagedEntry, RemovalPlan, UpdateCandidate, UpdateReport, check_updates,
     list_managed, plan_removal, remove_mods,
@@ -30,6 +35,11 @@ pub struct Registry {
 pub struct ManagedMod {
     pub version: ContentVersion,
     pub file: InstalledFile,
+}
+impl ManagedMod {
+    pub fn enabled(&self) -> bool {
+        !self.file.path.ends_with(".disabled")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

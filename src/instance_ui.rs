@@ -22,6 +22,8 @@ pub enum DetailTab {
     #[default]
     Overview,
     Mods,
+    ResourcePacks,
+    Shaders,
     Files,
 }
 
@@ -551,6 +553,8 @@ fn details(
         for (tab, label) in [
             (DetailTab::Overview, "概览"),
             (DetailTab::Mods, "模组"),
+            (DetailTab::ResourcePacks, "资源包"),
+            (DetailTab::Shaders, "光影"),
             (DetailTab::Files, "文件"),
         ] {
             if app::tab_button(ui, label, app.instance_browser.tab == tab) {
@@ -561,6 +565,18 @@ fn details(
     ui.add_space(18.0);
     if app.instance_browser.tab == DetailTab::Files {
         crate::instance_files::show(ui, root, instance, &mut app.instance_browser.files);
+        return;
+    }
+    if matches!(
+        app.instance_browser.tab,
+        DetailTab::ResourcePacks | DetailTab::Shaders
+    ) {
+        let kind = if app.instance_browser.tab == DetailTab::ResourcePacks {
+            crate::content::LocalKind::ResourcePacks
+        } else {
+            crate::content::LocalKind::Shaders
+        };
+        crate::instance_resources::show(ui, app, instance, kind, editable);
         return;
     }
     if app.instance_browser.tab == DetailTab::Mods {
