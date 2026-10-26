@@ -15,6 +15,7 @@ mod instance_resources;
 mod instance_ui;
 mod pages;
 mod project_icons;
+mod renderer;
 mod service;
 mod settings_ui;
 mod skin_ui;
@@ -25,13 +26,30 @@ use nscl::{accounts, content, instances, java, minecraft, store};
 
 use app::NsclApp;
 
-fn main() -> eframe::Result {
+fn main() -> std::process::ExitCode {
     if let Some(result) = nscl::updater::run_helper() {
         if let Err(error) = result {
             eprintln!("{error}");
         }
-        return Ok(());
+        return std::process::ExitCode::SUCCESS;
     }
+    let log_path = renderer::initialize_log();
+    match run_gui() {
+        Ok(()) => {
+            renderer::record("window closed normally");
+            std::process::ExitCode::SUCCESS
+        }
+        Err(error) => {
+            renderer::record(&format!("startup failed: {error}"));
+            renderer::show_error(&error, log_path.as_deref());
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_gui() -> Result<(), String> {
+    let backend = renderer::select(std::env::args_os().skip(1))?;
+    renderer::record(&format!("requested renderer: {backend}"));
     window_icon::initialize();
     let viewport = egui::ViewportBuilder::default()
         .with_title("NorthStar Minecraft Launcher")
@@ -42,17 +60,21 @@ fn main() -> eframe::Result {
         .with_decorations(false);
     let options = eframe::NativeOptions {
         viewport,
+        renderer: backend,
         ..Default::default()
     };
     eframe::run_native(
         "NorthStar Minecraft Launcher",
         options,
         Box::new(|cc| {
+            renderer::record_context(cc);
             install_cjk_fonts(&cc.egui_ctx);
             theme::apply(&cc.egui_ctx);
+            renderer::record("fonts and theme initialized; creating application");
             Ok(Box::new(NsclApp::new()))
         }),
     )
+    .map_err(|error| error.to_string())
 }
 
 // 运行时从系统字体加载：Segoe UI 优先渲染拉丁字符（与原 Web 字体栈一致），

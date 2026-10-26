@@ -118,6 +118,7 @@ cargo test --locked --all-targets
 | Forge / Fabric / NeoForge | [加载器](docs/loaders.md) |
 | 模组依赖、整合包与文件保护 | [模组与整合包](docs/mods-and-modpacks.md) |
 | 登录、实例与目录隔离 | [账号与实例](docs/accounts-and-instances.md) |
+| 启动器黑屏、VMware 与图形日志 | [图形排查](docs/graphics-troubleshooting.md) |
 | 启动器更新 | [更新机制](docs/launcher-updates.md) |
 | 界面参考、功能对比与联网排查 | [界面参考](docs/launcher-ui-references.md) |
 
