@@ -115,6 +115,7 @@ pub fn plan_mod(
     target.check(&selected)?;
     let directory = target.instance.game_directory(root)?;
     let previous = registry(&directory)?;
+    let selected_project = selected.project_id.clone();
     let mut chosen = BTreeMap::<String, ContentVersion>::new();
     let mut queue = VecDeque::from([selected]);
     while let Some(version) = queue.pop_front() {
@@ -130,6 +131,17 @@ pub fn plan_mod(
         }
         if chosen.len() >= 256 {
             return Err("必需依赖超过 256 个，停止解析。".into());
+        }
+        if version.project_id != selected_project
+            && previous
+                .mods
+                .get(&version.project_id)
+                .is_some_and(|m| !m.enabled())
+        {
+            return Err(format!(
+                "必需依赖 {} 已禁用，请先在实例中启用它再重试。",
+                version.name
+            ));
         }
         target.check(&version)?;
         version.file(ContentKind::Mod)?;
@@ -179,9 +191,15 @@ pub fn plan_mod(
     let mut merged: BTreeMap<_, _> = previous
         .mods
         .iter()
+        .filter(|(_, m)| m.enabled())
         .map(|(id, m)| (id.clone(), m.version.clone()))
         .collect();
-    merged.extend(chosen.clone());
+    merged.extend(
+        chosen
+            .iter()
+            .filter(|(id, _)| previous.mods.get(*id).is_none_or(|m| m.enabled()))
+            .map(|(id, v)| (id.clone(), v.clone())),
+    );
     for version in merged.values() {
         target.check(version)?;
     }
@@ -274,7 +292,15 @@ pub fn install_mods(
             &file.filename,
             downloader,
         )?;
-        let relative = format!("mods/{}", file.filename);
+        let disabled = record
+            .mods
+            .get(&version.project_id)
+            .is_some_and(|m| !m.enabled());
+        let relative = format!(
+            "mods/{}{}",
+            file.filename,
+            if disabled { ".disabled" } else { "" }
+        );
         let staged = files::safe_path(&payload, &relative)?;
         fs::create_dir_all(staged.parent().unwrap()).map_err(|e| e.to_string())?;
         fs::copy(cache, &staged).map_err(|e| e.to_string())?;
@@ -339,11 +365,14 @@ pub fn check_instance(
     let versions: BTreeMap<_, _> = record
         .mods
         .iter()
+        .filter(|(_, m)| m.enabled())
         .map(|(id, m)| (id.clone(), m.version.clone()))
         .collect();
     report.errors.extend(dependency_issues(&versions));
     for entry in record.mods.values() {
-        if let Err(error) = target.check(&entry.version) {
+        if entry.enabled()
+            && let Err(error) = target.check(&entry.version)
+        {
             report.errors.push(error);
         }
     }

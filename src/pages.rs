@@ -440,7 +440,7 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
             installation_options(ui, app);
             return;
         }
-        if app.category != 0 && app.service.content.plan.is_some() {
+        if app.category == 1 && app.service.content.download_pack_plan().is_some() {
             crate::content_page::plan(ui, app);
             return;
         }

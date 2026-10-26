@@ -60,6 +60,57 @@ pub(crate) fn text_rect(output: &FullOutput, label: &str) -> Rect {
         .unwrap_or_else(|| panic!("missing text: {label}"))
 }
 
+pub(crate) fn seed_local_mod_catalog(app: &mut NsclApp) {
+    use crate::content::{LocalCatalog, LocalEntry, LocalKind};
+    let managed = app.service.content.managed.as_ref().unwrap();
+    let root = crate::store::game_directory(&app.settings);
+    let instance = managed.target.instance.clone();
+    let game = instance.game_directory(&root).unwrap();
+    let mut entries: Vec<_> = managed
+        .entries
+        .iter()
+        .map(|entry| LocalEntry {
+            relative: entry.installed.file.path.clone(),
+            filename: std::path::Path::new(&entry.installed.file.path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            name: entry.installed.version.name.clone(),
+            version: entry.installed.version.version_number.clone(),
+            enabled: entry.installed.enabled(),
+            directory: false,
+            size: entry.installed.file.size,
+            project: Some(entry.installed.version.project_id.clone()),
+            missing: false,
+            modified: None,
+        })
+        .collect();
+    entries.extend(managed.other_files.iter().map(|name| LocalEntry {
+        relative: format!("mods/{name}"),
+        filename: name.clone(),
+        name: name.clone(),
+        version: String::new(),
+        enabled: true,
+        directory: false,
+        size: 0,
+        project: None,
+        missing: false,
+        modified: None,
+    }));
+    app.service.local.key = Some((root.clone(), instance.id.clone(), LocalKind::Mods));
+    app.service.local.requested = true;
+    app.service.local.catalog = Some(std::sync::Arc::new(LocalCatalog {
+        root,
+        instance,
+        kind: LocalKind::Mods,
+        game_directory: game,
+        entries,
+        truncated: false,
+        has_trash: false,
+    }));
+}
+
 fn click(ctx: &Context, app: &mut NsclApp, size: Vec2, pos: Pos2) {
     frame(
         ctx,
@@ -287,23 +338,6 @@ fn switching_modpack_and_mod_tabs_keeps_the_ui_responsive() {
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let (_root, mut app, ctx) = fixture();
-        app.service.installed = vec![InstalledVersion {
-            external: false,
-            id: "1.20.1-forge".into(),
-            kind: "release".into(),
-            java_major: 17,
-            platform: String::new(),
-            metadata_sha1: String::new(),
-            loader: Some(app.service.loaders[0].clone()),
-            extra_files: vec![],
-        }];
-        app.service.instances = vec![crate::instances::Instance {
-            id: "test".into(),
-            name: "Test instance".into(),
-            version_id: "1.20.1-forge".into(),
-            ..Default::default()
-        }];
-        app.service.selected = "test".into();
         let size = Vec2::new(876.0, 390.0);
         for (category, label) in [(1, "整合包"), (2, "Mod"), (1, "整合包"), (2, "Mod")] {
             let output = frame(&ctx, &mut app, size, vec![]);
@@ -312,26 +346,29 @@ fn switching_modpack_and_mod_tabs_keeps_the_ui_responsive() {
             click(&ctx, &mut app, size, pos);
             assert_eq!(app.category, category);
             assert!(!app.service.busy());
-            if category == 2 {
-                // Rendering uses the loaded catalog even when its files are unavailable.
-                let output = frame(&ctx, &mut app, size, vec![]);
-                text_rect(&output, "Test instance · Minecraft 1.20.1 · Forge");
-                output.drop_without_applying_deltas();
-                assert!(app.service.content_target(&app.settings).is_err());
-            }
         }
-        app.service.installed[0].loader = None;
+        // The mod tab browses Modrinth itself, so it never binds or requires an instance.
+        assert_eq!(
+            super::content::ContentMode::Download,
+            app.service.content.mode
+        );
+        assert_eq!(crate::content::ContentKind::Mod, app.service.content.kind);
+        assert!(app.service.content.target.is_empty());
         let output = frame(&ctx, &mut app, size, vec![]);
-        text_rect(&output, "Test instance · Minecraft 1.20.1-forge · 原版");
-        output.drop_without_applying_deltas();
-        app.service.installed.clear();
-        let output = frame(&ctx, &mut app, size, vec![]);
-        text_rect(&output, "实例的游戏或加载器尚未完成安装。");
+        assert!(
+            !output.shapes.iter().any(|shape| matches!(
+                &shape.shape,
+                egui::Shape::Text(text) if text.galley.job.text == "目标实例"
+            )),
+            "the download page must not ask for an instance"
+        );
         output.drop_without_applying_deltas();
         app.service.instances.clear();
+        app.service.installed.clear();
         let output = frame(&ctx, &mut app, size, vec![]);
-        text_rect(&output, "请先选择要安装模组的实例。");
+        text_rect(&output, "搜索");
         output.drop_without_applying_deltas();
+        assert!(!app.service.busy());
         sender.send(()).unwrap();
     });
     receiver
@@ -346,7 +383,7 @@ fn resource_catalog_and_versions_fit_small_windows_without_starting_tasks() {
     for category in [1, 2] {
         app.category = category;
         app.service.task = Task::Idle;
-        app.service.content_kind(if category == 1 {
+        app.service.content_browse(if category == 1 {
             crate::content::ContentKind::Modpack
         } else {
             crate::content::ContentKind::Mod
@@ -366,9 +403,6 @@ fn resource_catalog_and_versions_fit_small_windows_without_starting_tasks() {
             let search = text_rect(&output, "搜索");
             let next = text_rect(&output, "下一页");
             assert!(search.max.x < size.x && next.max.y < size.y);
-            if category == 2 {
-                assert!(text_rect(&output, "管理已装模组").max.x < size.x);
-            }
             if task == Task::Idle {
                 let title = text_rect(&output, "Test resource");
                 let placeholder = text_rect(&output, "T");
@@ -393,7 +427,7 @@ fn resource_catalog_and_versions_fit_small_windows_without_starting_tasks() {
     });
     app.service.content.versions=vec![serde_json::from_value(serde_json::json!({"id":"v1","project_id":"example","name":"Test version","version_number":"1","version_type":"release","date_published":"2026-01-01","game_versions":["1.20.1"],"loaders":["fabric"],"files":[]})).unwrap()];
     let output = frame(&ctx, &mut app, size, vec![]);
-    assert!(text_rect(&output, "查看方案").max.y < size.y);
+    assert!(text_rect(&output, "下载").max.y < size.y);
     assert!(app.service.task == Task::Idle);
     output.drop_without_applying_deltas();
 }
@@ -415,10 +449,13 @@ fn local_pack_preview_waits_for_confirmation_and_optional_files_are_a_choice() {
         .unwrap();
     zip.finish().unwrap();
     app.category = 1;
+    app.service
+        .content_browse(crate::content::ContentKind::Modpack);
     app.service.content.plan = Some(super::ContentPlan::Pack(
         crate::content::inspect_pack(root.path(), &path).unwrap(),
     ));
-    let output = frame(&ctx, &mut app, size, vec![]);
+    let mut output = frame(&ctx, &mut app, size, vec![]);
+    output.textures_delta.clear();
     assert!(text_rect(&output, "安装整合包").max.y < size.y);
     let pos = text_rect(&output, "包含 1 个可选客户端文件").center();
     output.drop_without_applying_deltas();

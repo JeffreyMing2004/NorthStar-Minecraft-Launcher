@@ -6,6 +6,7 @@ use super::{
 use crate::minecraft::{Downloader, Result};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fs,
     path::Path,
 };
 
@@ -138,7 +139,7 @@ pub fn plan_removal(
     let remaining = previous
         .mods
         .iter()
-        .filter(|(id, _)| !projects.contains(*id))
+        .filter(|(id, m)| !projects.contains(*id) && m.enabled())
         .map(|(id, m)| (id.clone(), m.version.clone()))
         .collect();
     let issues = dependency_issues(&remaining);
@@ -168,6 +169,9 @@ pub fn remove_mods(
     }
     let mut record = plan.previous.clone();
     let mut changes = BTreeMap::new();
+    let mut stage = files::Stage::new(root)?;
+    let payload = stage.directory("payload")?;
+    let recycle_id = uuid::Uuid::new_v4();
     for entry in &plan.entries {
         downloader.check_cancelled()?;
         let path = files::safe_path(&directory, &entry.file.path)?;
@@ -179,12 +183,24 @@ pub fn remove_mods(
         }
         record.mods.remove(&entry.version.project_id);
         changes.insert(entry.file.path.clone(), None);
+        if path.exists() {
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or("模组文件名无效。")?;
+            let relative = format!(
+                ".nscl/trash/mods/{recycle_id}/{}/{name}",
+                entry.version.project_id
+            );
+            let staged = files::safe_path(&payload, &relative)?;
+            fs::create_dir_all(staged.parent().unwrap()).map_err(|e| e.to_string())?;
+            fs::copy(&path, &staged).map_err(|e| e.to_string())?;
+            changes.insert(relative, Some(staged));
+        }
     }
     if let Some(pack) = &mut record.pack {
         pack.files.retain(|file| !changes.contains_key(&file.path));
     }
-    let mut stage = files::Stage::new(root)?;
-    let payload = stage.directory("payload")?;
     let staged_registry = files::safe_path(&payload, REGISTRY)?;
     crate::store::write_json(&staged_registry, &record)?;
     changes.insert(REGISTRY.into(), Some(staged_registry));

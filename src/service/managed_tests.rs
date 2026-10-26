@@ -1,11 +1,54 @@
-use super::tests::{fixture, frame, text_rect};
+use super::tests::{fixture, text_rect};
 use super::*;
+use crate::app::{NsclApp, Page};
+use content::ContentMode;
+use egui::{Context, FullOutput, Pos2, RawInput, Rect, Vec2};
+
+fn instance_frame(ctx: &Context, app: &mut NsclApp, size: Vec2) -> FullOutput {
+    ctx.run_ui(
+        RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+            ..Default::default()
+        },
+        |ui| {
+            // Mirrors the central panel the app gives this page.
+            ui.spacing_mut().item_spacing.y = 0.0;
+            crate::pages::instance_windows(ui.ctx(), app);
+            crate::instance_ui::show(ui, app);
+        },
+    )
+}
 
 #[test]
-fn manager_shows_update_preview_and_removal_controls_during_background_work() {
+fn mod_tab_shows_update_preview_and_removal_controls_during_background_work() {
     let (_root, mut app, ctx) = fixture();
-    app.category = 2;
-    app.service.content.manager_open = true;
+    app.page = Page::Instances;
+    app.service.installed = vec![InstalledVersion {
+        external: false,
+        id: "test-version".into(),
+        kind: "release".into(),
+        java_major: 17,
+        platform: String::new(),
+        metadata_sha1: String::new(),
+        loader: Some(LoaderVersion {
+            minecraft: "1.20.1".into(),
+            kind: LoaderKind::Fabric,
+            version: "0.16.0".into(),
+            stable: true,
+        }),
+        extra_files: vec![],
+    }];
+    app.service.instances = vec![crate::instances::Instance {
+        id: "test".into(),
+        name: "Test instance".into(),
+        version_id: "test-version".into(),
+        ..Default::default()
+    }];
+    app.service.selected = "test".into();
+    app.instance_browser.selected = "test".into();
+    app.instance_browser.tab = crate::instance_ui::DetailTab::Mods;
+    app.service.content.mode = ContentMode::Instance;
+    app.service.content.target = "test".into();
     let target = crate::content::Target {
         instance: crate::instances::Instance {
             id: "test".into(),
@@ -51,11 +94,12 @@ fn manager_shows_update_preview_and_removal_controls_during_background_work() {
         .managed_selection
         .insert("example".into());
     app.service.content.updates_checked = true;
-    let size = egui::vec2(876.0, 510.0);
-    frame(&ctx, &mut app, size, vec![]).drop_without_applying_deltas();
+    super::tests::seed_local_mod_catalog(&mut app);
+    let size = egui::vec2(1116.0, 720.0);
+    instance_frame(&ctx, &mut app, size).drop_without_applying_deltas();
     for task in [Task::Idle, Task::Content] {
         app.service.task = task;
-        let mut output = frame(&ctx, &mut app, size, vec![]);
+        let mut output = instance_frame(&ctx, &mut app, size);
         output.textures_delta.clear();
         for label in ["卸载所选", "检查更新", "查看更新方案"] {
             let rect = text_rect(&output, label);
@@ -65,7 +109,8 @@ fn manager_shows_update_preview_and_removal_controls_during_background_work() {
             );
         }
         if task == Task::Content {
-            assert!(text_rect(&output, "取消任务").max.y < size.y);
+            let cancel = text_rect(&output, "取消任务");
+            assert!(cancel.max.y < size.y, "cancel: {cancel:?} size: {size:?}");
         }
         assert!(app.service.content.plan.is_none());
         assert_eq!(app.service.content.managed_selection.len(), 1);

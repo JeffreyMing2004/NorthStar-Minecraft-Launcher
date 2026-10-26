@@ -8,6 +8,7 @@ use crate::{
     minecraft::{Downloader, Result},
     store,
 };
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub enum ContentPlan {
@@ -16,22 +17,78 @@ pub enum ContentPlan {
     Remove(content::RemovalPlan),
 }
 
+/// Which surface owns the resource browser.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub enum ContentMode {
+    /// The download page browses Modrinth on its own and saves mod files to disk.
+    #[default]
+    Download,
+    /// The instance mod tab filters by that instance and installs into it.
+    Instance,
+}
+
 #[derive(Default)]
 pub struct ContentState {
     pub kind: ContentKind,
+    pub mode: ContentMode,
     pub query: String,
+    /// Instance bound to [`ContentMode::Instance`]; empty on the download page.
     pub target: String,
+    /// The instance tab shows the Modrinth search instead of the installed list.
+    pub adding: bool,
+    /// The installed catalog for `target` was already requested, so rendering never loops.
+    pub managed_requested: bool,
+    pub downloaded: Option<PathBuf>,
     pub results: SearchPage,
     pub searched: bool,
     pub project: Option<Project>,
     pub versions: Vec<ContentVersion>,
     pub plan: Option<ContentPlan>,
     pub audit: Option<CompatibilityReport>,
-    pub manager_open: bool,
     pub managed: Option<content::ManagedCatalog>,
     pub updates: content::UpdateReport,
     pub updates_checked: bool,
     pub managed_selection: std::collections::BTreeSet<String>,
+}
+
+impl ContentState {
+    fn scoped(kind: ContentKind, mode: ContentMode, target: String) -> Self {
+        Self {
+            kind,
+            mode,
+            target,
+            ..Default::default()
+        }
+    }
+
+    fn accepts_plan(&self, plan: &ContentPlan) -> bool {
+        match plan {
+            ContentPlan::Pack(_) => {
+                self.mode == ContentMode::Download && self.kind == ContentKind::Modpack
+            }
+            ContentPlan::Mod(plan) => {
+                self.mode == ContentMode::Instance
+                    && self.kind == ContentKind::Mod
+                    && self.target == plan.target.instance.id
+            }
+            ContentPlan::Remove(plan) => {
+                self.mode == ContentMode::Instance
+                    && self.kind == ContentKind::Mod
+                    && self.target == plan.target.instance.id
+            }
+        }
+    }
+
+    pub fn download_pack_plan(&self) -> Option<&PackPlan> {
+        match self.plan.as_ref()? {
+            ContentPlan::Pack(plan)
+                if self.mode == ContentMode::Download && self.kind == ContentKind::Modpack =>
+            {
+                Some(plan)
+            }
+            _ => None,
+        }
+    }
 }
 
 pub(super) enum ContentEvent {
@@ -41,44 +98,35 @@ pub(super) enum ContentEvent {
     Audit(CompatibilityReport),
     Installed(Instance, String),
     Managed(Box<content::ManagedCatalog>, Option<content::UpdateReport>),
+    Downloaded(PathBuf),
 }
 
 impl GameService {
-    pub fn content_target_label(&self) -> Result<String> {
-        let instance = self
-            .instances
-            .iter()
-            .find(|i| i.id == self.content.target)
-            .ok_or("请先选择要安装模组的实例。")?;
-        let installed = self
-            .installed
-            .iter()
-            .find(|v| v.id == instance.version_id)
-            .ok_or("实例的游戏或加载器尚未完成安装。")?;
-        // This runs every frame; disk validation belongs to explicit content tasks.
-        Target::from_installed(instance, installed).map(|target| target.label())
-    }
-
     pub fn content_target(&self, settings: &Settings) -> Result<Target> {
         let instance = self
             .instances
             .iter()
             .find(|i| i.id == self.content.target)
-            .ok_or("请先选择要安装模组的实例。")?;
+            .ok_or("请先选择要管理模组的实例。")?;
         Target::from_instance(&store::game_directory(settings), instance)
     }
 
-    pub fn content_kind(&mut self, kind: ContentKind) {
-        if self.content.kind != kind && !self.busy() {
-            self.content = ContentState {
-                kind,
-                target: self.content.target.clone(),
-                ..Default::default()
-            };
+    /// Point the browser at the download page: no instance, no loader filter.
+    pub fn content_browse(&mut self, kind: ContentKind) {
+        if self.busy() || (self.content.kind == kind && self.content.mode == ContentMode::Download)
+        {
+            return;
         }
-        if self.content.target.is_empty() {
-            self.content.target = self.selected.clone();
+        self.content = ContentState::scoped(kind, ContentMode::Download, String::new());
+    }
+
+    /// Point the browser at one instance. Repeating a frame keeps the loaded catalog.
+    pub fn content_instance(&mut self, id: &str) {
+        if self.busy() || (self.content.mode == ContentMode::Instance && self.content.target == id)
+        {
+            return;
         }
+        self.content = ContentState::scoped(ContentKind::Mod, ContentMode::Instance, id.to_owned());
     }
 
     pub fn content_search(&mut self, offset: usize, settings: &Settings, ctx: &egui::Context) {
@@ -86,8 +134,9 @@ impl GameService {
             return;
         }
         let kind = self.content.kind;
-        let target = if kind == ContentKind::Mod {
-            match self.content_target(settings) {
+        let target = match self.content.mode {
+            ContentMode::Download => None,
+            ContentMode::Instance => match self.content_target(settings) {
                 Ok(target) if target.loader.is_some() => Some(target),
                 Ok(_) => {
                     self.error=Some("请先在 Minecraft 下载页为目标游戏安装 Forge、Fabric 或 NeoForge，再选择对应实例。".into());
@@ -97,9 +146,7 @@ impl GameService {
                     self.error = Some(error);
                     return;
                 }
-            }
-        } else {
-            None
+            },
         };
         let query = self.content.query.clone();
         self.content.project = None;
@@ -130,11 +177,16 @@ impl GameService {
         });
     }
 
+    /// True when the browser filters by an instance instead of listing everything.
+    fn content_targets_instance(&self) -> bool {
+        self.content.kind == ContentKind::Mod && self.content.mode == ContentMode::Instance
+    }
+
     pub fn content_versions(&mut self, project: Project, settings: &Settings, ctx: &egui::Context) {
         if self.busy() {
             return;
         }
-        let target = if self.content.kind == ContentKind::Mod {
+        let target = if self.content_targets_instance() {
             match self.content_target(settings) {
                 Ok(t) => Some(t),
                 Err(e) => {
@@ -183,6 +235,10 @@ impl GameService {
         if self.busy() {
             return;
         }
+        if self.content.kind == ContentKind::Mod && self.content.mode != ContentMode::Instance {
+            self.error = Some("请在版本管理中为具体实例安装模组，或直接下载模组文件。".into());
+            return;
+        }
         let target = if self.content.kind == ContentKind::Mod {
             match self.content_target(settings) {
                 Ok(t) => Some(t),
@@ -229,6 +285,49 @@ impl GameService {
         });
     }
 
+    /// Save one mod JAR under the launcher download directory without touching an instance.
+    pub fn content_download(
+        &mut self,
+        version: ContentVersion,
+        settings: &Settings,
+        ctx: &egui::Context,
+    ) {
+        if self.busy() || self.content.kind != ContentKind::Mod {
+            return;
+        }
+        let directory = store::settings_path()
+            .with_file_name("downloads")
+            .join("mods");
+        self.begin(Task::Content);
+        self.content.downloaded = None;
+        let (settings, ctx, sender, cancel) = (
+            settings.clone(),
+            ctx.clone(),
+            self.sender.clone(),
+            self.cancel.clone(),
+        );
+        std::thread::spawn(move || {
+            let result = Downloader::new(settings.source, cancel, reporter(&sender, &ctx))
+                .and_then(|d| {
+                    let api = Modrinth::new(d);
+                    api.check_project(&version.project_id, ContentKind::Mod)?;
+                    let fresh = api.version(&version.id)?;
+                    if fresh.project_id != version.project_id {
+                        return Err("资源项目 ID 已改变，请重新选择。".into());
+                    }
+                    content::download_mod(&directory, &fresh, &api.downloader)
+                });
+            send(
+                &sender,
+                &ctx,
+                match result {
+                    Ok(path) => Event::Content(ContentEvent::Downloaded(path)),
+                    Err(error) => Event::Failed(error),
+                },
+            );
+        });
+    }
+
     pub fn content_drop_install(
         &mut self,
         path: &std::path::Path,
@@ -238,10 +337,8 @@ impl GameService {
         if self.busy() || self.game.is_some() {
             return;
         }
-        self.content = ContentState {
-            kind: ContentKind::Modpack,
-            ..Default::default()
-        };
+        self.content =
+            ContentState::scoped(ContentKind::Modpack, ContentMode::Download, String::new());
         self.begin(Task::Content);
         self.progress.stage = "正在识别拖入的整合包".into();
         let (path, settings, ctx, sender, cancel) = (
@@ -277,6 +374,18 @@ impl GameService {
         });
     }
 
+    /// The download-page confirmation can only execute a pack installation.
+    pub fn content_install_pack(&mut self, settings: &Settings, ctx: &egui::Context) {
+        if self.busy() {
+            return;
+        }
+        if self.content.download_pack_plan().is_none() {
+            self.error = Some("当前方案不是下载页的整合包安装方案，请重新选择。".into());
+            return;
+        }
+        self.content_install(settings, ctx);
+    }
+
     pub fn content_install(&mut self, settings: &Settings, ctx: &egui::Context) {
         if self.busy() {
             return;
@@ -288,6 +397,10 @@ impl GameService {
         let Some(plan) = self.content.plan.clone() else {
             return;
         };
+        if !self.content.accepts_plan(&plan) {
+            self.error = Some("方案不属于当前页面或实例，请返回对应实例重新生成方案。".into());
+            return;
+        }
         self.begin(Task::Content);
         let (settings, ctx, sender, cancel) = (
             settings.clone(),
@@ -304,7 +417,10 @@ impl GameService {
                     ContentPlan::Remove(plan) => content::remove_mods(&root, &plan, &d).map(|i| {
                         (
                             i,
-                            format!("已卸载 {} 个模组，存档与配置已保留。", plan.entries.len()),
+                            format!(
+                                "已卸载 {} 个模组，文件保留在本地回收目录。",
+                                plan.entries.len()
+                            ),
                         )
                     }),
                     ContentPlan::Pack(plan) => content::install_pack(&root, &plan, &settings, &d)
@@ -330,6 +446,8 @@ impl GameService {
         if self.busy() {
             return;
         }
+        // Recorded before the target is resolved so a failing instance never retries every frame.
+        self.content.managed_requested = true;
         let target = match self.content_target(settings) {
             Ok(t) => t,
             Err(e) => {
@@ -337,7 +455,6 @@ impl GameService {
                 return;
             }
         };
-        self.content.manager_open = true;
         self.begin(Task::Content);
         let (settings, sender, cancel, ctx) = (
             settings.clone(),
@@ -456,21 +573,30 @@ impl GameService {
         match event {
             ContentEvent::Search(page) => self.content.results = page,
             ContentEvent::Versions(versions) => self.content.versions = versions,
-            ContentEvent::Plan(plan) => {
-                self.content.plan = Some(*plan);
-                self.content.manager_open = false;
-            }
+            ContentEvent::Plan(plan) => self.content.plan = Some(*plan),
             ContentEvent::Audit(report) => self.content.audit = Some(report),
             ContentEvent::Installed(instance, message) => {
+                self.local.catalog = None;
+                self.local.requested = false;
+                self.local.remove = None;
+                self.local.notice = message.clone();
                 self.content.plan = None;
+                self.content.project = None;
+                self.content.versions.clear();
                 self.content.managed = None;
                 self.content.managed_selection.clear();
                 self.content.updates = Default::default();
                 self.content.updates_checked = false;
+                self.content.managed_requested = false;
+                self.content.adding = false;
                 self.refresh(settings);
                 self.selected = instance.id.clone();
                 self.content.target = instance.id;
                 self.notice = message;
+            }
+            ContentEvent::Downloaded(path) => {
+                self.notice = "模组已下载，可放入实例的 mods 目录。".into();
+                self.content.downloaded = Some(path);
             }
             ContentEvent::Managed(catalog, report) => {
                 self.content.managed_selection.retain(|id| {

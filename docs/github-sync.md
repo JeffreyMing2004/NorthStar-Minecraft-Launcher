@@ -21,11 +21,13 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
 git add <本次相关文件>
 git commit -m "准确概括本次修改"
-git push github master
-git push origin master
+git push github HEAD
+git push origin HEAD
 ```
 
 GitHub CLI 负责登录及 Git 凭据，提交由 `git commit` 完成；`gh` 没有提交子命令。推送使用正常快进，不使用强制推送。任一远程失败时保留本地提交，检查网络或先拉取并合并远程变更后重试，避免覆盖历史。没有改动时不创建空提交。
+
+`HEAD` 推送当前分支；在 `deepseek/nscl` 等开发分支上修复时推送同名分支，合并到 `master` 另行处理。
 
 `AGENTS.md` 只留本地，通过 `.git/info/exclude` 的 `/AGENTS.md` 排除；设置、账号、令牌、下载的游戏与构建产物都不加入提交。
 
@@ -38,3 +40,11 @@ GitHub CLI 负责登录及 Git 凭据，提交由 `git commit` 完成；`gh` 没
 密钥文件中的 `allow_slugs` 使用 CNB 路径 `JeffreyMing/NorthStar-Minecraft-Launcher`，并允许现有的 `push,tag_push,web_trigger_sync` 事件及 `tencentcom/git-sync` 镜像。若更换密钥文件地址，应同时修改 `.cnb.yml` 中三处 `CNB_SECRETS_IMPORTS`。凭据需要允许写入目标仓库内容；同步 GitHub 工作流还需具备对应工作流写入权限。
 
 普通 push 同步当前分支，tag push 同步标签；CNB 页面手动入口用于补推分支和标签。GitHub Releases 由 GitHub 的发布工作流构建，详见[启动器更新](launcher-updates.md)。
+
+## 同步失败排查
+
+- **仓库地址或凭据错误**：先运行 `git remote -v`，确认 `github` 指向 `JeffreyMing2004/NorthStar-Minecraft-Launcher`，`origin` 指向 CNB 的 `JeffreyMing/NorthStar-Minecraft-Launcher`。再运行 `gh auth status --hostname github.com` 和 `gh auth setup-git --hostname github.com`，检查本地 GitHub 登录与凭据配置。
+- **CNB 流水线缺少凭据或引用被拒**：核对 `.cnb.yml` 的 `CNB_SECRETS_IMPORTS` 与实际密钥文件地址，并按 [密钥模板](ci/github.yml) 检查变量名、允许的仓库、分支、事件及镜像。GitHub 账号填 `JeffreyMing2004`，CNB 的 `allow_slugs` 使用 `JeffreyMing/NorthStar-Minecraft-Launcher`。
+- **远程历史分叉**：保留本地提交，获取远程更新并确认差异后正常合并、推送。保留 `force: false`，不要通过强制推送覆盖另一仓库的提交。
+
+不要为排错把真实 token 写入项目文件、提交记录或分享的日志。
