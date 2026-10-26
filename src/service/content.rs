@@ -21,6 +21,10 @@ pub struct ContentState {
     pub kind: ContentKind,
     pub query: String,
     pub target: String,
+    pub mode: ContentMode,
+    pub instance_catalog: bool,
+    pub managed_requested: bool,
+    pub downloaded: Option<std::path::PathBuf>,
     pub results: SearchPage,
     pub searched: bool,
     pub project: Option<Project>,
@@ -34,6 +38,13 @@ pub struct ContentState {
     pub managed_selection: std::collections::BTreeSet<String>,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum ContentMode {
+    #[default]
+    Download,
+    Instance,
+}
+
 pub(super) enum ContentEvent {
     Search(SearchPage),
     Versions(Vec<ContentVersion>),
@@ -41,6 +52,7 @@ pub(super) enum ContentEvent {
     Audit(CompatibilityReport),
     Installed(Instance, String),
     Managed(Box<content::ManagedCatalog>, Option<content::UpdateReport>),
+    Downloaded(std::path::PathBuf),
 }
 
 impl GameService {
@@ -72,12 +84,21 @@ impl GameService {
         if self.content.kind != kind && !self.busy() {
             self.content = ContentState {
                 kind,
-                target: self.content.target.clone(),
                 ..Default::default()
             };
         }
-        if self.content.target.is_empty() {
-            self.content.target = self.selected.clone();
+    }
+
+    pub fn content_browse(&mut self, kind: ContentKind) {
+        if self.content.mode == ContentMode::Instance && !self.busy() {
+            self.content = ContentState {kind, ..Default::default()};
+        }
+        self.content_kind(kind);
+    }
+
+    pub fn content_for_instance(&mut self, id: &str) {
+        if !self.busy() {
+            self.content = ContentState {kind: ContentKind::Mod, target: id.into(), mode: ContentMode::Instance, ..Default::default()};
         }
     }
 
@@ -86,7 +107,7 @@ impl GameService {
             return;
         }
         let kind = self.content.kind;
-        let target = if kind == ContentKind::Mod {
+        let target = if kind == ContentKind::Mod && self.content.mode == ContentMode::Instance {
             match self.content_target(settings) {
                 Ok(target) if target.loader.is_some() => Some(target),
                 Ok(_) => {
@@ -134,7 +155,7 @@ impl GameService {
         if self.busy() {
             return;
         }
-        let target = if self.content.kind == ContentKind::Mod {
+        let target = if self.content.kind == ContentKind::Mod && self.content.mode == ContentMode::Instance {
             match self.content_target(settings) {
                 Ok(t) => Some(t),
                 Err(e) => {
@@ -183,6 +204,10 @@ impl GameService {
         if self.busy() {
             return;
         }
+        if self.content.kind == ContentKind::Mod && self.content.mode != ContentMode::Instance {
+            self.error = Some("请从版本管理为对应实例添加模组。".into());
+            return;
+        }
         let target = if self.content.kind == ContentKind::Mod {
             match self.content_target(settings) {
                 Ok(t) => Some(t),
@@ -226,6 +251,24 @@ impl GameService {
                     Err(e) => Event::Failed(e),
                 },
             );
+        });
+    }
+
+    pub fn content_download(&mut self, version: ContentVersion, settings: &Settings, ctx: &egui::Context) {
+        if self.busy() { return; }
+        let directory = store::settings_path().with_file_name("downloads").join("mods");
+        self.begin(Task::Content);
+        self.content.downloaded = None;
+        let (settings, ctx, sender, cancel) = (settings.clone(), ctx.clone(), self.sender.clone(), self.cancel.clone());
+        std::thread::spawn(move || {
+            let result = Downloader::new(settings.source, cancel, reporter(&sender, &ctx)).and_then(|d| {
+                let api = Modrinth::new(d);
+                api.check_project(&version.project_id, ContentKind::Mod)?;
+                let fresh = api.version(&version.id)?;
+                if fresh.project_id != version.project_id { return Err("资源项目 ID 已改变，请重新选择。".into()); }
+                content::download_mod(&directory, &fresh, &api.downloader)
+            });
+            send(&sender, &ctx, match result {Ok(path) => Event::Content(ContentEvent::Downloaded(path)), Err(error) => Event::Failed(error)});
         });
     }
 
@@ -337,7 +380,7 @@ impl GameService {
                 return;
             }
         };
-        self.content.manager_open = true;
+        self.content.managed_requested = true;
         self.begin(Task::Content);
         let (settings, sender, cancel, ctx) = (
             settings.clone(),
@@ -467,10 +510,16 @@ impl GameService {
                 self.content.managed_selection.clear();
                 self.content.updates = Default::default();
                 self.content.updates_checked = false;
+                self.content.managed_requested = false;
+                self.content.instance_catalog = false;
                 self.refresh(settings);
                 self.selected = instance.id.clone();
                 self.content.target = instance.id;
                 self.notice = message;
+            }
+            ContentEvent::Downloaded(path) => {
+                self.notice = format!("模组已下载：{}", path.display());
+                self.content.downloaded = Some(path);
             }
             ContentEvent::Managed(catalog, report) => {
                 self.content.managed_selection.retain(|id| {
