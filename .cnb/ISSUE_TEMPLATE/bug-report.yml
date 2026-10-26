@@ -1,0 +1,70 @@
+name: 问题反馈
+description: 报告 NorthStar Minecraft Launcher 的异常，帮助维护者定位和复现问题。
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请先搜索已有 Issue，确认是否已有相同问题。
+        上传日志或截图前，请隐藏邮箱、访问令牌、登录授权码及路径中的个人信息。
+        请勿上传账号配置文件；无法提供的信息可填写“不清楚”或“不适用”。
+  - type: input
+    attributes:
+      label: 启动器版本或构建信息
+      description: 请填写版本号；自行编译时可填写提交编号，不清楚时请说明下载来源或构建日期。
+      placeholder: 版本号 / 提交编号 / 构建日期
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: 操作系统与架构
+      description: 当前主要验证 Windows x86_64；其他平台也请填写实际环境。
+      placeholder: 例如 Windows 11 24H2 x86_64
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Minecraft 版本
+      description: 若问题发生在游戏安装或启动之前，可填写“不适用”。
+      placeholder: 例如 1.21.1 / 不适用
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: 加载器类型与版本
+      description: 请填写 Forge、Fabric 或 NeoForge 及其版本；未使用加载器时填写“原版”。
+      placeholder: 例如 Fabric Loader 0.16.10 / 原版 / 不适用
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 复现步骤
+      description: 从打开启动器开始，说明进行了哪些操作，以及问题出现在哪一步。
+      placeholder: |
+        1. 打开启动器，进入……
+        2. 选择……
+        3. 点击……后出现问题
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 预期结果
+      placeholder: 你希望上述操作完成后发生什么？
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 实际结果
+      description: 请描述实际发生的现象、报错内容，以及是否每次都会出现。
+      placeholder: 实际出现了什么问题？
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 错误信息或日志（可选）
+      description: 粘贴与问题相关的已脱敏日志或错误详情；无需提供完整账号配置。
+      render: text
+  - type: textarea
+    attributes:
+      label: 截图与补充信息（可选）
+      description: 可上传已脱敏截图，并补充整合包名称、Java 版本、下载源或实例隔离模式等相关信息。
