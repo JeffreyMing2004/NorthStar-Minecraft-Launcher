@@ -5,11 +5,11 @@ mod mods;
 mod pack;
 mod platform;
 
+pub use download::download_mod;
 pub use manager::{
     ManagedCatalog, ManagedEntry, RemovalPlan, UpdateCandidate, UpdateReport, check_updates,
     list_managed, plan_removal, remove_mods,
 };
-pub use download::download_mod;
 pub use mods::{CompatibilityReport, ModPlan, check_instance, install_mods, plan_mod};
 pub use pack::{PackPlan, inspect_pack, install_pack, plan_pack};
 pub use platform::{ContentKind, ContentVersion, Modrinth, Project, SearchPage, Target};

@@ -1,7 +1,10 @@
 use super::*;
 use crate::{
     minecraft::{InstalledVersion, LoaderKind, LoaderVersion},
-    service::tests::{fixture, text_rect},
+    service::{
+        content::ContentMode,
+        tests::{fixture, text_rect},
+    },
 };
 use egui::{Context, Event, FullOutput, Pos2, RawInput, Rect};
 
@@ -82,6 +85,32 @@ fn click(ctx: &Context, app: &mut NsclApp, label: &str) {
     let output = frame(ctx, app, size, vec![]);
     let pos = text_rect(&output, label).center();
     output.drop_without_applying_deltas();
+    press(ctx, app, size, pos);
+}
+
+/// The details tab bar and the file browser both label a folder-filled "模组" chip, so
+/// this picks the last match, which is the one inside the file browser.
+fn click_file_chip(ctx: &Context, app: &mut NsclApp, label: &str) {
+    let size = Vec2::new(1100.0, 760.0);
+    frame(ctx, app, size, vec![]).drop_without_applying_deltas();
+    let output = frame(ctx, app, size, vec![]);
+    let pos = output
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.job.text == label => {
+                Some(text.galley.rect.translate(text.pos.to_vec2()))
+            }
+            _ => None,
+        })
+        .last()
+        .unwrap_or_else(|| panic!("missing text: {label}"))
+        .center();
+    output.drop_without_applying_deltas();
+    press(ctx, app, size, pos);
+}
+
+fn press(ctx: &Context, app: &mut NsclApp, size: Vec2, pos: Pos2) {
     frame(
         ctx,
         app,
@@ -217,7 +246,7 @@ fn file_categories_show_real_contents_details_and_missing_directory_feedback() {
     std::fs::create_dir_all(&mods).unwrap();
     std::fs::write(mods.join("local-example.jar"), [0; 2048]).unwrap();
     click(&ctx, &mut app, "文件");
-    click(&ctx, &mut app, "模组");
+    click_file_chip(&ctx, &mut app, "模组");
     wait_for_text(&ctx, &mut app, "local-example.jar");
     click(&ctx, &mut app, "local-example.jar");
     let output = frame(&ctx, &mut app, Vec2::new(1100.0, 760.0), vec![]);
@@ -269,14 +298,16 @@ fn local_mod_links_open_the_correct_instances_file_details() {
     let mods = instance.game_directory(root.path()).unwrap().join("mods");
     std::fs::create_dir_all(&mods).unwrap();
     std::fs::write(mods.join("local-example.jar"), b"example").unwrap();
-    app.service.content.manager_open = true;
+    app.instance_browser.tab = DetailTab::Mods;
+    app.service.content.mode = ContentMode::Instance;
+    app.service.content.target = instance.id.clone();
     app.service.content.managed = Some(crate::content::ManagedCatalog {
         target,
         entries: vec![],
         other_files: vec!["local-example.jar".into()],
     });
+    wait_for_text(&ctx, &mut app, "local-example.jar");
     click(&ctx, &mut app, "local-example.jar");
-    assert!(!app.service.content.manager_open);
     assert!(app.instance_browser.tab == DetailTab::Files);
     assert_eq!(app.instance_browser.selected, "modded");
     wait_for_text(&ctx, &mut app, "文件 · 7 B");
@@ -353,9 +384,10 @@ fn mod_update_opens_the_existing_installation_plan_flow() {
         "id":"v2", "project_id":"example", "name":"Example mod", "version_number":"2.0",
         "version_type":"release", "date_published":"2026-01-01", "game_versions":["1.20.1"], "loaders":["fabric"], "files":[]
     })).unwrap();
-    app.service.content.kind = ContentKind::Mod;
+    app.service.content.kind = crate::content::ContentKind::Mod;
+    app.service.content.mode = ContentMode::Instance;
     app.service.content.target = "modded".into();
-    app.service.content.manager_open = true;
+    app.instance_browser.tab = DetailTab::Mods;
     app.service.content.managed = Some(crate::content::ManagedCatalog {
         target,
         entries: vec![crate::content::ManagedEntry {
@@ -380,8 +412,9 @@ fn mod_update_opens_the_existing_installation_plan_flow() {
     app.settings.source.kind = crate::minecraft::SourceKind::Custom;
     app.settings.source.custom_base = "invalid".into();
     click(&ctx, &mut app, "查看更新方案");
-    assert!(app.page == Page::Downloads);
-    assert_eq!(app.category, 2);
+    // Updating an installed mod must stay inside the instance that owns it.
+    assert!(app.page == Page::Instances);
+    assert_eq!(app.instance_browser.tab, DetailTab::Mods);
     assert!(app.service.busy());
     assert_eq!(app.service.selected, "vanilla");
 }

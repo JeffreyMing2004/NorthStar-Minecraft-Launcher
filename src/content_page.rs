@@ -8,70 +8,23 @@ use crate::{
 };
 use egui::{Align, FontId, Pos2, Rect, RichText, Sense, Stroke, Ui, UiBuilder, Vec2};
 
+/// The download page browses Modrinth on its own: mods are saved as files and packs are
+/// installed as new instances, so nothing here depends on a selected instance.
 pub fn show(ui: &mut Ui, app: &mut NsclApp) {
     let kind = if app.category == 1 {
         ContentKind::Modpack
     } else {
         ContentKind::Mod
     };
-    app.service.content_kind(kind);
+    app.service.content_browse(kind);
     if app.service.content.project.is_some() {
-        versions(ui, app);
+        versions(ui, app, kind);
     } else {
         catalog(ui, app, kind);
     }
-    audit(ui.ctx(), app);
-    crate::manager_ui::show(ui.ctx(), app);
 }
 
 fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
-    if kind == ContentKind::Mod {
-        ui.add_enabled_ui(!app.service.busy(), |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 14.0;
-                ui.label("目标实例");
-                let before = app.service.content.target.clone();
-                let text = app
-                    .service
-                    .instances
-                    .iter()
-                    .find(|i| i.id == before)
-                    .map(|i| i.name.as_str())
-                    .unwrap_or("先安装游戏并选择实例");
-                egui::ComboBox::from_id_salt("content-instance")
-                    .width(340.0)
-                    .selected_text(text)
-                    .show_ui(ui, |ui| {
-                        for instance in &app.service.instances {
-                            ui.selectable_value(
-                                &mut app.service.content.target,
-                                instance.id.clone(),
-                                &instance.name,
-                            );
-                        }
-                    });
-                if before != app.service.content.target {
-                    app.service.content.results = Default::default();
-                    app.service.content.searched = false;
-                    app.service.content.audit = None;
-                    app.service.content.managed = None;
-                    app.service.content.managed_selection.clear();
-                    app.service.content.updates = Default::default();
-                    app.service.content.updates_checked = false;
-                }
-                if download_button(ui, "检查兼容性", !app.service.instances.is_empty()) {
-                    app.service.content_check(&app.settings, ui.ctx());
-                }
-                if download_button(ui, "管理已装模组", !app.service.instances.is_empty()) {
-                    app.service.content_manage(&app.settings, ui.ctx(), false);
-                }
-            });
-        });
-        ui.add_space(8.0);
-        let label = app.service.content_target_label().unwrap_or_else(|e| e);
-        ui.add(egui::Label::new(RichText::new(label).size(11.0).color(theme::HINT)).truncate());
-        ui.add_space(14.0);
-    }
     let mut search = false;
     ui.add_enabled_ui(!app.service.busy(), |ui| {
         ui.horizontal(|ui| {
@@ -109,14 +62,18 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
                         if app.service.busy() {
                             "正在获取资源……"
                         } else if app.service.content.searched {
-                            "没有匹配的资源，请调整关键词或目标实例。"
+                            "没有匹配的资源，请调整关键词。"
                         } else {
                             "输入关键词后搜索，留空可浏览热门资源。"
                         },
                     );
                     app::hint(
                         ui,
-                        "资源来自 Modrinth；安装前会检查版本、加载器与必需依赖。",
+                        if kind == ContentKind::Mod {
+                            "资源来自 Modrinth；下载后的 JAR 可直接放入任意实例的 mods 目录。"
+                        } else {
+                            "资源来自 Modrinth；整合包会安装为独立实例。"
+                        },
                     );
                 });
             }
@@ -169,10 +126,33 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
         }
         app::hint(ui, &format!("{} 条结果 · 第 {} 页", total, offset / 20 + 1));
     });
+    if let Some(path) = app.service.content.downloaded.clone() {
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 18.0;
+            ui.add(
+                egui::Label::new(
+                    RichText::new(format!("已下载：{}", path.display()))
+                        .size(11.0)
+                        .color(theme::HINT),
+                )
+                .truncate(),
+            )
+            .on_hover_text(path.to_string_lossy());
+            if download_button(ui, "打开下载目录", true) {
+                let directory = path.parent().map(std::path::Path::to_path_buf);
+                if let Some(directory) = directory
+                    && let Err(error) = open::that_detached(directory).map_err(|e| e.to_string())
+                {
+                    app.service.error = Some(error);
+                }
+            }
+        });
+    }
     task_status(ui, app);
 }
 
-fn versions(ui: &mut Ui, app: &mut NsclApp) {
+fn versions(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
     let Some(project) = app.service.content.project.clone() else {
         return;
     };
@@ -200,8 +180,8 @@ fn versions(ui: &mut Ui, app: &mut NsclApp) {
     ui.add_space(12.0);
     app::hint(
         ui,
-        if app.service.content.kind == ContentKind::Mod {
-            "仅列出与目标实例的游戏版本和加载器匹配的版本；点击后先查看依赖方案。"
+        if kind == ContentKind::Mod {
+            "列出全部发布版本；下载后把 JAR 放入任意实例的 mods 目录，或在版本管理中按实例安装。"
         } else {
             "选择发布版本，检查整合包要求后创建独立实例。"
         },
@@ -217,7 +197,7 @@ fn versions(ui: &mut Ui, app: &mut NsclApp) {
                     if app.service.busy() {
                         "正在获取发布版本……"
                     } else {
-                        "没有适用于当前选择的可安装版本。"
+                        "没有可下载的发布版本。"
                     },
                 );
             }
@@ -253,15 +233,24 @@ fn versions(ui: &mut Ui, app: &mut NsclApp) {
                                     release,
                                     version.date_published.get(..10).unwrap_or("")
                                 ),
-                                "查看方案",
+                                if kind == ContentKind::Mod {
+                                    "下载"
+                                } else {
+                                    "查看方案"
+                                },
                                 !app.service.busy(),
                                 None,
                             )
                         })
                         .inner
                     {
-                        app.service
-                            .content_preview(version.clone(), &app.settings, ui.ctx());
+                        if kind == ContentKind::Mod {
+                            app.service
+                                .content_download(version.clone(), &app.settings, ui.ctx());
+                        } else {
+                            app.service
+                                .content_preview(version.clone(), &app.settings, ui.ctx());
+                        }
                     }
                 }
             });
@@ -271,7 +260,6 @@ fn versions(ui: &mut Ui, app: &mut NsclApp) {
 
 pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
     let mut back = false;
-    let removal = matches!(app.service.content.plan, Some(ContentPlan::Remove(_)));
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
         back = download_button(ui, "返回资源", !app.service.busy());
@@ -280,75 +268,45 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
             let (rect, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
             logo.paint(ui, rect, &project.title);
         }
-        app::heading(
-            ui,
-            if removal {
-                "确认卸载方案"
-            } else {
-                "确认安装方案"
-            },
-        );
+        app::heading(ui, "确认安装方案");
     });
     if back {
         app.service.content.plan = None;
-        app.service.content.manager_open = removal;
         return;
     }
     ui.add_space(16.0);
     let height = (ui.available_height() - download_status_height(app) - 90.0).max(0.0);
     let busy = app.service.busy();
+    let mut include_optional = None;
     list_area(ui, height, |ui| {
         egui::ScrollArea::vertical().id_salt("content-plan").max_height(height).min_scrolled_height(0.0).auto_shrink([false,false]).show(ui,|ui| {
             ui.spacing_mut().item_spacing.y=10.0;
-            match &mut app.service.content.plan {
-                Some(ContentPlan::Mod(plan))=>{
-                    ui.add(egui::Label::new(RichText::new(plan.target.label()).color(theme::BODY_TEXT)).wrap());
-                    app::body(ui,&format!("将安装 {} 个模组及必需依赖，游戏版本与加载器匹配。",plan.versions.len()));
-                    for warning in &plan.warnings {ui.label(RichText::new(warning).color(theme::MUTED).size(13.0));}
-                    ui.separator();
-                    for version in &plan.versions {
-                        ui.label(RichText::new(format!("{} · {}",version.name,version.version_number)).color(theme::BODY_TEXT).size(14.0));
-                    }
-                    app::hint(ui,"更新已登记模组会替换旧版本；存档和手动修改的同名文件会保留。");
-                }
-                Some(ContentPlan::Pack(plan))=>{
-                    ui.label(RichText::new(plan.label()).color(theme::BODY_TEXT).size(16.0));
-                    app::body(ui,"安装到新的独立实例，自动准备整合包要求的游戏和加载器。");
-                    if plan.optional_files>0 {
-                        ui.add_enabled_ui(!busy,|ui|{ui.checkbox(&mut plan.include_optional,format!("包含 {} 个可选客户端文件",plan.optional_files));});
-                    }
-                    app::body(ui,&format!("{} 个下载文件 · {} 个配置及附带文件",plan.download_count(),plan.override_count()));
-                    app::hint(ui,"仅安装客户端需要的文件；不会覆盖现有实例。兼容性依据整合包清单，启动时仍可能受到第三方模组组合影响。");
-                }
-                Some(ContentPlan::Remove(plan))=>{
-                    app::body(ui,&plan.target.label());
-                    app::body(ui,&format!("将卸载 {} 个已登记模组：",plan.entries.len()));
-                    for entry in &plan.entries {ui.label(RichText::new(format!("{} · {}",entry.version.name,entry.version.version_number)).color(theme::HEADING));app::hint(ui,&entry.file.path);}
-                    app::hint(ui,"仅移除以上 JAR 和对应安装记录；存档、配置与未选择的依赖保留。手动修改的文件会阻止卸载。");
-                    if plan.unmanaged_count>0 {app::hint(ui,&format!("另有 {} 个未独立登记的 JAR，无法核验其依赖，请确认它们不依赖所选模组。",plan.unmanaged_count));}
-                }
-                None=>{}
+            let Some(ContentPlan::Pack(plan)) = &app.service.content.plan else { return };
+            ui.label(RichText::new(plan.label()).color(theme::BODY_TEXT).size(16.0));
+            app::body(ui,"安装到新的独立实例，自动准备整合包要求的游戏和加载器。");
+            if plan.optional_files>0 {
+                let mut choice = plan.include_optional;
+                ui.add_enabled_ui(!busy,|ui|{
+                    if ui.checkbox(&mut choice,format!("包含 {} 个可选客户端文件",plan.optional_files)).changed() {include_optional=Some(choice);}
+                });
             }
+            app::body(ui,&format!("{} 个下载文件 · {} 个配置及附带文件",plan.download_count(),plan.override_count()));
+            app::hint(ui,"仅安装客户端需要的文件；不会覆盖现有实例。兼容性依据整合包清单，启动时仍可能受到第三方模组组合影响。");
         });
     });
+    if let (Some(choice), Some(ContentPlan::Pack(plan))) =
+        (include_optional, &mut app.service.content.plan)
+    {
+        plan.include_optional = choice;
+    }
     ui.add_space(16.0);
     ui.separator();
     ui.add_space(12.0);
     if app.service.game.is_some() {
         app::hint(ui, "请先退出当前游戏，再修改资源。");
     }
-    let pack = matches!(app.service.content.plan, Some(ContentPlan::Pack(_)));
     ui.add_enabled_ui(!busy && app.service.game.is_none(), |ui| {
-        if app::primary_button(
-            ui,
-            if removal {
-                "确认卸载所选模组"
-            } else if pack {
-                "安装整合包"
-            } else {
-                "安装模组及依赖"
-            },
-        ) {
+        if app::primary_button(ui, "安装整合包") {
             app.service.content_install(&app.settings, ui.ctx());
         }
     });
@@ -419,48 +377,4 @@ fn row(
         Vec2::new(96.0, theme::CONTROL_HEIGHT),
     )));
     download_button(&mut button, action, enabled)
-}
-
-fn audit(ctx: &egui::Context, app: &mut NsclApp) {
-    let Some(report) = app.service.content.audit.clone() else {
-        return;
-    };
-    let mut open = true;
-    egui::Window::new("实例兼容性检查")
-        .open(&mut open)
-        .default_width(650.0)
-        .show(ctx, |ui| {
-            app::body(
-                ui,
-                &format!(
-                    "已检查 {} 个已登记文件 · {} 项问题 · {} 项提示",
-                    report.checked_files,
-                    report.errors.len(),
-                    report.warnings.len()
-                ),
-            );
-            egui::ScrollArea::vertical()
-                .max_height(360.0)
-                .show(ui, |ui| {
-                    if report.errors.is_empty() {
-                        ui.label(
-                            RichText::new(if report.checked_files == 0 {
-                                "此实例没有已登记的模组或整合包文件。"
-                            } else {
-                                "已登记文件的版本、依赖与完整性检查通过。"
-                            })
-                            .color(theme::ACCENT),
-                        );
-                    }
-                    for error in &report.errors {
-                        ui.label(error);
-                    }
-                    for warning in &report.warnings {
-                        ui.label(RichText::new(warning).color(theme::MUTED));
-                    }
-                });
-        });
-    if !open {
-        app.service.content.audit = None;
-    }
 }

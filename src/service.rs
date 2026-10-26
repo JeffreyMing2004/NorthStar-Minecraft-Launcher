@@ -14,7 +14,7 @@ use std::{
     },
 };
 
-mod content;
+pub mod content;
 #[cfg(test)]
 mod isolation_tests;
 #[cfg(test)]

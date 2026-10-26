@@ -1,6 +1,5 @@
 use crate::{
     app::{self, NsclApp, Page},
-    content::ContentKind,
     instances::{self, Instance},
     pages::{download_button, download_status_height, input_focus, input_frame, task_status},
     theme,
@@ -18,10 +17,11 @@ pub enum Filter {
     Archived,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DetailTab {
     #[default]
     Overview,
+    Mods,
     Files,
 }
 
@@ -315,7 +315,6 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
     }
     task_status(ui, app);
     create_dialog(ui.ctx(), app, &root, editable);
-    crate::manager_ui::show(ui.ctx(), app);
 }
 
 fn filter_label(filter: Filter) -> &'static str {
@@ -549,7 +548,11 @@ fn details(
         return;
     }
     theme::toolbar(ui, |ui| {
-        for (tab, label) in [(DetailTab::Overview, "概览"), (DetailTab::Files, "文件")] {
+        for (tab, label) in [
+            (DetailTab::Overview, "概览"),
+            (DetailTab::Mods, "模组"),
+            (DetailTab::Files, "文件"),
+        ] {
             if app::tab_button(ui, label, app.instance_browser.tab == tab) {
                 app.instance_browser.tab = tab;
             }
@@ -558,6 +561,19 @@ fn details(
     ui.add_space(18.0);
     if app.instance_browser.tab == DetailTab::Files {
         crate::instance_files::show(ui, root, instance, &mut app.instance_browser.files);
+        return;
+    }
+    if app.instance_browser.tab == DetailTab::Mods {
+        let modded = installed.as_ref().is_some_and(|v| v.loader.is_some());
+        if modded {
+            crate::instance_mods::show(ui, app, instance, editable);
+        } else {
+            app::body(ui, "此实例未安装 Forge、Fabric 或 NeoForge，无法加载模组。");
+            app::hint(
+                ui,
+                "先在 Minecraft 下载页安装带加载器的版本，它会创建可安装模组的实例。",
+            );
+        }
         return;
     }
     let loader = installed
@@ -610,14 +626,7 @@ fn details(
             "管理模组",
             editable && installed.as_ref().is_some_and(|v| v.loader.is_some()),
         ) {
-            app.service.content_kind(ContentKind::Mod);
-            app.service.content.target = instance.id.clone();
-            app.service.content.plan = None;
-            app.service.content.managed = None;
-            app.service.content.managed_selection.clear();
-            app.service.content.updates = Default::default();
-            app.service.content.updates_checked = false;
-            app.service.content_manage(&app.settings, ui.ctx(), false);
+            app.instance_browser.tab = DetailTab::Mods;
         }
         if download_button(ui, "归档实例", editable) {
             app.archive_confirm = Some(instance.clone());
