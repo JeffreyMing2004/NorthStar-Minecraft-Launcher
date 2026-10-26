@@ -187,6 +187,63 @@ fn installation_controls_fit_the_minimum_window_during_query_and_install() {
 }
 
 #[test]
+fn switching_modpack_and_mod_tabs_keeps_the_ui_responsive() {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let (_root, mut app, ctx) = fixture();
+        app.service.installed = vec![InstalledVersion {
+            external: false,
+            id: "1.20.1-forge".into(),
+            kind: "release".into(),
+            java_major: 17,
+            platform: String::new(),
+            metadata_sha1: String::new(),
+            loader: Some(app.service.loaders[0].clone()),
+            extra_files: vec![],
+        }];
+        app.service.instances = vec![crate::instances::Instance {
+            id: "test".into(),
+            name: "Test instance".into(),
+            version_id: "1.20.1-forge".into(),
+            ..Default::default()
+        }];
+        app.service.selected = "test".into();
+        let size = Vec2::new(876.0, 390.0);
+        for (category, label) in [(1, "整合包"), (2, "Mod"), (1, "整合包"), (2, "Mod")] {
+            let output = frame(&ctx, &mut app, size, vec![]);
+            let pos = text_rect(&output, label).center();
+            output.drop_without_applying_deltas();
+            click(&ctx, &mut app, size, pos);
+            assert_eq!(app.category, category);
+            assert!(!app.service.busy());
+            if category == 2 {
+                // Rendering uses the loaded catalog even when its files are unavailable.
+                let output = frame(&ctx, &mut app, size, vec![]);
+                text_rect(&output, "Test instance · Minecraft 1.20.1 · Forge");
+                output.drop_without_applying_deltas();
+                assert!(app.service.content_target(&app.settings).is_err());
+            }
+        }
+        app.service.installed[0].loader = None;
+        let output = frame(&ctx, &mut app, size, vec![]);
+        text_rect(&output, "Test instance · Minecraft 1.20.1-forge · 原版");
+        output.drop_without_applying_deltas();
+        app.service.installed.clear();
+        let output = frame(&ctx, &mut app, size, vec![]);
+        text_rect(&output, "实例的游戏或加载器尚未完成安装。");
+        output.drop_without_applying_deltas();
+        app.service.instances.clear();
+        let output = frame(&ctx, &mut app, size, vec![]);
+        text_rect(&output, "请先选择要安装模组的实例。");
+        output.drop_without_applying_deltas();
+        sender.send(()).unwrap();
+    });
+    receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("switching resource tabs blocked the UI");
+}
+
+#[test]
 fn resource_catalog_and_versions_fit_small_windows_without_starting_tasks() {
     let (_root, mut app, ctx) = fixture();
     let size = Vec2::new(876.0, 390.0);

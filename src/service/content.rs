@@ -45,6 +45,21 @@ pub(super) enum ContentEvent {
 }
 
 impl GameService {
+    pub fn content_target_label(&self) -> Result<String> {
+        let instance = self
+            .instances
+            .iter()
+            .find(|i| i.id == self.content.target)
+            .ok_or("请先选择要安装模组的实例。")?;
+        let installed = self
+            .installed
+            .iter()
+            .find(|v| v.id == instance.version_id)
+            .ok_or("实例的游戏或加载器尚未完成安装。")?;
+        // This runs every frame; disk validation belongs to explicit content tasks.
+        Target::from_installed(instance, installed).map(|target| target.label())
+    }
+
     pub fn content_target(&self, settings: &Settings) -> Result<Target> {
         let instance = self
             .instances

@@ -68,11 +68,7 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
             });
         });
         ui.add_space(8.0);
-        let label = app
-            .service
-            .content_target(&app.settings)
-            .map(|t| t.label())
-            .unwrap_or_else(|e| e);
+        let label = app.service.content_target_label().unwrap_or_else(|e| e);
         ui.add(egui::Label::new(RichText::new(label).size(11.0).color(theme::HINT)).truncate());
         ui.add_space(14.0);
     }

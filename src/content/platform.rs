@@ -118,15 +118,27 @@ impl Target {
             .into_iter()
             .find(|v| v.id == instance.version_id)
             .ok_or("实例的游戏或加载器尚未完成安装。")?;
+        Self::from_installed(instance, &installed)
+    }
+
+    /// Build a display snapshot without reading version metadata from disk.
+    pub fn from_installed(
+        instance: &Instance,
+        installed: &minecraft::InstalledVersion,
+    ) -> Result<Self> {
+        instance.validate()?;
+        if installed.id != instance.version_id {
+            return Err("实例的游戏或加载器尚未完成安装。".into());
+        }
         Ok(Self {
             instance: instance.clone(),
             minecraft: installed
                 .loader
                 .as_ref()
                 .map(|l| l.minecraft.clone())
-                .unwrap_or(installed.id),
+                .unwrap_or_else(|| installed.id.clone()),
             loader_version: installed.loader.as_ref().map(|l| l.version.clone()),
-            loader: installed.loader.map(|l| l.kind),
+            loader: installed.loader.as_ref().map(|l| l.kind),
         })
     }
     pub fn label(&self) -> String {
