@@ -124,12 +124,87 @@ struct Profile {
     id: String,
     #[serde(default)]
     skins: Vec<ProfileSkin>,
+    #[serde(default)]
+    capes: Vec<ProfileCape>,
 }
 #[derive(Deserialize)]
 struct ProfileSkin {
     state: String,
     url: String,
     variant: String,
+}
+
+#[derive(Deserialize)]
+struct ProfileCape {
+    id: String,
+    state: String,
+    url: String,
+    #[serde(default)]
+    alias: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Cape {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub active: bool,
+}
+
+impl Profile {
+    fn capes(self) -> Result<Vec<Cape>> {
+        let mut ids = std::collections::BTreeSet::new();
+        let mut active = false;
+        self.capes
+            .into_iter()
+            .map(|cape| {
+                if cape.id.is_empty()
+                    || !matches!(cape.state.as_str(), "ACTIVE" | "INACTIVE")
+                    || !ids.insert(cape.id.clone())
+                {
+                    return Err("披风列表包含无效或重复的标识，请刷新后重试。".into());
+                }
+                let selected = cape.state == "ACTIVE";
+                if selected && active {
+                    return Err("披风选中状态无效，请刷新后重试。".into());
+                }
+                active |= selected;
+                Ok(Cape {
+                    id: cape.id,
+                    name: if cape.alias.trim().is_empty() {
+                        "披风".into()
+                    } else {
+                        cape.alias
+                    },
+                    url: cape.url,
+                    active: selected,
+                })
+            })
+            .collect()
+    }
+}
+
+pub fn cape_png(bytes: &[u8]) -> Result<RgbaImage> {
+    if bytes.len() as u64 > MAX_BYTES || image::guess_format(bytes).ok() != Some(ImageFormat::Png) {
+        return Err("披风预览不是有效的 PNG 文件或超过 1 MiB。".into());
+    }
+    let mut reader = ImageReader::with_format(Cursor::new(bytes), ImageFormat::Png);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(1024);
+    limits.max_image_height = Some(512);
+    limits.max_alloc = Some(4 * 1024 * 1024);
+    reader.limits(limits);
+    let pixels = reader
+        .decode()
+        .map_err(|_| "无法读取披风预览。")?
+        .to_rgba8();
+    if pixels.width() < 64
+        || !pixels.width().is_multiple_of(64)
+        || pixels.height() * 2 != pixels.width()
+    {
+        return Err("披风预览尺寸无效。".into());
+    }
+    Ok(pixels)
 }
 
 pub struct SkinClient {
@@ -156,7 +231,7 @@ impl SkinClient {
             .bearer_auth(&session.access_token)
             .send()
             .map_err(|_| "获取角色档案失败，请检查网络。")?;
-        let profile: Profile = checked(response)?
+        let profile: Profile = checked_for(response, "角色")?
             .json()
             .map_err(|_| "角色档案格式无效。")?;
         if profile.id != session.account.id {
@@ -169,7 +244,17 @@ impl SkinClient {
         let Some(skin) = profile.skins.iter().find(|s| s.state == "ACTIVE") else {
             return Ok(default_skin());
         };
-        let mut url = reqwest::Url::parse(&skin.url).map_err(|_| "皮肤地址无效。")?;
+        png(
+            &self.texture(&skin.url, "皮肤")?,
+            if skin.variant == "SLIM" {
+                Model::Slim
+            } else {
+                Model::Classic
+            },
+        )
+    }
+    fn texture(&self, address: &str, kind: &str) -> Result<Vec<u8>> {
+        let mut url = reqwest::Url::parse(address).map_err(|_| format!("{kind}地址无效。"))?;
         #[cfg(test)]
         let test_url = url.scheme() == "http" && url.host_str() == Some("127.0.0.1");
         #[cfg(not(test))]
@@ -181,7 +266,7 @@ impl SkinClient {
                 || url.password().is_some()
                 || url.port().is_some()
             {
-                return Err("角色档案包含不受信任的皮肤地址。".into());
+                return Err(format!("角色档案包含不受信任的{kind}地址。"));
             }
             let _ = url.set_scheme("https");
         }
@@ -189,20 +274,50 @@ impl SkinClient {
             .client
             .get(url)
             .send()
-            .map_err(|_| "下载皮肤失败，请稍后重试。")?;
+            .map_err(|_| format!("下载{kind}失败，请稍后重试。"))?;
         let mut bytes = Vec::new();
-        checked(response)?
+        checked_for(response, kind)?
             .take(MAX_BYTES + 1)
             .read_to_end(&mut bytes)
-            .map_err(|_| "读取皮肤失败。")?;
-        png(
-            &bytes,
-            if skin.variant == "SLIM" {
-                Model::Slim
-            } else {
-                Model::Classic
-            },
-        )
+            .map_err(|_| format!("读取{kind}失败。"))?;
+        Ok(bytes)
+    }
+    pub fn capes(&self, session: &Session) -> Result<Vec<Cape>> {
+        self.profile(session)?.capes()
+    }
+    pub fn cape_texture(&self, cape: &Cape) -> Result<RgbaImage> {
+        cape_png(&self.texture(&cape.url, "披风")?)
+    }
+    pub fn select_cape(&self, session: &Session, id: Option<&str>) -> Result<Vec<Cape>> {
+        let capes = self.capes(session)?;
+        if let Some(id) = id
+            && !capes.iter().any(|cape| cape.id == id)
+        {
+            return Err("当前账号不拥有这件披风，请刷新列表。".into());
+        }
+        if capes.iter().find(|cape| cape.active).map(|c| c.id.as_str()) == id {
+            return Ok(capes);
+        }
+        let address = format!("{}/minecraft/profile/capes/active", self.base);
+        let request = if let Some(id) = id {
+            self.client
+                .put(address)
+                .json(&serde_json::json!({ "capeId": id }))
+        } else {
+            self.client.delete(address)
+        };
+        checked_for(
+            request
+                .bearer_auth(&session.access_token)
+                .send()
+                .map_err(|_| "切换披风失败，请检查网络并刷新列表确认当前状态。")?,
+            "披风",
+        )?;
+        let capes = self.capes(session)?;
+        if capes.iter().find(|cape| cape.active).map(|c| c.id.as_str()) != id {
+            return Err("披风切换已提交，但服务器状态尚未更新，请刷新列表。".into());
+        }
+        Ok(capes)
     }
     pub fn upload(&self, session: &Session, bytes: Vec<u8>, model: Model) -> Result<()> {
         png(&bytes, model)?;
@@ -228,15 +343,19 @@ impl SkinClient {
 }
 
 fn checked(response: Response) -> Result<Response> {
+    checked_for(response, "皮肤")
+}
+fn checked_for(response: Response, kind: &str) -> Result<Response> {
     let status = response.status();
     if status.is_success() {
         return Ok(response);
     }
     Err(match status.as_u16() {
-        401 => "皮肤服务登录已过期，请重新登录后重试。".into(),
-        403 => "皮肤服务拒绝访问，请检查账号授权或联系启动器维护者。".into(),
-        429 => "皮肤操作过于频繁，请稍后重试。".into(),
-        _ => format!("皮肤服务请求失败（HTTP {}）。", status.as_u16()),
+        400 => format!("{kind}选择无效，请刷新列表后重试。"),
+        401 => format!("{kind}服务登录已过期，请重新登录后重试。"),
+        403 => format!("{kind}服务拒绝访问，请检查账号授权或联系启动器维护者。"),
+        429 => format!("{kind}操作过于频繁，请稍后重试。"),
+        _ => format!("{kind}服务请求失败（HTTP {}）。", status.as_u16()),
     })
 }
 

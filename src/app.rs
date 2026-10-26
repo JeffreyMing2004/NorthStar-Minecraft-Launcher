@@ -54,6 +54,7 @@ pub struct NsclApp {
     pub service: crate::service::GameService,
     pub project_icons: crate::project_icons::ProjectIcons,
     pub skin: crate::skin_ui::SkinView,
+    pub capes: crate::cape_ui::CapeView,
     pub updates: crate::update_service::UpdateService,
     pub log_view: Option<String>,
     pub accounts: crate::account_service::AccountService,
@@ -101,6 +102,7 @@ impl NsclApp {
                     .join("project-icons"),
             ),
             skin: crate::skin_ui::SkinView::new(),
+            capes: crate::cape_ui::CapeView::new(),
             updates: crate::update_service::UpdateService::new(),
             log_view: None,
             accounts,
@@ -141,6 +143,12 @@ impl eframe::App for NsclApp {
         self.accounts.poll(&mut self.settings, &ctx);
         self.skin
             .sync(&mut self.accounts, self.settings.online_mode, &ctx);
+        self.capes.sync(
+            &mut self.accounts,
+            self.settings.online_mode,
+            self.page == Page::Account && self.account_tab == 2,
+            &ctx,
+        );
         if let Some(session) = self.service.renewed_session.take() {
             self.accounts.accept(session);
         }

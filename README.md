@@ -57,7 +57,7 @@ NSCL 将游戏安装、账号、实例与模组管理放在一个原生窗口里
     <td><strong>已有游戏，继续使用</strong><br />识别 .minecraft/versions 中其他启动器安装的版本，支持中文目录名与多个游戏目录，保留原有游戏数据。</td>
   </tr>
   <tr>
-    <td><strong>账号与角色</strong><br />Microsoft 浏览器授权、离线账号、多账号切换、登录续期，以及皮肤上传与 3D 预览。</td>
+    <td><strong>账号与角色</strong><br />Microsoft 浏览器授权、离线账号、多账号切换、登录续期、皮肤上传与 3D 预览，以及账号披风选择。</td>
     <td><strong>自动准备运行环境</strong><br />按游戏版本匹配 Java，按物理内存分配堆大小；Windows 支持下载 Temurin JRE，也可手动设置。</td>
   </tr>
 </table>

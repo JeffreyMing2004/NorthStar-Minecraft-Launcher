@@ -8,7 +8,7 @@ use egui::{RichText, Ui, Vec2};
 pub fn show(ui: &mut Ui, app: &mut NsclApp) {
     theme::toolbar(ui, |ui| {
         ui.spacing_mut().item_spacing.x = theme::TAB_GAP;
-        for (index, label) in ["账号管理", "皮肤与预览"].iter().enumerate() {
+        for (index, label) in ["账号管理", "皮肤与预览", "披风"].iter().enumerate() {
             if app::tab_button(ui, label, app.account_tab == index as u8) {
                 app.account_tab = index as u8;
             }
@@ -17,6 +17,10 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
     ui.add_space(20.0);
     if app.account_tab == 1 {
         panel(ui, |ui| crate::skin_ui::controls(ui, app));
+        return;
+    }
+    if app.account_tab == 2 {
+        panel(ui, |ui| crate::cape_ui::controls(ui, app));
         return;
     }
     if ui.available_width() >= 1000.0 {

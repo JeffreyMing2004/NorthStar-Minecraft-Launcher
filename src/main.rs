@@ -3,6 +3,7 @@
 mod account_service;
 mod account_ui;
 mod app;
+mod cape_ui;
 mod content_page;
 mod download_flow;
 mod error_ui;

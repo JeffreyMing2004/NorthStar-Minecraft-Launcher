@@ -387,7 +387,7 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
     ui.add_space(10.0);
     app::hint(ui, "选择 PNG 与手臂模型，先预览，再上传到当前正版账号。");
     ui.add_space(18.0);
-    let editable = !app.skin.pending && !app.accounts.pending;
+    let editable = !app.skin.pending && !app.accounts.pending && !app.capes.pending;
     ui.add_enabled_ui(editable, |ui| {
         ui.add(
             egui::TextEdit::singleline(&mut app.skin.path)
