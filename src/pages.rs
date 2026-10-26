@@ -134,7 +134,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                 app.category = 0;
                 app.download = Default::default();
             } else {
-                app.instance_manager = true;
+                app.page = Page::Instances;
             }
         }
     } else {
@@ -152,7 +152,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                 }
             });
             if ui.button("管理实例").clicked() {
-                app.instance_manager = true;
+                app.page = Page::Instances;
             }
             if app.service.last_log.is_some() && ui.button("查看日志").clicked() {
                 app.open_log();
@@ -473,197 +473,6 @@ pub fn settings(ui: &mut Ui, app: &mut NsclApp) {
 pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
     let root = crate::store::game_directory(&app.settings);
     let editable = !app.service.busy() && app.service.game.is_none();
-    if app.instance_manager {
-        let mut open = true;
-        egui::Window::new("管理游戏实例")
-            .open(&mut open)
-            .default_width(760.0)
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 12.0;
-                app::body(
-                    ui,
-                    "可为每个实例选择独立或共享游戏目录；客户端、资源和依赖文件始终复用。",
-                );
-                if !editable {
-                    app::hint(ui, "游戏或任务运行中，实例配置暂时锁定。");
-                }
-                ui.horizontal(|ui| {
-                    if ui.button("刷新列表").clicked() {
-                        app.service.refresh(&app.settings);
-                    }
-                    if ui.button("安装其他版本").clicked() {
-                        app.page = Page::Downloads;
-                        app.category = 0;
-                        app.download = Default::default();
-                        app.instance_manager = false;
-                    }
-                });
-                egui::ScrollArea::vertical()
-                    .id_salt("instance-manager")
-                    .max_height(330.0)
-                    .show(ui, |ui| {
-                        for instance in app.service.instances.clone() {
-                            egui::Frame::NONE
-                                .fill(theme::TOPBAR_BG)
-                                .corner_radius(8.0)
-                                .inner_margin(14)
-                                .show(ui, |ui| {
-                                    ui.set_min_width(660.0_f32.min(ui.available_width()));
-                                    theme::toolbar(ui, |ui| {
-                                        if ui
-                                            .selectable_label(
-                                                app.service.selected == instance.id,
-                                                &instance.name,
-                                            )
-                                            .clicked()
-                                            && editable
-                                        {
-                                            app.service.selected = instance.id.clone();
-                                            app.remember_instance();
-                                        }
-                                        ui.label(
-                                            RichText::new(format!("MC {}", instance.version_id))
-                                                .color(theme::MUTED),
-                                        );
-                                        if instance.is_external() {
-                                            ui.label(
-                                                RichText::new("已有版本").color(theme::ACCENT),
-                                            );
-                                        }
-                                        ui.add_enabled_ui(editable, |ui| {
-                                            if ui.button("配置").clicked() {
-                                                app.instance_memory = instance
-                                                    .memory
-                                                    .map(|m| m.to_string())
-                                                    .unwrap_or_else(|| {
-                                                        app.settings.memory.to_string()
-                                                    });
-                                                app.instance_edit = Some(instance.clone());
-                                            }
-                                            if ui.button("归档").clicked() {
-                                                app.archive_confirm = Some(instance.clone());
-                                            }
-                                        });
-                                        if ui.button("打开目录").clicked() {
-                                            match instance.game_directory(&root).and_then(|path| {
-                                                std::fs::create_dir_all(&path)
-                                                    .map_err(|e| e.to_string())?;
-                                                open::that_detached(path).map_err(|e| e.to_string())
-                                            }) {
-                                                Ok(()) => {}
-                                                Err(error) => app.service.error = Some(error),
-                                            }
-                                        }
-                                    });
-                                    app::hint(
-                                        ui,
-                                        &format!(
-                                            "{} · Java：{} · 内存：{}",
-                                            instance.isolation.label(),
-                                            instance
-                                                .java_path
-                                                .as_deref()
-                                                .map(|p| if p.is_empty() {
-                                                    "自动匹配"
-                                                } else {
-                                                    p
-                                                })
-                                                .unwrap_or("跟随全局"),
-                                            instance
-                                                .memory
-                                                .map(|m| format!("{m} MiB"))
-                                                .unwrap_or_else(|| "跟随全局".into())
-                                        ),
-                                    );
-                                });
-                        }
-                        if app.service.instances.is_empty() {
-                            app::body(ui, "暂无实例，请先安装客户端，或使用已安装版本创建实例。");
-                        }
-                        egui::CollapsingHeader::new("已归档实例").show(ui, |ui| {
-                            for (entry, instance) in crate::instances::archived(&root) {
-                                ui.horizontal(|ui| {
-                                    ui.label(format!(
-                                        "{} · {}",
-                                        instance.name, instance.version_id
-                                    ));
-                                    if ui
-                                        .add_enabled(editable, egui::Button::new("恢复"))
-                                        .clicked()
-                                    {
-                                        match crate::instances::restore(&root, &entry) {
-                                            Ok(instance) => {
-                                                app.service.refresh(&app.settings);
-                                                app.service.selected = instance.id;
-                                                app.remember_instance();
-                                                app.instance_status = "实例已恢复。".into();
-                                            }
-                                            Err(error) => app.service.error = Some(error),
-                                        }
-                                    }
-                                });
-                            }
-                        });
-                    });
-                ui.separator();
-                ui.add_enabled_ui(editable && !app.service.installed.is_empty(), |ui| {
-                    app::heading(ui, "创建空白实例");
-                    theme::toolbar(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut app.new_instance_name)
-                                .hint_text("实例名称，例如 生存世界")
-                                .desired_width(240.0),
-                        );
-                        if !app
-                            .service
-                            .installed
-                            .iter()
-                            .any(|v| v.id == app.new_instance_version)
-                        {
-                            app.new_instance_version = app
-                                .service
-                                .installed
-                                .first()
-                                .map(|v| v.id.clone())
-                                .unwrap_or_default();
-                        }
-                        egui::ComboBox::from_id_salt("new-instance-version")
-                            .selected_text(&app.new_instance_version)
-                            .show_ui(ui, |ui| {
-                                for version in &app.service.installed {
-                                    ui.selectable_value(
-                                        &mut app.new_instance_version,
-                                        version.id.clone(),
-                                        &version.id,
-                                    );
-                                }
-                            });
-                        if ui.button("创建").clicked() {
-                            match crate::instances::create_with_isolation(
-                                &root,
-                                &app.new_instance_version,
-                                &app.new_instance_name,
-                                app.settings.default_isolation,
-                            ) {
-                                Ok(instance) => {
-                                    app.service.refresh(&app.settings);
-                                    app.service.selected = instance.id;
-                                    app.remember_instance();
-                                    app.new_instance_name.clear();
-                                    app.instance_status =
-                                        "实例已创建，可在配置中查看隔离模式与游戏目录。".into();
-                                }
-                                Err(error) => app.service.error = Some(error),
-                            }
-                        }
-                    });
-                });
-                if !app.instance_status.is_empty() {
-                    app::body(ui, &app.instance_status);
-                }
-            });
-        app.instance_manager &= open;
-    }
     if let Some(mut instance) = app.instance_edit.take() {
         let mut open = true;
         let mut saved = false;
@@ -814,6 +623,7 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                             Ok(_) => {
                                 app.service.refresh(&app.settings);
                                 app.remember_instance();
+                                app.instance_browser.invalidate_archives();
                                 app.instance_status = "实例已归档，存档和配置均已保留。".into();
                             }
                             Err(error) => app.service.error = Some(error),

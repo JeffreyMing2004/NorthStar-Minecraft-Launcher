@@ -6,6 +6,7 @@ mod app;
 mod content_page;
 mod download_flow;
 mod error_ui;
+mod instance_ui;
 mod manager_ui;
 mod pages;
 mod project_icons;

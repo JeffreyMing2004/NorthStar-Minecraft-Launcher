@@ -1,5 +1,5 @@
 use crate::{
-    app::{self, NsclApp},
+    app::{self, NsclApp, Page},
     pages::{download_button, task_status},
     theme,
 };
@@ -80,6 +80,10 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
     }
     if let Some(check) = refresh {
         app.service.content_manage(&app.settings, ctx, check);
+    }
+    if app.page == Page::Instances && (update.is_some() || remove) {
+        app.page = Page::Downloads;
+        app.category = 2;
     }
     if let Some(version) = update {
         app.service.content_preview(version, &app.settings, ctx);

@@ -5,10 +5,12 @@
 | 参考项目 | 观察到的设计 | NSCL 的现状与可采用方向 |
 | --- | --- | --- |
 | [HMCL](https://hmcl.huangyuhui.net/) | 游戏安装页将 Minecraft、加载器及附加组件分组，并显示互斥关系 | 已有分步安装与加载器兼容筛选；后续可增加安装确认页中的组件摘要和兼容性说明 |
-| [PCL](https://github.com/Meloong-Git/PCL/blob/main/Plain%20Craft%20Launcher%202/Pages/PageDownload/PageDownloadLeft.xaml) | 下载导航区分原版游戏、Mod、整合包、数据包、资源包和光影包 | 目前支持前三类；资源包、光影包和数据包可作为后续扩展，不能把尚未实现的分类展示成可用功能 |
+| [PCL](https://github.com/Meloong-Git/PCL/blob/main/Plain%20Craft%20Launcher%202/Pages/PageInstance/PageInstanceLeft.xaml) | 实例管理区分概览、设置和 Mod 管理，提供常用目录快捷方式 | 实例管理改为独立页面，提供搜索分类、概览与文件页，接入已有实例配置、模组管理、归档恢复等操作 |
 | [Axolotl Launcher](https://axlmc.org/) | 按实例集中管理内容，资源设置提供不同连接与下载来源选项，并提供备份入口 | 已有实例、模组管理及多游戏目录；下载来源在后台自动切换，手动选项集中在设置页；后续可增加存档备份与恢复入口 |
 
 本次保留 NSCL 当前的深色配色、顶部导航和卡片布局，优先改进失败后如何继续操作，而不是更换整套视觉风格。关于页新增三个项目的名称与仓库链接，标明设计参考与致谢。
+
+实例管理同时参考 [HMCL 的实例详情页](https://github.com/HMCL-dev/HMCL/blob/main/HMCL/src/main/java/org/jackhuang/hmcl/ui/instances/GameInstancePage.java) 对配置与内容功能的分组。NSCL 左侧浏览不会直接改变启动实例；右侧集中显示概览、实例设置、模组管理和目录入口。归档列表只在进入该分类或手动刷新时读取，普通绘制使用已加载的实例与版本信息。
 
 ## 下载与网络恢复
 

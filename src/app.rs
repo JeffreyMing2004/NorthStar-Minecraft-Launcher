@@ -4,6 +4,7 @@ use egui::{Color32, Context, CornerRadius, RichText, Sense, Ui, UiBuilder, Vec2,
 #[derive(Clone, Copy, PartialEq)]
 pub enum Page {
     Home,
+    Instances,
     Account,
     Downloads,
     Settings,
@@ -21,6 +22,7 @@ impl Page {
     pub fn title(self) -> &'static str {
         match self {
             Page::Home => "开始",
+            Page::Instances => "实例管理",
             Page::Account => "账号",
             Page::Downloads => "下载",
             Page::Settings => "设置",
@@ -30,6 +32,7 @@ impl Page {
     fn icon(self) -> theme::Icon {
         match self {
             Page::Home => theme::Icon::Play,
+            Page::Instances => theme::Icon::Folder,
             Page::Account => theme::Icon::User,
             Page::Downloads => theme::Icon::Download,
             Page::Settings => theme::Icon::Settings,
@@ -54,7 +57,7 @@ pub struct NsclApp {
     pub updates: crate::update_service::UpdateService,
     pub log_view: Option<String>,
     pub accounts: crate::account_service::AccountService,
-    pub instance_manager: bool,
+    pub instance_browser: crate::instance_ui::BrowserState,
     pub instance_edit: Option<crate::instances::Instance>,
     pub instance_memory: String,
     pub new_instance_name: String,
@@ -100,7 +103,7 @@ impl NsclApp {
             updates: crate::update_service::UpdateService::new(),
             log_view: None,
             accounts,
-            instance_manager: false,
+            instance_browser: crate::instance_ui::BrowserState::default(),
             instance_edit: None,
             instance_memory: String::new(),
             new_instance_name: String::new(),
@@ -239,11 +242,16 @@ impl eframe::App for NsclApp {
                     pages::settings(ui, self);
                     return;
                 }
+                if self.page == Page::Instances {
+                    crate::instance_ui::show(ui, self);
+                    return;
+                }
                 egui::ScrollArea::vertical()
                     .id_salt(("page-content", self.page.title()))
                     .auto_shrink([false, false])
                     .show(ui, |ui| match self.page {
                         Page::Home => pages::home(ui, self),
+                        Page::Instances => unreachable!(),
                         Page::Account => pages::account(ui, self),
                         Page::Downloads => unreachable!(),
                         Page::Settings => pages::settings(ui, self),
@@ -401,7 +409,8 @@ impl NsclApp {
                 nav.horizontal_centered(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(5.0, 0.0);
                     for item in Page::ALL {
-                        let active = self.page == item;
+                        let active = self.page == item
+                            || (self.page == Page::Instances && item == Page::Home);
                         let response = navigation_button(ui, item, active);
                         if response.clicked() {
                             self.page = item;
@@ -688,6 +697,7 @@ fn initial_page() -> Page {
     if let Ok(title) = std::env::var("NSCL_PREVIEW_PAGE") {
         return Page::ALL
             .into_iter()
+            .chain([Page::Instances])
             .find(|page| page.title() == title)
             .unwrap_or(Page::Home);
     }

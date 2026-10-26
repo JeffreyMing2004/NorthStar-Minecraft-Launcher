@@ -96,30 +96,6 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
     if search {
         app.service.content_search(0, &app.settings, ui.ctx());
     }
-    if kind == ContentKind::Modpack {
-        ui.add_space(12.0);
-        ui.add_enabled_ui(!app.service.busy(), |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 18.0;
-                let response = ui.add(
-                    egui::TextEdit::singleline(&mut app.service.content.local_path)
-                        .font(FontId::proportional(13.0))
-                        .frame(input_frame())
-                        .margin(Vec2::new(14.0, 8.0))
-                        .hint_text("本地 .mrpack / Modrinth ZIP 路径；也可拖到开始页自动安装")
-                        .desired_width((ui.available_width() - 132.0).max(180.0)),
-                );
-                input_focus(ui, &response);
-                if download_button(
-                    ui,
-                    "导入整合包",
-                    !app.service.content.local_path.trim().is_empty(),
-                ) {
-                    app.service.content_import(&app.settings, ui.ctx());
-                }
-            });
-        });
-    }
     ui.add_space(14.0);
     let height = (ui.available_height() - download_status_height(app) - 46.0).max(0.0);
     let hits = app.service.content.results.hits.clone();

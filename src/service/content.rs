@@ -27,7 +27,6 @@ pub struct ContentState {
     pub versions: Vec<ContentVersion>,
     pub plan: Option<ContentPlan>,
     pub audit: Option<CompatibilityReport>,
-    pub local_path: String,
     pub manager_open: bool,
     pub managed: Option<content::ManagedCatalog>,
     pub updates: content::UpdateReport,
@@ -230,44 +229,6 @@ impl GameService {
         });
     }
 
-    pub fn content_import(&mut self, settings: &Settings, ctx: &egui::Context) {
-        if self.busy() {
-            return;
-        }
-        let path = std::path::PathBuf::from(self.content.local_path.trim().trim_matches('"'));
-        if !path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("mrpack") || e.eq_ignore_ascii_case("zip"))
-        {
-            self.error = Some("请选择 .mrpack 或 Modrinth 格式的 ZIP 整合包。".into());
-            return;
-        }
-        self.begin(Task::Content);
-        let (root, ctx, sender, cancel) = (
-            store::game_directory(settings),
-            ctx.clone(),
-            self.sender.clone(),
-            self.cancel.clone(),
-        );
-        std::thread::spawn(move || {
-            let result = content::inspect_pack(&root, &path).and_then(|p| {
-                if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                    Err("操作已取消。".into())
-                } else {
-                    Ok(p)
-                }
-            });
-            send(
-                &sender,
-                &ctx,
-                match result {
-                    Ok(p) => Event::Content(ContentEvent::Plan(Box::new(ContentPlan::Pack(p)))),
-                    Err(e) => Event::Failed(e),
-                },
-            );
-        });
-    }
-
     pub fn content_drop_install(
         &mut self,
         path: &std::path::Path,
@@ -279,7 +240,6 @@ impl GameService {
         }
         self.content = ContentState {
             kind: ContentKind::Modpack,
-            local_path: path.to_string_lossy().into_owned(),
             ..Default::default()
         };
         self.begin(Task::Content);
