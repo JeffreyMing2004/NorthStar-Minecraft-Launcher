@@ -32,6 +32,7 @@ pub struct BrowserState {
     pub filter: Filter,
     pub tab: DetailTab,
     pub creating: bool,
+    pub files: crate::instance_files::Browser,
     root: Option<PathBuf>,
     archived: Option<Vec<(String, Instance)>>,
 }
@@ -556,36 +557,7 @@ fn details(
     });
     ui.add_space(18.0);
     if app.instance_browser.tab == DetailTab::Files {
-        let folders = [
-            ("游戏目录", ""),
-            ("存档", "saves"),
-            ("模组", "mods"),
-            ("资源包", "resourcepacks"),
-            ("光影", "shaderpacks"),
-            ("截图", "screenshots"),
-            ("日志", "logs"),
-        ];
-        let columns = ((ui.available_width() + theme::CONTROL_GAP) / (96.0 + theme::CONTROL_GAP))
-            .floor()
-            .max(1.0) as usize;
-        for row in folders.chunks(columns) {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = theme::CONTROL_GAP;
-                for (label, directory) in row {
-                    if download_button(ui, label, true) {
-                        let result = instance.game_directory(root).and_then(|path| {
-                            let path = path.join(directory);
-                            std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-                            open::that_detached(path).map_err(|e| e.to_string())
-                        });
-                        if let Err(error) = result {
-                            app.service.error = Some(error);
-                        }
-                    }
-                }
-            });
-            ui.add_space(theme::CONTROL_GAP);
-        }
+        crate::instance_files::show(ui, root, instance, &mut app.instance_browser.files);
         return;
     }
     let loader = installed

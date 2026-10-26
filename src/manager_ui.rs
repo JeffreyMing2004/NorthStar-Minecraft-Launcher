@@ -13,6 +13,7 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
     let mut refresh = None;
     let mut update = None;
     let mut remove = false;
+    let mut inspect_file = None;
     let busy = app.service.busy();
     let catalog = app.service.content.managed.clone();
     egui::Window::new("已安装模组")
@@ -22,7 +23,7 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
             ui.add_space(12.0);
             theme::toolbar(ui, |ui| {
                 if download_button(ui,"刷新列表",!busy) {refresh=Some(false);}
-                if download_button(ui,"检查更新",!busy) {refresh=Some(true);}
+                if download_button(ui,"检查更新",!busy && catalog.as_ref().is_some_and(|c| !c.entries.is_empty())) {refresh=Some(true);}
                 if download_button(ui,"卸载所选",!busy && app.service.game.is_none() && !app.service.content.managed_selection.is_empty()) {remove=true;}
             });
             ui.add_space(10.0);
@@ -34,7 +35,9 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
             let height=(ui.available_height()-reserve).clamp(60.0,300.0);
             egui::ScrollArea::vertical().id_salt("managed-mod-list").max_height(height).min_scrolled_height(0.0).auto_shrink([false,false]).show(ui,|ui| {
                 if let Some(catalog)=&catalog {
-                    if catalog.entries.is_empty() {app::body(ui,"此实例尚无独立登记的模组，可先搜索并安装资源。");}
+                    if catalog.entries.is_empty() {
+                        app::body(ui, if catalog.other_files.is_empty() {"此实例尚无模组文件，可从下载页安装。"} else {"此实例的模组来自整合包或手动添加，文件已在下方列出。"});
+                    }
                     for entry in &catalog.entries {
                         let version=&entry.installed.version;
                         egui::Frame::NONE.fill(theme::TOPBAR_BG).corner_radius(8.0).inner_margin(12).show(ui,|ui| {
@@ -58,9 +61,12 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
                         ui.add_space(8.0);
                     }
                     if !catalog.other_files.is_empty() {
-                        egui::CollapsingHeader::new(format!("未独立登记的 JAR（{} 个）",catalog.other_files.len())).show(ui,|ui| {
-                            app::hint(ui,"包含整合包自带和手动添加的文件，缺少项目依赖记录；请通过实例目录管理。");
-                            for name in &catalog.other_files {ui.add(egui::Label::new(name).truncate());}
+                        egui::CollapsingHeader::new(format!("其他本地模组（{} 个）",catalog.other_files.len())).default_open(catalog.entries.is_empty()).show(ui,|ui| {
+                            app::hint(ui,"这些 JAR 没有 NSCL 单独安装记录，不影响游戏读取。暂不支持逐个检查更新或卸载；点击文件名查看位置和大小。");
+                            for name in &catalog.other_files {
+                                if ui.add(egui::Label::new(RichText::new(name).color(theme::ACCENT)).truncate().sense(egui::Sense::click()))
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("在文件页查看位置和大小").clicked() {inspect_file=Some(name.clone());}
+                            }
                         });
                     }
                 } else {app::body(ui,if busy {"正在读取模组列表……"}else{"点击刷新列表读取当前实例。"});}
@@ -69,7 +75,7 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
             ui.add_space(10.0);
             if let Some(catalog)=&catalog {
                 theme::toolbar(ui, |ui| {
-                    app::hint(ui,&format!("{} 个已登记模组 · 已选择 {} 个",catalog.entries.len(),app.service.content.managed_selection.len()));
+                    app::hint(ui,&format!("单独安装 {} 个 · 其他本地 {} 个 · 已选 {} 个",catalog.entries.len(),catalog.other_files.len(),app.service.content.managed_selection.len()));
                     if ui.button("打开 mods 目录").clicked() {open_mods(app,catalog);}
                 });
             }
@@ -77,6 +83,18 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
         });
     if !open {
         app.service.content.manager_open = false;
+    }
+    if let Some(name) = inspect_file
+        && let Some(catalog) = &catalog
+    {
+        app.service.content.manager_open = false;
+        app.page = Page::Instances;
+        app.instance_browser.selected = catalog.target.instance.id.clone();
+        app.instance_browser.filter = crate::instance_ui::Filter::All;
+        app.instance_browser.tab = crate::instance_ui::DetailTab::Files;
+        app.instance_browser
+            .files
+            .select(crate::instance_files::Folder::Mods, Some(name.into()));
     }
     if let Some(check) = refresh {
         app.service.content_manage(&app.settings, ctx, check);

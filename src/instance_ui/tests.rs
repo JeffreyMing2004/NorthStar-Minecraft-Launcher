@@ -195,7 +195,91 @@ fn launch_stays_at_the_bottom_right_when_switching_and_scrolling_details() {
             output.drop_without_applying_deltas();
         }
     }
-    assert!(positions.iter().all(|rect| *rect == positions[0]));
+    assert!(
+        positions.iter().all(|rect| *rect == positions[0]),
+        "{positions:?}"
+    );
+    assert_eq!(app.service.selected, "vanilla");
+}
+
+#[test]
+fn file_categories_show_real_contents_details_and_missing_directory_feedback() {
+    let (root, mut app, ctx) = populated();
+    let mods = app
+        .service
+        .instances
+        .iter()
+        .find(|i| i.id == "modded")
+        .unwrap()
+        .game_directory(root.path())
+        .unwrap()
+        .join("mods");
+    std::fs::create_dir_all(&mods).unwrap();
+    std::fs::write(mods.join("local-example.jar"), [0; 2048]).unwrap();
+    click(&ctx, &mut app, "文件");
+    click(&ctx, &mut app, "模组");
+    wait_for_text(&ctx, &mut app, "local-example.jar");
+    click(&ctx, &mut app, "local-example.jar");
+    let output = frame(&ctx, &mut app, Vec2::new(1100.0, 760.0), vec![]);
+    text_rect(&output, "文件 · 2.0 KiB");
+    text_rect(&output, &mods.join("local-example.jar").to_string_lossy());
+    output.drop_without_applying_deltas();
+    click(&ctx, &mut app, "截图");
+    wait_for_text(&ctx, &mut app, "此目录尚未创建");
+    assert!(!root.path().join("instances/modded/screenshots").exists());
+    assert_eq!(app.service.selected, "vanilla");
+}
+
+fn wait_for_text(ctx: &Context, app: &mut NsclApp, label: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        let output = frame(ctx, app, Vec2::new(1100.0, 760.0), vec![]);
+        let found = output
+            .shapes
+            .iter()
+            .any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text == label));
+        output.drop_without_applying_deltas();
+        if found {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "missing text: {label}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn local_mod_links_open_the_correct_instances_file_details() {
+    let (root, mut app, ctx) = populated();
+    let instance = app
+        .service
+        .instances
+        .iter()
+        .find(|i| i.id == "modded")
+        .unwrap();
+    let installed = app
+        .service
+        .installed
+        .iter()
+        .find(|v| v.id == instance.version_id)
+        .unwrap();
+    let target = crate::content::Target::from_installed(instance, installed).unwrap();
+    let mods = instance.game_directory(root.path()).unwrap().join("mods");
+    std::fs::create_dir_all(&mods).unwrap();
+    std::fs::write(mods.join("local-example.jar"), b"example").unwrap();
+    app.service.content.manager_open = true;
+    app.service.content.managed = Some(crate::content::ManagedCatalog {
+        target,
+        entries: vec![],
+        other_files: vec!["local-example.jar".into()],
+    });
+    click(&ctx, &mut app, "local-example.jar");
+    assert!(!app.service.content.manager_open);
+    assert!(app.instance_browser.tab == DetailTab::Files);
+    assert_eq!(app.instance_browser.selected, "modded");
+    wait_for_text(&ctx, &mut app, "文件 · 7 B");
     assert_eq!(app.service.selected, "vanilla");
 }
 
