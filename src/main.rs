@@ -60,9 +60,9 @@ fn run_gui() -> Result<(), String> {
         .with_decorations(false);
     let options = eframe::NativeOptions {
         viewport,
-        renderer: backend,
         ..Default::default()
     };
+    let options = renderer::configure(backend, options)?;
     eframe::run_native(
         "NorthStar Minecraft Launcher",
         options,

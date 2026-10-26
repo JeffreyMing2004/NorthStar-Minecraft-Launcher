@@ -269,7 +269,7 @@ impl eframe::App for NsclApp {
                         Page::About => pages::about(ui, self),
                     });
             });
-        crate::renderer::record_first_frame();
+        crate::renderer::record_first_frame(&ctx);
     }
 }
 

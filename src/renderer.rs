@@ -5,26 +5,52 @@ use std::{
     fs::{self, File, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
-    sync::{Mutex, Once, OnceLock},
+    sync::{Arc, Mutex, Once, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 static LOGGER: OnceLock<GraphicsLog> = OnceLock::new();
 static FIRST_FRAME: Once = Once::new();
+static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
+#[cfg(debug_assertions)]
+static CAPTURE_PATH: OnceLock<PathBuf> = OnceLock::new();
 
-pub fn select(arguments: impl IntoIterator<Item = OsString>) -> Result<eframe::Renderer, String> {
-    let mut selected = if cfg!(windows) {
-        eframe::Renderer::Glow
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    Glow,
+    Wgpu,
+    Software,
+}
+
+impl std::fmt::Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Glow => "glow",
+            Self::Wgpu => "wgpu",
+            Self::Software => "software",
+        })
+    }
+}
+
+fn default_mode(vmware: bool) -> Mode {
+    if cfg!(windows) && vmware {
+        Mode::Software
+    } else if cfg!(windows) {
+        Mode::Glow
     } else {
-        eframe::Renderer::Wgpu
-    };
+        Mode::Wgpu
+    }
+}
+
+pub fn select(arguments: impl IntoIterator<Item = OsString>) -> Result<Mode, String> {
+    let mut selected = None;
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         let value = if argument == "--renderer" {
             Some(
                 arguments
                     .next()
-                    .ok_or("--renderer 后需要填写 glow 或 wgpu。")?,
+                    .ok_or("--renderer 后需要填写 glow、wgpu 或 software。")?,
             )
         } else {
             argument
@@ -33,14 +59,82 @@ pub fn select(arguments: impl IntoIterator<Item = OsString>) -> Result<eframe::R
                 .map(OsString::from)
         };
         if let Some(value) = value {
-            selected = match value.to_str() {
-                Some("glow" | "opengl") => eframe::Renderer::Glow,
-                Some("wgpu") => eframe::Renderer::Wgpu,
-                _ => return Err("渲染模式只支持 glow（OpenGL）或 wgpu。".into()),
-            };
+            selected = Some(match value.to_str() {
+                Some("glow" | "opengl") => Mode::Glow,
+                Some("wgpu") => Mode::Wgpu,
+                Some("software") => Mode::Software,
+                _ => return Err("渲染模式只支持 glow（OpenGL）、wgpu 或 software（CPU）。".into()),
+            });
         }
     }
-    Ok(selected)
+    Ok(selected.unwrap_or_else(|| {
+        let vmware = vmware_guest();
+        if vmware {
+            record("VMware firmware detected; selecting Windows CPU software renderer");
+        }
+        default_mode(vmware)
+    }))
+}
+
+#[cfg(any(windows, test))]
+fn has_vmware_marker(bytes: &[u8]) -> bool {
+    bytes
+        .windows(6)
+        .any(|word| word.eq_ignore_ascii_case(b"vmware"))
+}
+
+#[cfg(windows)]
+fn vmware_guest() -> bool {
+    use windows_sys::Win32::System::SystemInformation::GetSystemFirmwareTable;
+    const PROVIDER: u32 = u32::from_be_bytes(*b"RSMB");
+    // Query size first, then read into an initialized and bounded buffer. Firmware is read-only.
+    let size = unsafe { GetSystemFirmwareTable(PROVIDER, 0, std::ptr::null_mut(), 0) };
+    if size == 0 || size > 1024 * 1024 {
+        return false;
+    }
+    let mut bytes = vec![0; size as usize];
+    let written = unsafe { GetSystemFirmwareTable(PROVIDER, 0, bytes.as_mut_ptr().cast(), size) };
+    written > 0 && written <= size && has_vmware_marker(&bytes[..written as usize])
+}
+#[cfg(not(windows))]
+fn vmware_guest() -> bool {
+    false
+}
+
+pub fn configure(
+    mode: Mode,
+    mut options: eframe::NativeOptions,
+) -> Result<eframe::NativeOptions, String> {
+    options.renderer = match mode {
+        Mode::Glow => eframe::Renderer::Glow,
+        Mode::Wgpu | Mode::Software => eframe::Renderer::Wgpu,
+    };
+    if mode == Mode::Software {
+        if !cfg!(windows) {
+            return Err("CPU 软件渲染目前仅支持 Windows。".into());
+        }
+        use eframe::{
+            egui_wgpu::{WgpuSetup, WgpuSetupCreateNew},
+            wgpu,
+        };
+        let mut setup = WgpuSetupCreateNew::without_display_handle();
+        setup.instance_descriptor.backends = wgpu::Backends::DX12;
+        setup.native_adapter_selector = Some(Arc::new(|adapters, surface| {
+            adapters.iter().find(|adapter| {
+                let info = adapter.get_info();
+                info.backend == wgpu::Backend::Dx12
+                    && info.device_type == wgpu::DeviceType::Cpu
+                    && surface.is_none_or(|surface| adapter.is_surface_supported(surface))
+            }).cloned().ok_or_else(|| "未找到可显示窗口的 Windows WARP 软件适配器；未回退到虚拟显卡。请检查 Windows 版本并保留图形日志。".into())
+        }));
+        options.wgpu_options.wgpu_setup = WgpuSetup::CreateNew(setup);
+        record("software mode requires a CPU DX12 adapter; hardware adapters are excluded");
+        #[cfg(debug_assertions)]
+        if let Some(log) = LOG_PATH.get().and_then(|path| path.parent()) {
+            let _ = CAPTURE_PATH.set(log.join("nscl-software-frame.png"));
+        }
+    }
+    Ok(options)
 }
 
 struct GraphicsLog {
@@ -109,6 +203,7 @@ pub fn initialize_log() -> Option<PathBuf> {
         let _ = LOGGER.set(GraphicsLog {
             file: Mutex::new(file),
         });
+        let _ = LOG_PATH.set(path.clone());
         if let Some(logger) = LOGGER.get() {
             let _ = log::set_logger(logger);
             log::set_max_level(LevelFilter::Info);
@@ -149,10 +244,45 @@ pub fn record_context(context: &eframe::CreationContext<'_>) {
     record("graphics context initialized");
 }
 
-pub fn record_first_frame() {
+pub fn record_first_frame(ctx: &egui::Context) {
     FIRST_FRAME.call_once(|| {
-        record("first UI frame built (presentation still depends on the graphics driver)")
+        record("first UI frame built (presentation still depends on the graphics driver)");
+        #[cfg(debug_assertions)]
+        if let Some(path) = CAPTURE_PATH.get() {
+            let path = path.clone();
+            record("software diagnostic capture requested (application window only)");
+            ctx.request_screenshot(move |image| {
+                let bytes: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
+                match image::save_buffer(
+                    &path,
+                    &bytes,
+                    image.size[0] as u32,
+                    image.size[1] as u32,
+                    image::ColorType::Rgba8,
+                ) {
+                    Ok(()) => {
+                        let colors: std::collections::BTreeSet<_> = image
+                            .pixels
+                            .iter()
+                            .step_by((image.pixels.len() / 4096).max(1))
+                            .map(|p| p.to_array())
+                            .collect();
+                        record(&format!(
+                            "software frame saved: {}; size={}x{}; sampled_colors={}",
+                            path.display(),
+                            image.size[0],
+                            image.size[1],
+                            colors.len()
+                        ));
+                    }
+                    Err(error) => record(&format!("software frame capture failed: {error}")),
+                }
+            });
+            ctx.request_repaint();
+        }
     });
+    #[cfg(not(debug_assertions))]
+    let _ = ctx;
 }
 
 pub fn show_error(error: &str, log_path: Option<&Path>) {
@@ -160,7 +290,7 @@ pub fn show_error(error: &str, log_path: Option<&Path>) {
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "无法写入启动日志".into());
     let message = format!(
-        "启动器界面初始化失败。\n\n{error}\n\n图形日志：{log}\n\n可尝试使用 --renderer=glow 或 --renderer=wgpu 切换图形后端。"
+        "启动器界面初始化失败。\n\n{error}\n\n图形日志：{log}\n\n可尝试 --renderer=software（CPU）、--renderer=glow 或 --renderer=wgpu。"
     );
     #[cfg(windows)]
     {
@@ -187,12 +317,19 @@ mod tests {
 
     #[test]
     fn selects_compatibility_backend_and_accepts_explicit_alternatives() {
-        let selected = select([]).unwrap().to_string();
-        assert_eq!(selected, if cfg!(windows) { "glow" } else { "wgpu" });
+        assert_eq!(
+            default_mode(false).to_string(),
+            if cfg!(windows) { "glow" } else { "wgpu" }
+        );
+        assert_eq!(
+            default_mode(true).to_string(),
+            if cfg!(windows) { "software" } else { "wgpu" }
+        );
         for (arguments, expected) in [
             (vec!["--renderer=wgpu"], "wgpu"),
             (vec!["--renderer", "glow"], "glow"),
             (vec!["--renderer=opengl"], "glow"),
+            (vec!["--renderer=software"], "software"),
             (vec!["--renderer=glow", "--renderer=wgpu"], "wgpu"),
         ] {
             assert_eq!(
@@ -204,6 +341,11 @@ mod tests {
         }
         assert!(select([OsString::from("--renderer")]).is_err());
         assert!(select([OsString::from("--renderer=invalid")]).is_err());
+        assert!(has_vmware_marker(
+            b"\0VMware, Inc.\0VMware Virtual Platform\0"
+        ));
+        assert!(has_vmware_marker(b"\0vmware\0"));
+        assert!(!has_vmware_marker(b"\0Physical desktop manufacturer\0"));
     }
 
     #[test]

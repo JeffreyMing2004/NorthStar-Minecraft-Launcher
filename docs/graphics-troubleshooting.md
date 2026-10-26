@@ -1,11 +1,16 @@
 # 启动器黑屏与图形诊断
 
-Windows 默认使用 OpenGL（glow）渲染启动器，其他系统默认使用 wgpu。两个后端均包含在程序中，可在创建窗口前通过参数切换；皮肤模型和其他界面使用同一套 egui 绘制逻辑。
+Windows 在 SMBIOS 固件中识别到 VMware 时默认使用 WARP CPU 软件渲染；其他 Windows 环境默认使用 OpenGL（glow），其他系统默认使用 wgpu。可在创建窗口前通过参数覆盖，皮肤模型和其他界面使用同一套 egui 绘制逻辑。固件识别只读，不记录原始固件内容；识别失败时可显式选择软件模式。
 
 ```powershell
 .\nscl-vm-compat-debug.exe --renderer=glow
 .\nscl-vm-compat-debug.exe --renderer=wgpu
+.\nscl-vm-software-debug.exe --renderer=software
 ```
+
+软件模式只接受支持当前窗口的 DX12 CPU 适配器，通常为 `Microsoft Basic Render Driver`（WARP），不选择 VMware SVGA3D 等硬件适配器。找不到软件适配器时显示错误，避免悄悄回到已出现黑屏的路径。软件绘制速度取决于 CPU，窗口功能保持一致。WARP 的工作方式见 [Microsoft 官方说明](https://learn.microsoft.com/en-us/windows/win32/direct3darticles/directx-warp)。
+
+软件模式的调试构建会在图形日志所在目录保存首帧窗口内部截图 `nscl-software-frame.png`，日志同时记录分辨率和采样颜色数量。截图只包含启动器窗口；该自动截图只用于调试构建。内部截图正常而屏幕窗口仍黑，说明还需要排查呈现或合成；内部截图也异常时继续排查绘制路径。复测可一并提供截图和日志。
 
 调试版在 EXE 所在目录的 `logs/nscl-startup.log` 追加图形诊断。目录不可写时尝试 `%TEMP%\NSCL\nscl-startup.log`。日志包括启动版本、所选后端、图形驱动信息、图形初始化及首帧 UI 构建标记；图形框架仅记录 Info、Warn、Error，不记录账号和 HTTP 模块。
 
