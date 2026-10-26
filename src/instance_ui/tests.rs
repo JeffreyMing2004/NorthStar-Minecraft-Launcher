@@ -112,6 +112,7 @@ fn browsing_filters_files_and_configuration_preserve_the_launch_selection() {
     assert_eq!(app.instance_edit.as_ref().unwrap().id, "modded");
     assert_eq!(app.service.selected, "vanilla");
     app.instance_edit = None;
+    click(&ctx, &mut app, "全部版本");
     click(&ctx, &mut app, "整合包");
     assert_eq!(app.instance_browser.selected, "pack-example");
     assert_eq!(app.service.selected, "vanilla");
@@ -121,7 +122,8 @@ fn browsing_filters_files_and_configuration_preserve_the_launch_selection() {
         text_rect(&output, label);
     }
     output.drop_without_applying_deltas();
-    click(&ctx, &mut app, "全部");
+    click(&ctx, &mut app, "整合包");
+    click(&ctx, &mut app, "全部版本");
     app.instance_browser.search = "Fabric world".into();
     let output = frame(&ctx, &mut app, Vec2::new(876.0, 430.0), vec![]);
     for label in ["返回开始", "新建实例", "安装新版本"] {
@@ -165,6 +167,39 @@ fn browsing_filters_files_and_configuration_preserve_the_launch_selection() {
 }
 
 #[test]
+fn launch_stays_at_the_bottom_right_when_switching_and_scrolling_details() {
+    let (_root, mut app, ctx) = populated();
+    let size = Vec2::new(876.0, 430.0);
+    let mut positions = Vec::new();
+    for tab in [DetailTab::Overview, DetailTab::Files] {
+        app.instance_browser.tab = tab;
+        for events in [
+            vec![],
+            vec![
+                Event::PointerMoved(Pos2::new(700.0, 230.0)),
+                Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0.0, -1000.0),
+                    phase: egui::TouchPhase::Move,
+                    source: egui::MouseWheelSource::Unknown,
+                    modifiers: Default::default(),
+                },
+            ],
+        ] {
+            frame(&ctx, &mut app, size, events).drop_without_applying_deltas();
+            let output = frame(&ctx, &mut app, size, vec![]);
+            let launch = text_rect(&output, "启动游戏");
+            assert!(launch.min.x > 700.0 && launch.min.y > 350.0, "{launch:?}");
+            assert!(launch.max.x < size.x && launch.max.y < size.y, "{launch:?}");
+            positions.push(launch);
+            output.drop_without_applying_deltas();
+        }
+    }
+    assert!(positions.iter().all(|rect| *rect == positions[0]));
+    assert_eq!(app.service.selected, "vanilla");
+}
+
+#[test]
 fn archive_and_restore_keep_the_selected_instances_world_files() {
     let (root, mut app, ctx) = populated();
     app.instance_browser.selected = "pack-example".into();
@@ -185,6 +220,7 @@ fn archive_and_restore_keep_the_selected_instances_world_files() {
     assert_eq!(app.archive_confirm.as_ref().unwrap().id, "pack-example");
     click(&ctx, &mut app, "确认归档");
     assert!(app.service.instances.iter().all(|i| i.id != "pack-example"));
+    click(&ctx, &mut app, "全部版本");
     click(&ctx, &mut app, "已归档");
     click(&ctx, &mut app, "恢复实例");
     assert_eq!(app.service.selected, "pack-example");

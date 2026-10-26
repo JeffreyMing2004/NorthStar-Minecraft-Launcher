@@ -167,7 +167,7 @@ fn allowed_url(url: &str) -> bool {
         && url.port_or_known_default() == Some(443)
 }
 
-fn read_limited(reader: impl Read) -> Result<Vec<u8>, String> {
+pub(crate) fn read_limited(reader: impl Read) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     reader
         .take(MAX_BYTES + 1)
@@ -179,7 +179,7 @@ fn read_limited(reader: impl Read) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn decode(bytes: &[u8]) -> Result<image::RgbaImage, String> {
+pub(crate) fn decode(bytes: &[u8]) -> Result<image::RgbaImage, String> {
     let mut reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| e.to_string())?;

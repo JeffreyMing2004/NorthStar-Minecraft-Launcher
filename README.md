@@ -40,8 +40,8 @@ NSCL 将游戏安装、账号、实例与模组管理放在一个原生窗口里
 </p>
 
 <details>
-  <summary>实例管理 · 搜索、分类与实例操作</summary>
-  <p align="center"><img src="docs/images/instances.png" width="1100" alt="NSCL 实例管理页：左侧分类和实例列表，右侧概览与配置操作" /></p>
+  <summary>版本管理 · 实例图标、搜索与分类</summary>
+  <p align="center"><img src="docs/images/instances.png" width="1100" alt="NSCL 版本管理页：左侧图标列表与筛选，右侧概览及右下角启动按钮" /></p>
 </details>
 
 ## 功能一览

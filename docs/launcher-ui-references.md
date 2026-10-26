@@ -12,6 +12,8 @@
 
 实例管理同时参考 [HMCL 的实例详情页](https://github.com/HMCL-dev/HMCL/blob/main/HMCL/src/main/java/org/jackhuang/hmcl/ui/instances/GameInstancePage.java) 对配置与内容功能的分组。NSCL 左侧浏览不会直接改变启动实例；右侧集中显示概览、实例设置、模组管理和目录入口。归档列表只在进入该分类或手动刷新时读取，普通绘制使用已加载的实例与版本信息。
 
+版本管理使用窄列表和分类下拉框，读取实例或已有版本目录中的本地图标；没有图片时显示对应类型图标。启动按钮固定在详情区右下角。窗口、任务栏、Alt+Tab 及 Windows 可执行文件使用 NSCL 自有标志。
+
 ## 下载与网络恢复
 
 - Minecraft 下载页由后台自动选择下载源，依次尝试 **BMCLAPI（bangbang93）→ minguncle → 官方源**，连接失败或校验不通过时切换到下一来源。下载页仅保留版本搜索、筛选和刷新，不显示下载源、代理方式或网络设置入口；需要手动指定来源或连接方式时可进入设置页。

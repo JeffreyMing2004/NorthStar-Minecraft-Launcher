@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
 
 mod account_service;
 mod account_ui;
@@ -6,6 +6,7 @@ mod app;
 mod content_page;
 mod download_flow;
 mod error_ui;
+mod instance_icons;
 mod instance_ui;
 mod manager_ui;
 mod pages;
@@ -15,6 +16,7 @@ mod settings_ui;
 mod skin_ui;
 mod theme;
 mod update_service;
+mod window_icon;
 use nscl::{accounts, content, instances, java, minecraft, store};
 
 use app::NsclApp;
@@ -26,8 +28,11 @@ fn main() -> eframe::Result {
         }
         return Ok(());
     }
+    window_icon::initialize();
     let viewport = egui::ViewportBuilder::default()
         .with_title("NorthStar Minecraft Launcher")
+        .with_icon(window_icon::data())
+        .with_taskbar(true)
         .with_inner_size([1200.0, 760.0])
         .with_min_inner_size([960.0, 640.0])
         .with_decorations(false);
