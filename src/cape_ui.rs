@@ -322,6 +322,22 @@ impl CapeView {
                                 egui::Layout::top_down(egui::Align::Min),
                                 |ui| {
                                     ui.set_min_width(width);
+                                    let text_height = ui.fonts_mut(|fonts| {
+                                        fonts.row_height(&egui::FontId::proportional(16.0))
+                                    });
+                                    let has_status =
+                                        entry.error.is_some() || entry.pixels.is_none();
+                                    let status_height = if has_status {
+                                        ui.fonts_mut(|fonts| {
+                                            fonts.row_height(&egui::FontId::proportional(12.0))
+                                        }) + 8.0
+                                            + ui.spacing().item_spacing.y
+                                    } else {
+                                        0.0
+                                    };
+                                    ui.add_space(
+                                        ((76.8 - text_height - status_height) / 2.0).max(0.0),
+                                    );
                                     ui.add(
                                         egui::Label::new(
                                             RichText::new(&entry.cape.name)
@@ -330,7 +346,9 @@ impl CapeView {
                                         )
                                         .truncate(),
                                     );
-                                    ui.add_space(8.0);
+                                    if has_status {
+                                        ui.add_space(8.0);
+                                    }
                                     if let Some(error) = &entry.error {
                                         ui.label(
                                             RichText::new("预览暂不可用")

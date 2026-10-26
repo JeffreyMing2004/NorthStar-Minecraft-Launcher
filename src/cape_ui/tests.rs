@@ -80,6 +80,8 @@ fn cape_rows_mark_the_active_cape_and_only_request_unselected_choices() {
     output.textures_delta.clear();
     assert!(command.is_none());
     let choices = radios(&output);
+    let text_centers = ["Cape first", "Cape second"]
+        .map(|name| crate::service::tests::text_rect(&output, name).center().y);
     output.drop_without_applying_deltas();
     assert_eq!(choices.len(), 3);
     assert_eq!(
@@ -88,6 +90,13 @@ fn cape_rows_mark_the_active_cape_and_only_request_unselected_choices() {
     );
     assert!(choices.iter().all(|c| c.0.x > 640.0 && c.0.x < 700.0));
     assert!(choices.iter().all(|c| (c.0.x - choices[0].0.x).abs() < 1.0));
+    for (name_y, choice) in text_centers.into_iter().zip(&choices[1..]) {
+        assert!(
+            (name_y - choice.0.y).abs() < 1.0,
+            "name {name_y}, selector {}",
+            choice.0.y
+        );
+    }
     let selected = choices[1].0;
     let choose = choices[2].0;
     let (output, command) = frame(&ctx, &mut view, true, click(selected));
