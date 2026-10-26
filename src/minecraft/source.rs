@@ -7,6 +7,7 @@ pub const MANIFEST_URL: &str = "https://piston-meta.mojang.com/mc/game/version_m
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SourceKind {
     #[default]
+    Auto,
     Official,
     Bmclapi,
     Minguncle,
@@ -43,7 +44,7 @@ pub struct Source {
 impl Default for Source {
     fn default() -> Self {
         Self {
-            kind: SourceKind::Official,
+            kind: SourceKind::default(),
             custom_base: String::new(),
             fallback_to_official: true,
             proxy_mode: ProxyMode::System,
@@ -52,9 +53,16 @@ impl Default for Source {
 }
 
 impl SourceKind {
-    pub const ALL: [Self; 4] = [Self::Official, Self::Bmclapi, Self::Minguncle, Self::Custom];
+    pub const ALL: [Self; 5] = [
+        Self::Auto,
+        Self::Bmclapi,
+        Self::Official,
+        Self::Minguncle,
+        Self::Custom,
+    ];
     pub fn label(self) -> &'static str {
         match self {
+            Self::Auto => "自动（BMCLAPI 优先）",
             Self::Official => "官方源",
             Self::Bmclapi => "BMCLAPI（bangbang93）",
             Self::Minguncle => "mirror.minguncle.cn",
@@ -71,7 +79,7 @@ impl Source {
     pub fn base(&self) -> Result<Option<Url>> {
         let value = match self.kind {
             SourceKind::Official => return Ok(None),
-            SourceKind::Bmclapi => "https://bmclapi2.bangbang93.com",
+            SourceKind::Auto | SourceKind::Bmclapi => "https://bmclapi2.bangbang93.com",
             SourceKind::Minguncle => "https://mirror.minguncle.cn",
             SourceKind::Custom => self.custom_base.trim(),
         };
@@ -83,6 +91,26 @@ impl Source {
     }
 
     pub fn candidates(&self, value: &str) -> Result<Vec<String>> {
+        if self.kind == SourceKind::Auto {
+            let mut result = Vec::new();
+            for kind in [
+                SourceKind::Bmclapi,
+                SourceKind::Minguncle,
+                SourceKind::Official,
+            ] {
+                let source = Self {
+                    kind,
+                    fallback_to_official: false,
+                    ..self.clone()
+                };
+                for candidate in source.candidates(value)? {
+                    if !result.contains(&candidate) {
+                        result.push(candidate);
+                    }
+                }
+            }
+            return Ok(result);
+        }
         let url = valid_url(value)?;
         let base = self.base()?;
         let canonical = canonical_url(&url, base.as_ref());

@@ -231,10 +231,44 @@ fn mirror_routing_and_official_fallback() {
         ["https://mirror.example/repository/maven/com/test.jar"]
     );
     assert_eq!(
-        Source::default()
-            .candidates("https://mirror.minguncle.cn/v1/packages/hash/test.json")
-            .unwrap(),
+        Source {
+            kind: SourceKind::Official,
+            ..Default::default()
+        }
+        .candidates("https://mirror.minguncle.cn/v1/packages/hash/test.json")
+        .unwrap(),
         ["https://piston-meta.mojang.com/v1/packages/hash/test.json"]
+    );
+}
+
+#[test]
+fn automatic_source_tries_bangbang93_minguncle_then_official_and_preserves_manual_choices() {
+    let source: Source = serde_json::from_value(json!({})).unwrap();
+    assert_eq!(source.kind, SourceKind::Auto);
+    assert_eq!(Source::default().kind, SourceKind::Auto);
+    assert_eq!(
+        Source {
+            fallback_to_official: false,
+            ..source
+        }
+        .candidates(source::MANIFEST_URL)
+        .unwrap(),
+        [
+            "https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json",
+            "https://mirror.minguncle.cn/mc/game/version_manifest_v2.json",
+            source::MANIFEST_URL
+        ]
+    );
+    let manual: Source = serde_json::from_value(json!({"kind":"Official"})).unwrap();
+    assert_eq!(
+        manual.candidates(source::MANIFEST_URL).unwrap(),
+        [source::MANIFEST_URL]
+    );
+    assert_eq!(
+        Source::default()
+            .candidates("https://api.modrinth.com/v2/search")
+            .unwrap(),
+        ["https://api.modrinth.com/v2/search"]
     );
 }
 
@@ -261,6 +295,7 @@ fn live_mojang_version_manifest() {
     for proxy_mode in ProxyMode::ALL {
         let downloader = Downloader::new(
             Source {
+                kind: SourceKind::Official,
                 proxy_mode,
                 ..Default::default()
             },
@@ -632,7 +667,7 @@ fn old_settings_migrate_without_losing_values() {
     .unwrap();
     assert_eq!(settings.memory, 2048);
     assert_eq!(settings.java_path, "test-java");
-    assert_eq!(settings.source.kind, SourceKind::Official);
+    assert_eq!(settings.source.kind, SourceKind::Auto);
     assert_eq!(settings.player_name, "LegacyPlayer");
     assert!(settings.auto_java && settings.auto_memory);
     assert_eq!(settings.configured_java(), "");

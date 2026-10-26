@@ -1,57 +1,100 @@
-# NorthStar Minecraft Launcher
+<div align="center">
+  <img src="assets/nscl-logo.svg" width="112" height="112" alt="NSCL 四角星标志" />
+  <h1>NorthStar Minecraft Launcher</h1>
+  <p><strong>找到你的下一段方块冒险。</strong></p>
+  <p>Rust 构建的 Minecraft Java Edition 桌面启动器 · 原生界面 · 独立实例 · 模组与整合包</p>
+  <p>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/Rust-native-CE6F3F?style=flat-square&amp;logo=rust" alt="使用 Rust 构建" /></a>
+    <a href="https://github.com/emilk/egui"><img src="https://img.shields.io/badge/UI-eframe%20%2F%20egui-B1EDC7?style=flat-square" alt="eframe / egui" /></a>
+    <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-7DA9D8?style=flat-square" alt="Windows 10 / 11" />
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--only-78BFA0?style=flat-square" alt="GPL-3.0-only" /></a>
+  </p>
+  <p>
+    <a href="#界面预览">界面预览</a> ·
+    <a href="#功能一览">功能一览</a> ·
+    <a href="#快速开始">快速开始</a> ·
+    <a href="#开发与调试">开发与调试</a> ·
+    <a href="https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues">问题反馈</a> ·
+    <a href="https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher">CNB 镜像</a>
+  </p>
+</div>
 
-**NSCL** 是一款使用 Rust 与 eframe/egui 构建的 Minecraft Java Edition 桌面启动器。原生窗口、单一可执行文件、无需额外运行库。
+---
 
-[下载](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases) · [问题反馈](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues) · [CNB 镜像](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)
+NSCL 将游戏安装、账号、实例与模组管理放在一个原生窗口里。沿用已有的 Minecraft 目录，或为不同的整合包准备各自的游戏空间，从选择版本到下一次启动都在这里完成。
 
-## 功能
+**项目当前处于开发与调试阶段，尚无稳定版发布。** Windows x86_64 是主要验证平台；macOS 与 Linux 尚未完成发布验证。当前请使用调试构建体验。
 
-- **安装与启动**：正式版、快照与历史版本，下载、校验与修复游戏文件
-- **模组加载器**：Forge、Fabric、NeoForge，按所选版本自动匹配安装
-- **账号**：Microsoft 浏览器授权、离线账号、多账号切换与登录续期
-- **版本隔离**：可选择独立或共享游戏目录，分别管理存档、模组和配置，支持实例重命名、归档与恢复
-- **已有游戏识别**：扫描 `.minecraft/versions` 中其他启动器创建的版本，支持中文名称并沿用已有游戏目录
-- **模组与整合包**：内置 Modrinth 搜索，自动安装必需依赖，检查兼容更新，支持 `.mrpack` 拖入导入
-- **Java 与内存**：按游戏版本自动选择 Java、按物理内存自动分配；Windows 可下载 Temurin JRE
-- **下载源**：Mojang 官方、BMCLAPI、明叔镜像与自定义镜像，失败可回退官方源
-- **内置更新**：从 GitHub Releases 检查、校验并替换新版本，保留旧版备份
+## 界面预览
 
-## 下载
+以下为当前调试版的实际界面，使用独立预览配置，不含个人账号信息。
 
-发布产物为 Windows x86_64 便携包，解压到可写目录后运行 `NSCL.exe`：
+<p align="center">
+  <img src="docs/images/home.png" width="1100" alt="NSCL 开始页：游戏实例选择与角色区域" />
+  <br /><sub>开始页 · 游戏实例与角色入口</sub>
+</p>
 
-| 文件 | 内容 |
-| --- | --- |
-| `nscl-v<版本>-windows-x86_64.zip` | `NSCL.exe` |
-| `SHA256SUMS` | 发布产物校验值 |
+<p align="center">
+  <img src="docs/images/downloads.png" width="1100" alt="NSCL 下载页：自动下载源、版本列表与加载器安装入口" />
+  <br /><sub>下载页 · 自动切换来源，选择游戏版本与加载器</sub>
+</p>
 
-项目当前处于开发阶段，尚无稳定版本发布，可从源码构建。
+## 功能一览
+
+<table>
+  <tr>
+    <td width="50%"><strong>游戏安装与修复</strong><br />浏览正式版、快照与历史版本，安装原版或 Forge、Fabric、NeoForge，校验并修复游戏文件。</td>
+    <td width="50%"><strong>模组与整合包</strong><br />搜索 Modrinth 内容，安装必需依赖，检查模组兼容性与更新；支持拖入 .mrpack 与 Modrinth 格式 ZIP。</td>
+  </tr>
+  <tr>
+    <td><strong>每个世界，各自的空间</strong><br />实例可选择独立、共享或已有版本目录，支持重命名、归档与恢复；整合包使用独立目录。</td>
+    <td><strong>已有游戏，继续使用</strong><br />识别 .minecraft/versions 中其他启动器安装的版本，支持中文目录名与多个游戏目录，保留原有游戏数据。</td>
+  </tr>
+  <tr>
+    <td><strong>账号与角色</strong><br />Microsoft 浏览器授权、离线账号、多账号切换、登录续期，以及皮肤上传与 3D 预览。</td>
+    <td><strong>自动准备运行环境</strong><br />按游戏版本匹配 Java，按物理内存分配堆大小；Windows 支持下载 Temurin JRE，也可手动设置。</td>
+  </tr>
+</table>
+
+### 下载来源自动接力
+
+默认使用「自动（BMCLAPI 优先）」，按以下顺序尝试：
+
+```text
+BMCLAPI（bangbang93） → minguncle → Mojang / 对应资源官方源
+```
+
+连接失败或文件校验不通过时切换到下一来源。下载页可查看和切换来源、选择系统代理或直连、刷新列表；网络错误提供重试入口与可展开的技术详情。刷新失败会保留当前已加载的版本列表。
+
+也可手动指定单个下载源或兼容 BMCLAPI 的自定义镜像。上述镜像接力适用于受支持的 Minecraft、加载器、依赖库与资源地址；Modrinth API、账号登录等请求沿用各自的服务地址。
+
+### 更新与文件保护
+
+- 内置 GitHub Releases 更新检查，下载后校验更新文件，替换时保留旧版备份。
+- 游戏文件复用共享缓存；实例隔离分别保存存档、模组、配置等内容。
+- 模组安装前检查版本、必需依赖与冲突；用户修改过的已登记文件不会被直接覆盖。
 
 ## 快速开始
 
-1. 「设置」选择游戏目录与下载源。Java 与内存默认自动分配，可按需手动指定。
-2. 「账号」登录 Microsoft 账号，或填写玩家名创建离线账号。
-3. 「下载 → Minecraft」选择游戏版本与加载器，点击「开始安装」。
+1. 在「设置」选择游戏目录。默认使用启动器所在目录；若目录中有 `.minecraft`，会优先使用它。
+2. 在「账号」登录 Microsoft 账号，或创建离线账号。正版登录需要拥有 Minecraft Java Edition 授权。
+3. 打开「下载 → Minecraft」，选择版本与加载器，确认后开始安装。下载源默认自动选择。
 4. 回到「开始」选择实例，点击「启动游戏」。
 
-## 环境要求
+已有游戏可以直接添加其 `.minecraft` 目录。导入整合包、管理模组与隔离模式的具体行为见下方文档。
 
-| 项目 | 要求 |
-| --- | --- |
-| 操作系统 | Windows 10/11 x86_64（主要验证平台；macOS 与 Linux 尚未发布验证） |
-| 网络 | 安装游戏、下载资源与 Microsoft 登录需要联网 |
-| 账号 | 正版登录需要拥有 Minecraft Java Edition 授权的 Microsoft 账号 |
+## 开发与调试
 
-## 从源码构建
-
-需要 Rust stable 的 MSVC 工具链，以及 Microsoft C++ Build Tools 的「使用 C++ 的桌面开发」组件。
+需要 Rust stable 的 MSVC 工具链，以及 Microsoft C++ Build Tools 的「使用 C++ 的桌面开发」组件。当前开发流程仅使用调试模式：
 
 ```powershell
-git clone https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher
+git clone https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher.git
 cd NorthStar-Minecraft-Launcher
-cargo build --release --locked --bin nscl
-.\target\release\nscl.exe
+cargo build --locked --bin nscl
+.\target\debug\nscl.exe
 ```
+
+从普通桌面终端启动调试程序；受限执行环境可能限制其网络访问。网络错误诊断与连接方式说明见 [界面参考与网络排查](docs/launcher-ui-references.md)。
 
 提交改动前执行：
 
@@ -61,16 +104,35 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
 ```
 
-## 反馈
+## 项目文档
 
-界面参考、功能对比和下载连接故障排查见 [启动器界面参考与本次改进](docs/launcher-ui-references.md)。
+| 内容 | 文档 |
+| --- | --- |
+| 原版客户端、下载与启动 | [原版客户端](docs/vanilla-client.md) |
+| Forge / Fabric / NeoForge | [加载器](docs/loaders.md) |
+| 模组依赖、整合包与文件保护 | [模组与整合包](docs/mods-and-modpacks.md) |
+| 登录、实例与目录隔离 | [账号与实例](docs/accounts-and-instances.md) |
+| 启动器更新 | [更新机制](docs/launcher-updates.md) |
+| 界面参考、功能对比与联网排查 | [界面参考](docs/launcher-ui-references.md) |
 
-欢迎在 [GitHub Issues](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues) 反馈问题。提交时请附启动器版本、操作系统、Minecraft 与加载器版本、复现步骤及已脱敏日志，不要提交令牌或浏览器授权链接。
+## 参考与致谢
 
-## 声明
+感谢 Minecraft 启动器社区积累的设计与经验。以下项目为 NSCL 的界面与交互设计提供了参考，启动器的「关于」页面也保留了对应链接：
 
-NSCL 是独立的非官方项目，与 Mojang Studios 或 Microsoft 无隶属或背书关系。Minecraft 及相关名称、商标归其各自权利人所有。
+- [HMCL · Hello Minecraft! Launcher](https://github.com/HMCL-dev/HMCL)：安装组件分组与兼容性呈现。
+- [PCL · Plain Craft Launcher](https://github.com/Meloong-Git/PCL)：资源分类与分步安装交互。
+- [Axolotl Launcher](https://github.com/Axolotl-Launcher/Axolotl)：实例与内容管理，以及本 README 的组织方式。
 
-本项目基于 [GNU General Public License v3.0](LICENSE)（仅限第 3 版，`GPL-3.0-only`）发布：你可以自由使用、修改和再分发，但分发衍生作品时必须同样以 GPL-3.0 开源，并提供完整源码。
+同时感谢 [eframe / egui](https://github.com/emilk/egui)、[Modrinth](https://modrinth.com/)、[BMCLAPI（bangbang93）](https://bmclapi2.bangbang93.com/) 与 [minguncle 镜像](https://mirror.minguncle.cn/) 等项目和服务。
 
-`assets/` 下的 Minecraft 相关素材归 Mojang Studios 所有，不受本项目许可证覆盖。
+## 反馈与参与
+
+欢迎提交 [GitHub Issue](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues) 或 Pull Request。反馈问题时，请说明启动器版本、操作系统、游戏与加载器版本、复现步骤，并附已脱敏的错误信息或日志。
+
+源代码托管于 [GitHub](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher) 与 [CNB](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)。
+
+## 许可与声明
+
+本项目采用 [GNU GPL v3.0（仅限第 3 版）](LICENSE)，即 `GPL-3.0-only`。修改和再分发时请遵守许可证，并按其要求提供相应源代码。
+
+NSCL 是独立的非官方项目，与 Mojang Studios 或 Microsoft 无隶属或背书关系。Minecraft 及相关名称、商标与素材归其各自权利人所有，Minecraft 相关素材不受本项目许可证覆盖。

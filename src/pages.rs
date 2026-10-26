@@ -1109,7 +1109,9 @@ fn minecraft_downloads(ui: &mut Ui, app: &mut NsclApp) {
                     for kind in crate::minecraft::SourceKind::ALL {
                         ui.selectable_value(&mut app.settings.source.kind, kind, kind.label());
                     }
-                });
+                })
+                .response
+                .on_hover_text("自动模式：BMCLAPI（bangbang93）→ minguncle → 官方源；连接或校验失败时切换到下一来源。");
             egui::ComboBox::from_id_salt("catalog-proxy-mode")
                 .width(175.0)
                 .selected_text(app.settings.source.proxy_mode.label())

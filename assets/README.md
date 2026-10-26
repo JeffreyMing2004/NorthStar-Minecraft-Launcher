@@ -1,4 +1,10 @@
-# 默认角色纹理
+# 界面素材
+
+## 项目标志
+
+`nscl-logo.svg` 是 README 使用的 NSCL 标志，沿用启动器的四角星与深绿配色。
+
+## 默认角色纹理
 
 `steve.png` 来自 Minecraft Java Edition 1.20.1 客户端资源中的
 `assets/minecraft/textures/entity/player/wide/steve.png`，用于未登录、离线账号或未获得账号皮肤时的标准 Steve 预览。

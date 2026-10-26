@@ -335,10 +335,17 @@ fn network(ui: &mut Ui, app: &mut NsclApp) {
             );
         }
         ui.add_space(10.0);
-        ui.checkbox(
-            &mut app.settings.source.fallback_to_official,
-            "镜像失败或校验不通过时回退到官方源",
-        );
+        if app.settings.source.kind == crate::minecraft::SourceKind::Auto {
+            app::hint(
+                ui,
+                "自动模式依次尝试 BMCLAPI（bangbang93）、minguncle 和官方源；连接失败或校验不通过时切换到下一来源。",
+            );
+        } else {
+            ui.checkbox(
+                &mut app.settings.source.fallback_to_official,
+                "镜像失败或校验不通过时回退到官方源",
+            );
+        }
         ui.add_space(16.0);
         ui.label("下载连接方式");
         ui.add_space(10.0);
