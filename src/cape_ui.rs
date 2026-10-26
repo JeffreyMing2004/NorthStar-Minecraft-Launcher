@@ -255,11 +255,19 @@ impl CapeView {
             return command;
         }
         let none_selected = !self.entries.iter().any(|entry| entry.cape.active);
-        ui.horizontal(|ui| {
-            ui.label("不使用披风");
-            if selection_button(ui, none_selected, editable).clicked() {
-                command = Some(Command::Select(None));
-            }
+        ui.push_id("no-cape", |ui| {
+            theme::card(14).show(ui, |ui| {
+                ui.set_width((ui.available_width() - 2.0).max(0.0));
+                ui.horizontal(|ui| {
+                    ui.set_min_height(36.0);
+                    ui.label("无披风");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if selection_radio(ui, none_selected, editable, "无披风") {
+                            command = Some(Command::Select(None));
+                        }
+                    });
+                });
+            });
         });
         ui.add_space(12.0);
         if self.entries.is_empty() {
@@ -303,35 +311,39 @@ impl CapeView {
                             );
                         }
                         ui.add_space(12.0);
-                        let width = (ui.available_width() - 108.0).max(0.0);
-                        ui.allocate_ui_with_layout(
-                            Vec2::new(width, 76.8),
-                            egui::Layout::top_down(egui::Align::Min),
-                            |ui| {
-                                ui.add(
-                                    egui::Label::new(
-                                        RichText::new(&entry.cape.name)
-                                            .color(theme::HEADING)
-                                            .size(16.0),
-                                    )
-                                    .truncate(),
-                                );
-                                ui.add_space(8.0);
-                                if let Some(error) = &entry.error {
-                                    ui.label(
-                                        RichText::new("预览暂不可用")
-                                            .color(theme::MUTED)
-                                            .size(12.0),
-                                    )
-                                    .on_hover_text(error);
-                                } else if entry.pixels.is_none() {
-                                    app::hint(ui, "正在加载预览……");
-                                }
-                            },
-                        );
-                        if selection_button(ui, entry.cape.active, editable).clicked() {
-                            command = Some(Command::Select(Some(entry.cape.id.clone())));
-                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if selection_radio(ui, entry.cape.active, editable, &entry.cape.name) {
+                                command = Some(Command::Select(Some(entry.cape.id.clone())));
+                            }
+                            ui.add_space(12.0);
+                            let width = ui.available_width().max(0.0);
+                            ui.allocate_ui_with_layout(
+                                Vec2::new(width, 76.8),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    ui.set_min_width(width);
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(&entry.cape.name)
+                                                .color(theme::HEADING)
+                                                .size(16.0),
+                                        )
+                                        .truncate(),
+                                    );
+                                    ui.add_space(8.0);
+                                    if let Some(error) = &entry.error {
+                                        ui.label(
+                                            RichText::new("预览暂不可用")
+                                                .color(theme::MUTED)
+                                                .size(12.0),
+                                        )
+                                        .on_hover_text(error);
+                                    } else if entry.pixels.is_none() {
+                                        app::hint(ui, "正在加载预览……");
+                                    }
+                                },
+                            );
+                        });
                     });
                 });
             });
@@ -341,13 +353,15 @@ impl CapeView {
     }
 }
 
-fn selection_button(ui: &mut Ui, selected: bool, editable: bool) -> egui::Response {
-    ui.add_enabled(
-        editable && !selected,
-        egui::Button::new(if selected { "已选中" } else { "未选中" })
-            .selected(selected)
-            .min_size(Vec2::new(92.0, 36.0)),
-    )
+fn selection_radio(ui: &mut Ui, selected: bool, editable: bool, name: &str) -> bool {
+    ui.add_enabled(editable, egui::RadioButton::new(selected, ""))
+        .on_hover_text(if selected {
+            format!("{name}（当前使用）")
+        } else {
+            format!("选择 {name}")
+        })
+        .clicked()
+        && !selected
 }
 
 pub fn controls(ui: &mut Ui, app: &mut app::NsclApp) {
@@ -355,7 +369,7 @@ pub fn controls(ui: &mut Ui, app: &mut app::NsclApp) {
     ui.add_space(8.0);
     app::hint(
         ui,
-        "显示当前正版账号拥有的全部披风，点击「未选中」即可使用。",
+        "显示当前正版账号拥有的全部披风，点击行末的圆形选择框即可使用。",
     );
     ui.add_space(16.0);
     let online =

@@ -45,6 +45,31 @@ fn click(pos: Pos2) -> Vec<egui::Event> {
     vec![egui::Event::PointerMoved(pos), button(true), button(false)]
 }
 
+fn radios(output: &FullOutput) -> Vec<(Pos2, bool)> {
+    let circles: Vec<_> = output
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            egui::Shape::Circle(circle) => Some(circle),
+            _ => None,
+        })
+        .collect();
+    let mut radios: Vec<_> = circles
+        .iter()
+        .filter(|circle| (5.0..=12.0).contains(&circle.radius))
+        .map(|outer| {
+            let selected = circles.iter().any(|inner| {
+                inner.radius < outer.radius * 0.75
+                    && inner.center.distance(outer.center) < 0.1
+                    && inner.fill.a() > 0
+            });
+            (outer.center, selected)
+        })
+        .collect();
+    radios.sort_by(|a, b| a.0.y.total_cmp(&b.0.y));
+    radios
+}
+
 #[test]
 fn cape_rows_mark_the_active_cape_and_only_request_unselected_choices() {
     let (_root, _app, ctx) = crate::service::tests::fixture();
@@ -54,21 +79,17 @@ fn cape_rows_mark_the_active_cape_and_only_request_unselected_choices() {
     let (mut output, command) = frame(&ctx, &mut view, true, vec![]);
     output.textures_delta.clear();
     assert!(command.is_none());
-    let selected = crate::service::tests::text_rect(&output, "已选中").center();
-    let second_y = crate::service::tests::text_rect(&output, "Cape second")
-        .center()
-        .y;
-    let choose = output
-        .shapes
-        .iter()
-        .find_map(|s| match &s.shape {
-            egui::Shape::Text(t) if t.galley.job.text == "未选中" && t.pos.y > second_y => {
-                Some(t.galley.rect.translate(t.pos.to_vec2()).center())
-            }
-            _ => None,
-        })
-        .unwrap();
+    let choices = radios(&output);
     output.drop_without_applying_deltas();
+    assert_eq!(choices.len(), 3);
+    assert_eq!(
+        choices.iter().map(|c| c.1).collect::<Vec<_>>(),
+        vec![false, true, false]
+    );
+    assert!(choices.iter().all(|c| c.0.x > 640.0 && c.0.x < 700.0));
+    assert!(choices.iter().all(|c| (c.0.x - choices[0].0.x).abs() < 1.0));
+    let selected = choices[1].0;
+    let choose = choices[2].0;
     let (output, command) = frame(&ctx, &mut view, true, click(selected));
     output.drop_without_applying_deltas();
     assert!(command.is_none());
@@ -79,6 +100,11 @@ fn cape_rows_mark_the_active_cape_and_only_request_unselected_choices() {
     let (output, command) = frame(&ctx, &mut view, false, click(choose));
     output.drop_without_applying_deltas();
     assert!(command.is_none());
+    let (output, _) = frame(&ctx, &mut view, true, vec![]);
+    output.drop_without_applying_deltas();
+    let (output, command) = frame(&ctx, &mut view, true, click(choices[0].0));
+    output.drop_without_applying_deltas();
+    assert_eq!(command, Some(Command::Select(None)));
 }
 
 #[test]
@@ -145,7 +171,7 @@ fn offline_cape_tab_explains_login_without_starting_network_work() {
 }
 
 #[test]
-fn confirmed_server_selection_updates_buttons_and_reuses_matching_previews() {
+fn confirmed_server_selection_updates_radios_and_reuses_matching_previews() {
     let (_root, _app, ctx) = crate::service::tests::fixture();
     let mut view = CapeView::new();
     view.entries = vec![entry("first", true), entry("second", false)];
@@ -156,16 +182,17 @@ fn confirmed_server_selection_updates_buttons_and_reuses_matching_previews() {
     assert!(!view.entries[0].cape.active && view.entries[1].cape.active);
     assert!(view.entries.iter().all(|e| e.pixels.is_some()));
     let (output, _) = frame(&ctx, &mut view, true, vec![]);
-    let selected = crate::service::tests::text_rect(&output, "已选中");
-    let name = crate::service::tests::text_rect(&output, "Cape second");
-    let first = crate::service::tests::text_rect(&output, "Cape first");
-    let selected_in_second_row =
-        selected.center().y > name.top() && selected.center().y > first.bottom();
+    let choices = radios(&output);
     output.drop_without_applying_deltas();
-    assert!(selected_in_second_row);
+    assert_eq!(
+        choices.iter().map(|c| c.1).collect::<Vec<_>>(),
+        vec![false, false, true]
+    );
     view.set_capes(Vec::new(), "没有披风".into());
     let (output, _) = frame(&ctx, &mut view, true, vec![]);
-    crate::service::tests::text_rect(&output, "已选中");
+    let choices = radios(&output);
     crate::service::tests::text_rect(&output, "当前账号没有可用披风。");
     output.drop_without_applying_deltas();
+    assert_eq!(choices.len(), 1);
+    assert!(choices[0].1);
 }
