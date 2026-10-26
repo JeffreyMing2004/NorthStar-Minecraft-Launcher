@@ -1097,61 +1097,27 @@ pub(crate) fn download_status_height(app: &NsclApp) -> f32 {
 }
 
 fn minecraft_downloads(ui: &mut Ui, app: &mut NsclApp) {
-    let before = (app.settings.source.kind, app.settings.source.proxy_mode);
-    let mut refresh = false;
-    ui.add_enabled_ui(!app.service.busy(), |ui| {
-        theme::toolbar(ui, |ui| {
-            ui.label("下载源");
-            egui::ComboBox::from_id_salt("catalog-download-source")
-                .width(165.0)
-                .selected_text(app.settings.source.kind.label())
-                .show_ui(ui, |ui| {
-                    for kind in crate::minecraft::SourceKind::ALL {
-                        ui.selectable_value(&mut app.settings.source.kind, kind, kind.label());
-                    }
-                })
-                .response
-                .on_hover_text("自动模式：BMCLAPI（bangbang93）→ minguncle → 官方源；连接或校验失败时切换到下一来源。");
-            egui::ComboBox::from_id_salt("catalog-proxy-mode")
-                .width(175.0)
-                .selected_text(app.settings.source.proxy_mode.label())
-                .show_ui(ui, |ui| {
-                    for mode in crate::minecraft::ProxyMode::ALL {
-                        ui.selectable_value(
-                            &mut app.settings.source.proxy_mode,
-                            mode,
-                            mode.label(),
-                        );
-                    }
-                });
-            refresh = download_button(ui, "刷新列表", true);
-            if download_button(ui, "网络设置", true) {
-                app.page = Page::Settings;
-            }
-        });
-    });
-    if before != (app.settings.source.kind, app.settings.source.proxy_mode) {
-        app.service.invalidate_versions();
-    }
+    app.service.ensure_versions_loaded(&app.settings, ui.ctx());
+    let search_width = (ui.available_width() * 0.42).clamp(240.0, 400.0);
+    let refresh = ui
+        .horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 20.0;
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut app.service.search)
+                    .font(FontId::proportional(14.0))
+                    .frame(input_frame())
+                    .margin(Vec2::new(14.0, 10.0))
+                    .hint_text("搜索版本，例如 1.20.1")
+                    .desired_width(search_width),
+            );
+            input_focus(ui, &response);
+            ui.checkbox(&mut app.service.snapshots, "显示快照与历史版本");
+            download_button(ui, "刷新列表", !app.service.busy())
+        })
+        .inner;
     if refresh {
         app.service.load_versions(&app.settings, ui.ctx());
     }
-    app.service.ensure_versions_loaded(&app.settings, ui.ctx());
-    ui.add_space(14.0);
-    let search_width = (ui.available_width() * 0.42).clamp(240.0, 400.0);
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 20.0;
-        let response = ui.add(
-            egui::TextEdit::singleline(&mut app.service.search)
-                .font(FontId::proportional(14.0))
-                .frame(input_frame())
-                .margin(Vec2::new(14.0, 10.0))
-                .hint_text("搜索版本，例如 1.20.1")
-                .desired_width(search_width),
-        );
-        input_focus(ui, &response);
-        ui.checkbox(&mut app.service.snapshots, "显示快照与历史版本");
-    });
     ui.add_space(20.0);
     let status_height = download_status_height(app);
     let list_height = (ui.available_height() - status_height).max(80.0);

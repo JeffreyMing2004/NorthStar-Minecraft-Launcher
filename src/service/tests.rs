@@ -202,7 +202,7 @@ fn manifest_failure_preserves_the_catalog_and_does_not_retry_during_rendering() 
     assert!(!app.service.busy());
     assert_eq!(app.service.versions[0].id, "1.20.1");
     let output = frame(&ctx, &mut app, Vec2::new(876.0, 390.0), vec![]);
-    for label in ["刷新列表", "网络设置", "跟随系统代理", "1.20.1"] {
+    for label in ["刷新列表", "1.20.1"] {
         let rect = text_rect(&output, label);
         assert!(rect.min.y >= 0.0 && rect.max.y < 390.0 && rect.max.x < 876.0);
     }
