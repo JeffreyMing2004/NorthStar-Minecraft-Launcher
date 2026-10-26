@@ -58,6 +58,9 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) 
         ) {
             app.service.content_remove_preview(&app.settings, ui.ctx());
         }
+        if download_button(ui, "打开 mods 目录", true) {
+            open_mods(app, instance);
+        }
     });
     ui.add_space(10.0);
     let Some(catalog) = catalog else {
@@ -80,6 +83,15 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) 
         "更新前先查看依赖方案；卸载前检查已登记模组的必需依赖。".to_owned()
     };
     app::hint(ui, &status);
+    app::hint(
+        ui,
+        &format!(
+            "单独安装 {} 个 · 其他本地 {} 个 · 已选 {} 个",
+            catalog.entries.len(),
+            catalog.other_files.len(),
+            app.service.content.managed_selection.len()
+        ),
+    );
     ui.add_space(10.0);
     if catalog.entries.is_empty() {
         app::body(
@@ -104,6 +116,7 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) 
                     .corner_radius(8.0)
                     .inner_margin(10)
                     .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
                         let mut selected = app
                             .service
                             .content
@@ -222,21 +235,6 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) 
     for warning in &app.service.content.updates.warnings {
         ui.label(RichText::new(warning).size(12.0).color(theme::MUTED));
     }
-    ui.add_space(10.0);
-    theme::toolbar(ui, |ui| {
-        app::hint(
-            ui,
-            &format!(
-                "单独安装 {} 个 · 其他本地 {} 个 · 已选 {} 个",
-                catalog.entries.len(),
-                catalog.other_files.len(),
-                app.service.content.managed_selection.len()
-            ),
-        );
-        if ui.button("打开 mods 目录").clicked() {
-            open_mods(app, instance);
-        }
-    });
 }
 
 fn search(ui: &mut Ui, app: &mut NsclApp) {
