@@ -107,6 +107,7 @@ impl AccessList {
             .cloned()
     }
 
+    #[cfg(test)] // Read compatibility for old credential files; frpc rooms no longer use them.
     pub(crate) fn authenticate_host(&self, token: &str) -> Option<HostIdentity> {
         if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
             return None;

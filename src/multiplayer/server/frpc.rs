@@ -34,19 +34,13 @@ impl RelayServer {
             .trim_matches('/')
             .split('/')
             .collect();
-        let access = match AccessList::load(&self.access_file) {
-            Ok(list) => list,
-            Err(_) => {
-                reply(request, 503, vec![]);
-                return;
-            }
-        };
-        let member = request
+        let owner_token = request
             .headers()
             .iter()
             .find(|h| h.field.equiv("Authorization"))
             .and_then(|h| h.value.as_str().strip_prefix("Bearer "))
-            .and_then(|token| access.authenticate_host(token));
+            .filter(|token| token.len() == 64 && token.bytes().all(|b| b.is_ascii_hexdigit()))
+            .map(str::to_owned);
         let public = matches!(
             (method.clone(), parts.as_slice()),
             (
@@ -54,19 +48,18 @@ impl RelayServer {
                 ["v1", "frpc", "health"] | ["v1", "frpc", "nodes"] | ["v1", "frpc", "rooms", _]
             ) | (
                 Method::Post,
-                ["v1", "frpc", "rooms", _, "tickets"]
+                ["v1", "frpc", "rooms"]
+                    | ["v1", "frpc", "rooms", _, "tickets"]
                     | ["v1", "frpc", "rooms", _, "tickets", _, "heartbeat"]
             ) | (Method::Delete, ["v1", "frpc", "rooms", _, "tickets", _])
         );
-        if !public && member.is_none() {
+        if !public && owner_token.is_none() {
             reply(request, 401, vec![]);
             return;
         }
         let mut state = self.state.lock().unwrap();
-        state
-            .rooms
-            .retain(|_, room| room.seen.elapsed() < EXPIRES && access.host_active(&room.owner));
-        self.handle_frpc(request, method, &parts, &body, member, &mut state);
+        state.rooms.retain(|_, room| room.seen.elapsed() < EXPIRES);
+        self.handle_frpc(request, method, &parts, &body, owner_token, &mut state);
     }
     pub(super) fn handle_frpc(
         &self,
@@ -74,11 +67,10 @@ impl RelayServer {
         method: Method,
         parts: &[&str],
         body: &[u8],
-        member: Option<HostIdentity>,
+        owner_token: Option<String>,
         state: &mut State,
     ) {
         match (method, parts) {
-            (Method::Get, ["v1", "frpc", "host"]) => reply(request, 204, vec![]),
             (Method::Get, ["v1", "frpc", "health"]) => {
                 let Some(catalog) = self.catalog() else {
                     reply(request, 503, b"frpc catalog unavailable".to_vec());
@@ -92,7 +84,8 @@ impl RelayServer {
                         max_hosts: crate::multiplayer::frpc::MAX_HOSTS,
                         nodes: catalog.nodes.len(),
                         tunnels: catalog.nodes.iter().map(|n| n.proxies.len()).sum(),
-                        host_codes: true,
+                        host_codes: false,
+                        anonymous_hosts: true,
                         game_port: crate::multiplayer::frpc::GAME_PORT,
                     },
                 );
@@ -112,15 +105,10 @@ impl RelayServer {
                 );
             }
             (Method::Post, ["v1", "frpc", "rooms"]) => {
-                let member = member.unwrap();
                 if state.rooms.values().filter(|r| r.direct.is_some()).count()
                     >= crate::multiplayer::frpc::MAX_HOSTS
                 {
                     reply(request, 409, b"all 28 host slots are occupied".to_vec());
-                    return;
-                }
-                if state.rooms.values().any(|r| r.owner.id == member.id) {
-                    reply(request, 409, b"one hosted room per credential".to_vec());
                     return;
                 }
                 let Some(catalog) = self.catalog() else {
@@ -176,10 +164,15 @@ impl RelayServer {
                 };
                 let room = uuid::Uuid::new_v4().simple().to_string();
                 let key = crate::multiplayer::secret();
+                let owner_token = crate::multiplayer::secret();
                 state.rooms.insert(
                     room.clone(),
                     Room {
-                        owner: member,
+                        owner: HostIdentity {
+                            id: room.clone(),
+                            token_sha256: crate::multiplayer::digest(&owner_token),
+                            account: None,
+                        },
                         seen: Instant::now(),
                         pending: VecDeque::new(),
                         direct: Some(DirectRoom {
@@ -188,7 +181,15 @@ impl RelayServer {
                         }),
                     },
                 );
-                json(request, &Lease { room, key, route });
+                json(
+                    request,
+                    &Lease {
+                        room,
+                        key,
+                        owner_token,
+                        route,
+                    },
+                );
             }
             (Method::Get, ["v1", "frpc", "rooms", room]) => {
                 let Some(direct) = state.rooms.get(*room).and_then(|r| r.direct.as_ref()) else {
@@ -206,8 +207,8 @@ impl RelayServer {
             }
             (Method::Get, ["v1", "frpc", "rooms", room, "status"]) => {
                 let Some(room) = state.rooms.get_mut(*room).filter(|r| {
-                    member.as_ref().is_some_and(|m| {
-                        r.owner.id == m.id && r.owner.token_sha256 == m.token_sha256
+                    owner_token.as_ref().is_some_and(|token| {
+                        r.owner.token_sha256 == crate::multiplayer::digest(token)
                     })
                 }) else {
                     reply(request, 404, vec![]);
@@ -223,8 +224,8 @@ impl RelayServer {
             (Method::Delete, ["v1", "frpc", "rooms", room]) => {
                 if !state.rooms.get(*room).is_some_and(|r| {
                     r.direct.is_some()
-                        && member.as_ref().is_some_and(|m| {
-                            r.owner.id == m.id && r.owner.token_sha256 == m.token_sha256
+                        && owner_token.as_ref().is_some_and(|token| {
+                            r.owner.token_sha256 == crate::multiplayer::digest(token)
                         })
                 }) {
                     reply(request, 404, vec![]);

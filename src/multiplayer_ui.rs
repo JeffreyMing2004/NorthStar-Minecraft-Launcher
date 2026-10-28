@@ -48,7 +48,6 @@ impl Session {
 
 #[derive(Default)]
 pub struct MultiplayerPage {
-    token: String,
     room_code: String,
     message: String,
     pending: Option<Receiver<Completion>>,
@@ -189,11 +188,7 @@ impl MultiplayerPage {
         if self.pending.is_some() || self.session.is_some() {
             return;
         }
-        let client = match if hosting {
-            RelayClient::new(&endpoint, self.token.trim())
-        } else {
-            RelayClient::public(&endpoint)
-        } {
+        let client = match RelayClient::public(&endpoint) {
             Ok(client) => client,
             Err(error) => {
                 self.message = error;
@@ -290,9 +285,9 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
     theme::card(18).show(ui, |ui| {
         ui.set_width((ui.available_width() - 4.0).max(0.0));
         ui.spacing_mut().item_spacing.y = 10.0;
-        app::body(ui, &account.as_ref().map(|a| format!("当前账号：{}", a.name)).unwrap_or_else(|| "持房主凭证即可开房，无需选择或登记启动器账号。".into()));
+        app::body(ui, &account.as_ref().map(|a| format!("当前账号：{}", a.name)).unwrap_or_else(|| "无需登录或开房码，直接创建房间。".into()));
         ui.add_enabled_ui(!busy, |ui| {
-            ui.label("验证服务地址（自建服务器）");
+            ui.label("联机服务地址（房间与隧道管理）");
             ui.add(egui::TextEdit::singleline(&mut app.settings.multiplayer_endpoint)
                 .hint_text(VERIFICATION_ENDPOINTS[0])
                 .desired_width(ui.available_width()));
@@ -302,14 +297,10 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
                 }
             });
             app::hint(ui,"填写部署在你服务器上的验证服务 HTTPS 地址。88frp 的节点 IP、域名和端口由映射池自动分配。");
-            if download_button(ui,"测试验证服务",true) {
+            if download_button(ui,"测试联机服务",true) {
                 app.multiplayer.check_service(app.settings.multiplayer_endpoint.clone(),ui.ctx());
             }
-            ui.label("房主凭证（仅创建房间需要）");
-            ui.add(egui::TextEdit::singleline(&mut app.multiplayer.token).password(true)
-                .hint_text("直接填写管理员发放的开房码")
-                .desired_width(ui.available_width()));
-            app::hint(ui, "房主凭证不绑定玩家名或 UUID，仅保留在本次运行内，不会保存到设置或导出包。");
+            app::hint(ui, "无需开房码。每个房间占用一条隧道，最多 28 个房主同时开房，关闭后自动释放名额。");
             egui::CollapsingHeader::new("房主 frpc 程序设置").show(ui,|ui| {
                 ui.label("frpc 程序路径（仅房主需要）");
                 ui.add(egui::TextEdit::singleline(&mut app.settings.frpc_path).hint_text("选择或输入本地 frpc.exe 完整路径").desired_width(ui.available_width()));
@@ -367,7 +358,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
             } else {
                 app::hint(
                     ui,
-                    "将房间码分享给好友，对方无需房主凭证即可加入。房主需保持游戏和启动器开启。",
+                    "将房间码分享给好友即可加入。房主需保持游戏和启动器开启。",
                 );
             }
             app::hint(ui, &format!("当前数据连接：{}", session.connections()));
@@ -508,35 +499,45 @@ mod tests {
             page.poll(None);
         }
         assert!(page.message.contains("房间码"), "{}", page.message);
-        assert!(page.token.is_empty());
         assert!(page.ready_program.is_none());
     }
 
     #[test]
-    fn independent_host_codes_survive_launcher_account_changes() {
+    fn launcher_account_changes_do_not_interrupt_anonymous_multiplayer() {
         assert!(Page::ALL.contains(&Page::Multiplayer));
         let alice = Account::offline("Alice").unwrap();
         let bob = Account::offline("Bob").unwrap();
         let mut page = MultiplayerPage::default();
         page.poll(Some(&alice));
-        page.token = "a".repeat(64);
         page.message = "old account".into();
         page.poll(Some(&alice));
-        assert_eq!(page.token.len(), 64);
         page.poll(Some(&bob));
-        assert_eq!(page.token, "a".repeat(64));
         assert_eq!(page.message, "old account");
         page.poll(None);
-        assert_eq!(page.token, "a".repeat(64));
+        assert_eq!(page.message, "old account");
     }
 
     #[test]
-    fn hosting_requests_a_code_without_requiring_an_account() {
+    fn hosting_starts_without_a_code_or_selected_account() {
         let (_root, _, ctx) = crate::service::tests::fixture();
         let mut page = MultiplayerPage::default();
-        page.start("http://127.0.0.1:1".into(), true, String::new(), &ctx);
-        assert!(page.message.contains("房主凭证"));
+        page.start(
+            "http://127.0.0.1:1".into(),
+            true,
+            std::env::current_exe()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            &ctx,
+        );
+        assert!(page.pending.is_some());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(4);
+        while page.pending.is_some() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            page.poll(None);
+        }
         assert!(page.pending.is_none());
+        assert!(!page.message.contains("开房码"));
     }
 
     #[test]
@@ -547,7 +548,6 @@ mod tests {
         app.accounts.list.accounts = vec![alice.clone()];
         app.accounts.list.selected = Some(alice.id);
         app.multiplayer.poll(app.accounts.list.current());
-        app.multiplayer.token = "a".repeat(64);
         let output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -563,20 +563,16 @@ mod tests {
         for label in [
             "联机",
             "当前账号：Alice",
-            "验证服务地址（自建服务器）",
-            "测试验证服务",
-            "房主凭证（仅创建房间需要）",
+            "联机服务地址（房间与隧道管理）",
+            "测试联机服务",
             "创建联机房间",
             "开房端口：25565（固定）",
             "加入联机房间",
         ] {
             crate::service::tests::text_rect(&output, label);
         }
-        assert!(
-            !serde_json::to_string(&app.settings)
-                .unwrap()
-                .contains(&"a".repeat(64))
-        );
+        let settings = serde_json::to_string(&app.settings).unwrap();
+        assert!(!settings.contains("owner_token"));
         output.drop_without_applying_deltas();
     }
 }

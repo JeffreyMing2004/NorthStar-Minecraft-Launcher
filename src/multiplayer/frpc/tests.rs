@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     accounts::{Account, AccountKind},
-    multiplayer::{AccessList, RelayClient, issue_host, issue_member, server::RelayServer},
+    multiplayer::{AccessList, RelayClient, issue_member, server::RelayServer},
 };
 use std::{
     fs,
@@ -264,12 +264,7 @@ impl Fixture {
         n.proxies[0].remote_port = remote_port;
         let catalog = directory.path().join("nodes.json");
         crate::store::write_json(&catalog, &Catalog { nodes: vec![n] }).unwrap();
-        let service = Arc::new(
-            RelayServer::new(&directory.path().join("members.json"))
-                .unwrap()
-                .with_frpc_catalog(&catalog)
-                .unwrap(),
-        );
+        let service = Arc::new(RelayServer::for_frpc(&catalog).unwrap());
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}", server.server_addr());
         let stop = Arc::new(AtomicBool::new(false));
@@ -325,7 +320,8 @@ fn public_service_check_reports_readiness_without_credentials() {
     let client = RelayClient::public(&fixture.endpoint).unwrap();
     let info = client.check_service().unwrap();
     assert_eq!(info.service, SERVICE_NAME);
-    assert!(info.host_codes);
+    assert!(!info.host_codes);
+    assert!(info.anonymous_hosts);
     assert_eq!(info.game_port, 25565);
     assert_eq!(
         (info.protocol, info.max_hosts, info.nodes, info.tunnels),
@@ -395,6 +391,7 @@ fn service_allocates_exclusive_tunnels_hides_credentials_and_frees_leases() {
         .text()
         .unwrap();
     assert!(!info.contains(&lease.key));
+    assert!(!info.contains(&lease.owner_token));
     assert!(!info.contains("private-fixture-user"));
     assert_eq!(
         fixture
@@ -408,13 +405,14 @@ fn service_allocates_exclusive_tunnels_hides_credentials_and_frees_leases() {
         404
     );
     assert_eq!(
-        fixture
-            .request(
-                reqwest::Method::DELETE,
-                &format!("v1/rooms/{}", lease.room),
-                true,
-                vec![]
-            )
+        reqwest::blocking::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .delete(format!("{}/v1/frpc/rooms/{}", fixture.endpoint, lease.room))
+            .bearer_auth(&lease.owner_token)
+            .send()
+            .unwrap()
             .status(),
         204
     );
@@ -429,10 +427,7 @@ fn service_allocates_exclusive_tunnels_hides_credentials_and_frees_leases() {
 #[test]
 fn twenty_eight_host_slots_do_not_limit_public_guests() {
     let fixture = Fixture::new();
-    let members = fixture.directory.path().join("members.json");
-    let mut list = AccessList::default();
-    let tokens: Vec<_> = (0..29).map(|_| issue_host(&mut list).unwrap().1).collect();
-    crate::store::write_json(&members, &list).unwrap();
+    fs::remove_file(fixture.directory.path().join("members.json")).unwrap();
     let mut n = node(fixture.control.local_addr().unwrap().port());
     n.proxies = (0..29)
         .map(|i| Proxy {
@@ -454,35 +449,31 @@ fn twenty_eight_host_slots_do_not_limit_public_guests() {
         .unwrap();
     let rooms = format!("{}/v1/frpc/rooms", fixture.endpoint);
     let selection = serde_json::json!({"candidates":["test-node"],"avoid":[]});
-    assert_eq!(
-        client
-            .post(&rooms)
-            .json(&selection)
-            .send()
-            .unwrap()
-            .status(),
-        401
-    );
-    let mut leases = Vec::new();
+    let attempts: Vec<_> = (0..32)
+        .map(|_| {
+            let (client, rooms, selection) = (client.clone(), rooms.clone(), selection.clone());
+            std::thread::spawn(move || {
+                let response = client.post(&rooms).json(&selection).send().unwrap();
+                match response.status().as_u16() {
+                    200 => Some(response.json::<Lease>().unwrap()),
+                    409 => None,
+                    other => panic!("unexpected anonymous create status {other}"),
+                }
+            })
+        })
+        .collect();
+    let leases: Vec<_> = attempts
+        .into_iter()
+        .filter_map(|task| task.join().unwrap())
+        .collect();
+    assert_eq!(leases.len(), 28);
     let mut slots = std::collections::BTreeSet::new();
-    for token in &tokens[..28] {
-        let lease: Lease = client
-            .post(&rooms)
-            .bearer_auth(token)
-            .json(&selection)
-            .send()
-            .unwrap()
-            .error_for_status()
-            .unwrap()
-            .json()
-            .unwrap();
+    for lease in &leases {
         assert!(slots.insert(lease.route.slot()));
-        leases.push(lease);
     }
     assert_eq!(
         client
             .post(&rooms)
-            .bearer_auth(&tokens[28])
             .json(&selection)
             .send()
             .unwrap()
@@ -501,6 +492,25 @@ fn twenty_eight_host_slots_do_not_limit_public_guests() {
     let info = client.get(&room).send().unwrap().text().unwrap();
     assert!(!info.contains("private-fixture-user"));
     assert!(!info.contains(&leases[0].key));
+    assert!(!info.contains(&leases[0].owner_token));
+    assert_eq!(
+        client
+            .delete(&room)
+            .bearer_auth(&leases[1].owner_token)
+            .send()
+            .unwrap()
+            .status(),
+        404
+    );
+    assert_eq!(
+        client
+            .get(format!("{room}/status"))
+            .bearer_auth(&leases[0].owner_token)
+            .send()
+            .unwrap()
+            .status(),
+        200
+    );
     // Beyond the previous six-per-account and 120-total limits, with no credentials.
     for _ in 0..131 {
         let challenge = crate::multiplayer::secret();
@@ -525,7 +535,7 @@ fn twenty_eight_host_slots_do_not_limit_public_guests() {
                 "{}/v1/frpc/rooms/{}",
                 fixture.endpoint, leases[0].room
             ))
-            .bearer_auth(&tokens[0])
+            .bearer_auth(&leases[0].owner_token)
             .send()
             .unwrap()
             .status(),
@@ -534,7 +544,6 @@ fn twenty_eight_host_slots_do_not_limit_public_guests() {
     assert_eq!(
         client
             .post(&rooms)
-            .bearer_auth(&tokens[28])
             .json(&selection)
             .send()
             .unwrap()
@@ -544,13 +553,9 @@ fn twenty_eight_host_slots_do_not_limit_public_guests() {
 }
 
 #[test]
-fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_revocation() {
+fn anonymous_host_and_guest_streams_reject_forgery_and_close_with_the_room() {
     let fixture = Fixture::new();
     let members = fixture.directory.path().join("members.json");
-    let mut list = AccessList::load(&members).unwrap();
-    let (host_id, host_token) = issue_host(&mut list).unwrap();
-    assert_ne!(host_id, fixture.alice.id);
-    crate::store::write_json(&members, &list).unwrap();
     let _control_port = fixture.control.local_addr().unwrap();
     let game = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = game.local_addr().unwrap().port();
@@ -587,7 +592,7 @@ fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_re
     let cancel = Arc::new(AtomicBool::new(false));
     let report = Arc::new(|_: String| {});
     // The TCP fixture uses an ephemeral game port; the public entry's fixed-port rule is tested above.
-    let host = RelayClient::new(&fixture.endpoint, &host_token)
+    let host = RelayClient::public(&fixture.endpoint)
         .unwrap()
         .host_frpc_local(
             port,
@@ -639,8 +644,10 @@ fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_re
     let mut reply = [0; 13];
     stream.read_exact(&mut reply).unwrap();
     assert_eq!(&reply, b"still allowed");
-    list.host_keys.retain(|key| key.id != host_id);
+    list.members
+        .retain(|member| member.identity.id != fixture.alice.id);
     crate::store::write_json(&members, &list).unwrap();
+    host.stop();
     let deadline = Instant::now() + Duration::from_secs(7);
     while guest.running() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));

@@ -16,7 +16,7 @@
 ## 上传到 1Panel
 
 1. 上传前备份服务器现有的 `relay-data/frpc-nodes.json`（如果存在）。
-2. 解压私有池包，把其中的 `frpc-nodes.json` 上传为 `/opt/nscl-relay/relay-data/frpc-nodes.json`。保留现有 `members.json`；池包不包含房主名单。
+2. 解压私有池包，把其中的 `frpc-nodes.json` 上传为 `/opt/nscl-relay/relay-data/frpc-nodes.json`。新服务只使用节点池，不需要账号或开房码文件。
 3. 在 1Panel 终端修正服务用户的读取权限：
 
 ```sh
@@ -35,7 +35,7 @@ curl --fail http://127.0.0.1:17630/v1/frpc/health
 curl --fail https://你的验证域名/v1/frpc/health
 ```
 
-启动器默认使用 `https://auth.minguncle.cn`，备用为 `https://auth.northstarmc.cn`，点击「测试验证服务」可检查后端能力。两个域名应指向同一份服务实例。FRP 节点域名由池分配。房主凭证直接发放，无需登记账号；游戏开房端口固定为 25565。
+启动器默认使用 `https://auth.minguncle.cn`，备用为 `https://auth.northstarmc.cn`，点击「测试联机服务」可检查后端能力。两个域名应指向同一份服务实例。FRP 节点域名由池分配。无需开房码或账号登记，游戏开房端口固定为 25565，最多同时开放 28 个房间。
 
 池文件包含平台认证信息，只存放在私有服务目录；不要放入网站静态目录、Git 或公开下载链接。
 

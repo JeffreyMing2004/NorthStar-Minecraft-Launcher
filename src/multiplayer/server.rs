@@ -57,6 +57,15 @@ pub struct RelayServer {
 }
 
 impl RelayServer {
+    pub fn for_frpc(catalog: &Path) -> Result<Self> {
+        super::frpc::Catalog::load(catalog)?;
+        Ok(Self {
+            access_file: PathBuf::new(),
+            state: Mutex::new(State::default()),
+            changed: Condvar::new(),
+            frpc_catalog: Some(catalog.into()),
+        })
+    }
     pub fn new(access_file: &Path) -> Result<Self> {
         AccessList::load(access_file)?;
         Ok(Self {
@@ -144,9 +153,10 @@ impl RelayServer {
                 .iter()
                 .any(|m| m.identity == member.identity && m.token_sha256 == member.token_sha256)
         };
-        state
-            .rooms
-            .retain(|_, room| room.seen.elapsed() < EXPIRES && access.host_active(&room.owner));
+        state.rooms.retain(|_, room| {
+            room.seen.elapsed() < EXPIRES
+                && (room.direct.is_some() || access.host_active(&room.owner))
+        });
         let rooms: Vec<_> = state.rooms.keys().cloned().collect();
         state.connections.retain(|_, c| {
             c.seen.elapsed() < EXPIRES && rooms.contains(&c.room) && valid(&c.guest)

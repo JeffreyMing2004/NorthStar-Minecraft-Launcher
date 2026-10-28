@@ -39,6 +39,14 @@ impl RelayClient {
     pub fn public(endpoint: &str) -> Result<Self> {
         Self::build(endpoint, String::new())
     }
+    pub(super) fn room_client(&self, owner_token: &str) -> Result<Self> {
+        if owner_token.len() != 64 || !owner_token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("房间管理信息无效，请重新创建房间。".into());
+        }
+        let mut client = self.clone();
+        client.token = owner_token.into();
+        Ok(client)
+    }
     pub fn new(endpoint: &str, token: &str) -> Result<Self> {
         if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("房主凭证应为管理员发放的 64 位开房码。".into());
@@ -119,8 +127,10 @@ impl RelayClient {
         {
             return Err("联机验证服务版本不兼容或节点池未就绪。".into());
         }
-        if !info.host_codes || info.game_port != super::frpc::GAME_PORT {
-            return Err("验证服务需要更新：当前后端尚未支持免登记开房码或固定 25565 端口。".into());
+        if !info.anonymous_hosts || info.game_port != super::frpc::GAME_PORT {
+            return Err(
+                "联机服务需要更新：当前后端尚未支持免开房码创建房间或固定 25565 端口。".into(),
+            );
         }
         Ok(info)
     }

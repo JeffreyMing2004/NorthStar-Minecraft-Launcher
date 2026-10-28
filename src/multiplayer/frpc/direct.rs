@@ -115,11 +115,10 @@ impl RelayClient {
     }
     pub fn host_frpc(
         &self,
-        account: &Account,
+        _account: &Account,
         game_port: u16,
         options: HostOptions,
     ) -> Result<FrpcSession> {
-        self.authorize(account)?;
         self.host_frpc_room(game_port, options)
     }
 
@@ -140,7 +139,7 @@ impl RelayClient {
         if !options.executable.is_file() {
             return Err("请先选择本地 frpc 程序，下载地址可稍后配置。".into());
         }
-        self.checked(Method::GET, "v1/frpc/host")?;
+        self.check_service()?;
         let target = SocketAddr::from(([127, 0, 0, 1], game_port));
         if game_port == 0 || TcpStream::connect_timeout(&target, Duration::from_secs(2)).is_err() {
             return Err(
@@ -174,6 +173,7 @@ impl RelayClient {
             })
             .unwrap();
             let lease: Lease = self.frpc_json(Method::POST, "v1/frpc/rooms", selection)?;
+            let owner = self.room_client(&lease.owner_token)?;
             if !valid_id(&lease.room)
                 || lease.key.len() != 64
                 || !lease.key.bytes().all(|b| b.is_ascii_hexdigit())
@@ -181,7 +181,7 @@ impl RelayClient {
                 return Err("frpc 房间租约无效。".into());
             }
             if let Err(error) = lease.route.validate() {
-                self.release_room(&lease.room);
+                owner.release_room(&lease.room);
                 return Err(error);
             }
             (options.report)(format!(
@@ -198,14 +198,14 @@ impl RelayClient {
                 Ok(process) => {
                     if options.cancel.load(Ordering::Relaxed) {
                         drop(process);
-                        self.release_room(&lease.room);
+                        owner.release_room(&lease.room);
                         return Err("操作已取消。".into());
                     }
                     let latency = results
                         .iter()
                         .find(|r| r.node.id == lease.route.info.id)
                         .map(|r| r.latency_ms);
-                    return self.finish_host(
+                    return owner.finish_host(
                         lease,
                         process,
                         listener,
@@ -215,7 +215,7 @@ impl RelayClient {
                     );
                 }
                 Err(failure) => {
-                    self.release_room(&lease.room);
+                    owner.release_room(&lease.room);
                     (options.report)(failure.message());
                     if failure == super::process::Failure::Cancelled {
                         return Err(failure.message());
@@ -606,9 +606,9 @@ fn valid_id(value: &str) -> bool {
 }
 fn frpc_error(status: u16) -> String {
     match status {
-        401 | 403 => "当前账号的联机凭证无效或权限已撤销。",
+        401 | 403 => "房间管理连接已失效，请重新创建房间。",
         404 => "frpc 房间不存在或已关闭。",
-        409 => "暂无空闲 frpc 隧道（最多 28 个房主），或此凭证已有房间。",
+        409 => "28 个开房名额或可用隧道已用完，请等待房间关闭后重试。",
         429 => "联机连接数已达上限，请稍后重试。",
         503 => "管理员尚未配置 frpc 节点，或授权服务暂不可用。",
         _ => "frpc 授权服务请求失败。",

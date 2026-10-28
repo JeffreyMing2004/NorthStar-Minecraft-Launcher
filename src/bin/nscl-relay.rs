@@ -1,6 +1,6 @@
 use nscl::{
     accounts::AccountKind,
-    multiplayer::{AccessList, issue_host, issue_member, server::RelayServer},
+    multiplayer::{AccessList, issue_member, server::RelayServer},
 };
 use std::{
     net::SocketAddr,
@@ -21,9 +21,24 @@ fn main() -> std::process::ExitCode {
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.len() < 2 {
-        return Err("用法：nscl-relay init <凭证文件> | issue-host <路径> [数量] | revoke-host <路径> <凭证编号> | list <路径> | import-frpc <原始配置> <私有JSON路径> | probe-frpc <私有JSON路径> | install-frpc <安装目录> | serve <凭证文件> [127.0.0.1:17630] [frpc私有JSON路径]；旧版账号凭证命令 add-offline / add-microsoft / remove 继续兼容。".into());
+        return Err("用法：nscl-relay serve-frpc <私有节点JSON> [127.0.0.1:17630] | import-frpc <原始配置> <私有JSON路径> | probe-frpc <私有JSON路径> | install-frpc <安装目录>；新联机服务无需开房码或名单文件，旧中继管理命令保留兼容。".into());
     }
     let path = Path::new(&args[1]);
+    if args[0] == "serve-frpc" && (args.len() == 2 || args.len() == 3) {
+        let address: SocketAddr = args
+            .get(2)
+            .map(String::as_str)
+            .unwrap_or("127.0.0.1:17630")
+            .parse()
+            .map_err(|_| "监听地址无效。")?;
+        if !address.ip().is_loopback() {
+            return Err("服务仅允许监听回环地址，请通过 HTTPS 反向代理发布。".into());
+        }
+        let service = Arc::new(RelayServer::for_frpc(path)?);
+        let server = tiny_http::Server::http(address).map_err(|_| "无法监听联机服务端口。")?;
+        println!("联机服务监听 {address}，无需开房码，最多同时开放 28 个房间。");
+        return service.serve(server, Arc::new(AtomicBool::new(false)));
+    }
     if args[0] == "install-frpc" && args.len() == 2 {
         let executable = nscl::multiplayer::frpc::download::install(
             path,
@@ -78,13 +93,9 @@ fn run() -> Result<(), String> {
     if args[0] == "list" {
         let list = AccessList::load(path)?;
         println!(
-            "独立房主凭证 {} 个，旧版账号凭证 {} 个；同时开房上限 28 个。",
-            list.host_keys.len(),
+            "旧中继账号 {} 个；新 frpc 联机不使用账号名单。",
             list.members.len()
         );
-        for key in &list.host_keys {
-            println!("房主凭证编号：{}", key.id);
-        }
         for member in list.members {
             println!(
                 "{} {} {:?}",
@@ -120,36 +131,6 @@ fn edit(args: &[String], path: &Path) -> Result<(), String> {
     }
     let mut list = AccessList::load(path)?;
     match args[0].as_str() {
-        "issue-host" if args.len() == 2 || args.len() == 3 => {
-            let count = args
-                .get(2)
-                .map(|v| v.parse::<usize>())
-                .transpose()
-                .map_err(|_| "凭证数量应为 1–1000。")?
-                .unwrap_or(1);
-            if !(1..=1000).contains(&count) {
-                return Err("凭证数量应为 1–1000。".into());
-            }
-            let issued = (0..count)
-                .map(|_| issue_host(&mut list))
-                .collect::<Result<Vec<_>, _>>()?;
-            nscl::store::write_json(path, &list)?;
-            println!(
-                "房主凭证已生成，可直接发放，无需登记玩家名或 UUID。请私下交付开房码（仅显示本次）："
-            );
-            for (id, token) in issued {
-                println!("编号：{id}\n开房码：{token}");
-            }
-        }
-        "revoke-host" if args.len() == 3 => {
-            let old = list.host_keys.len();
-            list.host_keys.retain(|key| key.id != args[2]);
-            if old == list.host_keys.len() {
-                return Err("没有该编号的房主凭证。".into());
-            }
-            nscl::store::write_json(path, &list)?;
-            println!("已撤销该开房码，其房间将关闭并释放隧道。");
-        }
         "add-offline" if args.len() == 3 => {
             let token = issue_member(&mut list, AccountKind::Offline, "", &args[2])?;
             nscl::store::write_json(path, &list)?;

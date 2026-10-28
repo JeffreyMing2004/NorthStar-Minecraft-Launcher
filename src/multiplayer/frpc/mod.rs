@@ -23,6 +23,8 @@ pub struct ServiceInfo {
     #[serde(default)]
     pub host_codes: bool,
     #[serde(default)]
+    pub anonymous_hosts: bool,
+    #[serde(default)]
     pub game_port: u16,
 }
 pub(crate) use process::FrpcProcess;
@@ -38,6 +40,7 @@ pub(crate) struct CreateRoom {
 pub(crate) struct Lease {
     pub room: String,
     pub key: String,
+    pub owner_token: String,
     pub route: Route,
 }
 #[derive(Serialize, Deserialize)]

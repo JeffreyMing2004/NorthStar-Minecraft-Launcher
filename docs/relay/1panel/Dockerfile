@@ -15,4 +15,4 @@ COPY --from=build /build/target/debug/nscl-relay /usr/local/bin/nscl-relay
 USER 10001:10001
 WORKDIR /data
 ENTRYPOINT ["nscl-relay"]
-CMD ["serve", "/data/members.json", "127.0.0.1:17630", "/data/frpc-nodes.json"]
+CMD ["serve-frpc", "/data/frpc-nodes.json", "127.0.0.1:17630"]
