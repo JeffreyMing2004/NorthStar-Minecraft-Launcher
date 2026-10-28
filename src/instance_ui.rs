@@ -35,6 +35,7 @@ pub struct BrowserState {
     pub tab: DetailTab,
     pub creating: bool,
     pub files: crate::instance_files::Browser,
+    pub export: Option<crate::instance_export::ExportDialog>,
     root: Option<PathBuf>,
     archived: Option<Vec<(String, Instance)>>,
 }
@@ -317,6 +318,7 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
     }
     task_status(ui, app);
     create_dialog(ui.ctx(), app, &root, editable);
+    crate::instance_export::show(ui.ctx(), app);
 }
 
 fn filter_label(filter: Filter) -> &'static str {
@@ -647,7 +649,20 @@ fn details(
         if download_button(ui, "归档实例", editable) {
             app.archive_confirm = Some(instance.clone());
         }
+        if download_button(ui, "导出整合包", editable && installed.is_some()) {
+            app.instance_browser.export = Some(crate::instance_export::ExportDialog::new(instance));
+        }
     });
+    if let Some(path) = &app.service.exported_pack {
+        ui.add_space(8.0);
+        app::hint(ui, &format!("已导出：{}", path.display()));
+        if download_button(ui, "打开导出目录", true)
+            && let Some(parent) = path.parent()
+            && let Err(error) = open::that(parent)
+        {
+            app.service.error = Some(format!("打开导出目录失败：{error}"));
+        }
+    }
     if !editable {
         ui.add_space(12.0);
         app::hint(ui, "游戏或任务运行中，实例配置暂时锁定。");

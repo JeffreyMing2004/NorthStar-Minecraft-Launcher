@@ -47,6 +47,16 @@
 
 支持 Modrinth v1 格式，识别 `minecraft`、`forge`、`fabric-loader`、`neoforge` 依赖。未知组件、Quilt、多个加载器或没有游戏版本的包会给出明确错误。仅安装适用于客户端的文件，跳过 `client: unsupported` 和 `server-overrides/`；按用户选择处理 `client: optional`。公共 `overrides/` 先应用，`client-overrides/` 后应用。
 
+## 导出整合包
+
+在「版本管理 → 选择实例 → 概览」点击「导出整合包」，填写名称、版本和可选简介，再选择新的 `.mrpack` 保存路径。Windows 支持原生保存对话框，也可直接输入完整路径。游戏或其他任务运行时暂不能导出；压缩在后台进行，支持查看进度与取消。完成后可打开导出目录。
+
+导出遵循 [Modrinth v1 格式](https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack)，记录 Minecraft 及 Forge、Fabric 或 NeoForge 的精确版本。本地文件直接放入 `client-overrides/`，无需联网查询模组；导入时仍需下载游戏与加载器。导出的包可拖入开始页或下载页重新安装为独立实例。
+
+默认包含 `mods/`、`config/`、`defaultconfigs/`、`kubejs/`、`scripts/`、`resourcepacks/`、`shaderpacks/`、`resources/`、`patchouli_books/`、`global_packs/` 和根目录的 `icon.png`、`pack.png`，保留 `.disabled` 模组。可另外勾选 `saves/` 存档，以及 `options.txt`、`optionsof.txt`、`optionsshaders.txt` 和 `servers.dat` 游戏设置与服务器列表。其他目录和文件不自动导出，包括账号、启动器配置、日志、截图、缓存、游戏本体与依赖库；需要的自定义内容应放入上述内容目录。共享或沿用版本目录的实例会读取实际游戏目录。
+
+保存位置须在导出内容目录之外，且文件不能已存在。拒绝符号链接、目录联接、非法路径、大小写冲突及超限文件；压缩包限 512 MiB，内容限 4 GiB，与本地导入限制一致。失败或取消时清理临时文件和本次尚未完成的输出，保留实例原文件与已有导出包。
+
 ## 校验与失败恢复
 
 模组安装、检查、更新与卸载使用实例的实际游戏目录：启用版本隔离时写入 `instances/<实例 ID>/mods/`，关闭时写入游戏根目录的 `mods/`，登记文件也保存在对应目录。修改隔离模式后，原来的安装与卸载方案会失效，需要重新生成。共享模式下的模组需要同时兼容使用该目录的游戏版本。整合包始终使用独立目录，不受新实例默认共享选项影响。

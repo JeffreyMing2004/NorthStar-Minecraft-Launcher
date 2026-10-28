@@ -411,7 +411,7 @@ fn archive(entries: &[(&str, Vec<u8>)]) -> Vec<u8> {
     writer.finish().unwrap().into_inner()
 }
 
-fn vanilla(server: &Server) {
+pub(super) fn vanilla(server: &Server) {
     let client = b"vanilla client";
     let index = serde_json::to_vec(&json!({"objects":{}})).unwrap();
     let metadata = json!({"id":"test-1","type":"release","mainClass":"test.Main","downloads":{"client":{"url":format!("{}/client.jar",server.base),"sha1":hashes(client)["sha1"],"size":client.len()}},"assetIndex":{"id":"test-assets","url":format!("{}/index.json",server.base),"sha1":hashes(&index)["sha1"],"size":index.len()},"libraries":[],"arguments":{"jvm":["-cp","${classpath}"],"game":[]},"javaVersion":{"majorVersion":17}});

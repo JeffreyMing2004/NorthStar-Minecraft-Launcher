@@ -119,6 +119,33 @@ fn game_version(value: &Value) -> String {
         .unwrap_or_else(|| value["id"].as_str().unwrap_or(""))
         .to_owned()
 }
+/// Resolve the actual Minecraft version even when an imported profile has a custom name.
+pub fn base_game_version(root: &Path, id: &str) -> Result<String> {
+    let (value, _) = profile(root, id, &mut BTreeSet::new())?;
+    let mut version = game_version(&value);
+    // The merged profile uses the child's display ID. Follow inheritance when no
+    // explicit game version survived the merge (common for renamed vanilla profiles).
+    if version == id {
+        let mut current = id.to_owned();
+        for _ in 0..16 {
+            let directory = version_directory(root, &current)?;
+            let source = read_value(&directory.join(format!("{current}.json")))?;
+            match source["inheritsFrom"]
+                .as_str()
+                .or_else(|| source["jar"].as_str())
+            {
+                Some(parent) => current = parent.to_owned(),
+                None => {
+                    version = game_version(&source);
+                    break;
+                }
+            }
+        }
+    }
+    super::validate_id(&version)?;
+    Ok(version)
+}
+
 fn loader(value: &Value) -> Option<LoaderVersion> {
     let libraries = value["libraries"].as_array()?;
     let patch = |id: &str| {

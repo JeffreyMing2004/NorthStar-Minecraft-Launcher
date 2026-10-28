@@ -1,6 +1,52 @@
 use crate::content::LocalKind;
 use std::path::PathBuf;
 
+pub fn save_pack(filename: &str) -> Result<Option<PathBuf>, String> {
+    #[cfg(windows)]
+    {
+        use std::{ffi::OsString, os::windows::ffi::OsStringExt};
+        use windows_sys::Win32::UI::Controls::Dialogs::{
+            CommDlgExtendedError, GetSaveFileNameW, OFN_EXPLORER, OFN_NOCHANGEDIR,
+            OFN_PATHMUSTEXIST, OPENFILENAMEW,
+        };
+        let filter: Vec<u16> = "Modrinth 整合包\0*.mrpack\0\0".encode_utf16().collect();
+        let title: Vec<u16> = "导出整合包（保存为新文件）\0".encode_utf16().collect();
+        let extension: Vec<u16> = "mrpack\0".encode_utf16().collect();
+        let mut buffer = vec![0u16; 32768];
+        for (target, value) in buffer.iter_mut().take(32767).zip(filename.encode_utf16()) {
+            *target = value;
+        }
+        let mut options = OPENFILENAMEW {
+            lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
+            lpstrFilter: filter.as_ptr(),
+            nFilterIndex: 1,
+            lpstrTitle: title.as_ptr(),
+            lpstrDefExt: extension.as_ptr(),
+            lpstrFile: buffer.as_mut_ptr(),
+            nMaxFile: buffer.len() as u32,
+            Flags: OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
+            ..Default::default()
+        };
+        // SAFETY: all pointers refer to live UTF-16 buffers with the capacities given above.
+        if unsafe { GetSaveFileNameW(&mut options) } == 0 {
+            // SAFETY: reports the last dialog error on the calling thread.
+            let error = unsafe { CommDlgExtendedError() };
+            return if error == 0 {
+                Ok(None)
+            } else {
+                Err(format!("打开保存对话框失败：{error}"))
+            };
+        }
+        let end = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+        Ok(Some(PathBuf::from(OsString::from_wide(&buffer[..end]))))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = filename;
+        Err("请在保存位置中输入 .mrpack 文件的完整路径。".into())
+    }
+}
+
 pub fn resources(kind: LocalKind) -> Result<Vec<PathBuf>, String> {
     #[cfg(windows)]
     {

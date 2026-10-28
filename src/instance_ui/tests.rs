@@ -63,6 +63,77 @@ fn populated() -> (tempfile::TempDir, NsclApp, Context) {
     (root, app, ctx)
 }
 
+#[test]
+fn pack_export_dialog_opens_for_the_browsed_instance_with_safe_defaults() {
+    let (_root, mut app, ctx) = populated();
+    click(&ctx, &mut app, "导出整合包");
+    assert!(app.instance_browser.export.is_some());
+    let output = frame(&ctx, &mut app, Vec2::new(960.0, 720.0), vec![]);
+    for label in [
+        "来源实例：Fabric world",
+        "包含存档",
+        "包含游戏设置与服务器列表",
+        "保存为新文件（.mrpack）",
+        "开始导出",
+    ] {
+        text_rect(&output, label);
+    }
+    assert_eq!(app.service.selected, "vanilla");
+    assert!(!app.service.busy());
+    output.drop_without_applying_deltas();
+}
+
+#[test]
+fn pack_export_service_uses_the_browsed_instance_and_reports_saved_path() {
+    let (root, mut app, ctx) = populated();
+    let instance = app
+        .service
+        .instances
+        .iter()
+        .find(|i| i.id == "modded")
+        .unwrap()
+        .clone();
+    let directory = instance.game_directory(root.path()).unwrap();
+    std::fs::create_dir_all(directory.join("config")).unwrap();
+    std::fs::write(directory.join("config/export.txt"), b"test").unwrap();
+    let output = root.path().join("service.mrpack");
+    let options = crate::content::PackExportOptions::for_instance(&instance);
+    app.service.task = crate::service::Task::Content;
+    app.service.export_pack(
+        &instance,
+        options.clone(),
+        output.clone(),
+        &app.settings,
+        &ctx,
+    );
+    assert!(!output.exists());
+    app.service.task = crate::service::Task::Idle;
+    app.service.game = Some((1, root.path().join("game.log")));
+    app.service.export_pack(
+        &instance,
+        options.clone(),
+        output.clone(),
+        &app.settings,
+        &ctx,
+    );
+    assert!(!app.service.busy());
+    app.service.game = None;
+    app.service
+        .export_pack(&instance, options, output.clone(), &app.settings, &ctx);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while app.service.busy() && std::time::Instant::now() < deadline {
+        app.service.poll(&app.settings);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!app.service.busy());
+    assert!(app.service.error.is_none(), "{:?}", app.service.error);
+    assert_eq!(app.service.exported_pack.as_ref(), Some(&output));
+    assert_eq!(app.service.selected, "vanilla");
+    let plan = crate::content::inspect_pack(root.path(), &output).unwrap();
+    assert_eq!(plan.loader.as_ref().unwrap().kind, LoaderKind::Fabric);
+    assert_eq!(plan.override_count(), 1);
+}
+
 fn frame(ctx: &Context, app: &mut NsclApp, size: Vec2, events: Vec<Event>) -> FullOutput {
     let mut output = ctx.run_ui(
         RawInput {

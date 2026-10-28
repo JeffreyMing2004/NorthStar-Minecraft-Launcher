@@ -1,4 +1,5 @@
 mod download;
+mod export;
 mod files;
 mod local;
 mod manager;
@@ -7,6 +8,7 @@ mod pack;
 mod platform;
 
 pub use download::download_mod;
+pub use export::{PackExportOptions, export_pack};
 pub use local::{
     LocalAction, LocalCatalog, LocalEntry, LocalKind, change_local, import_local, list_local,
     local_directory,

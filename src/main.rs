@@ -8,6 +8,7 @@ mod content_page;
 mod download_flow;
 mod error_ui;
 mod file_picker;
+mod instance_export;
 mod instance_files;
 mod instance_icons;
 mod instance_mods;

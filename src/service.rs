@@ -15,6 +15,7 @@ use std::{
 };
 
 pub mod content;
+mod export;
 #[cfg(test)]
 mod isolation_tests;
 #[cfg(test)]
@@ -47,6 +48,7 @@ enum Event {
     JavaChecked(Result<crate::java::JavaRuntime, String>),
     JavaInstalled(crate::java::JavaRuntime),
     Content(content::ContentEvent),
+    PackExported(PathBuf),
     Local(resources::LocalEvent),
 }
 
@@ -72,6 +74,7 @@ pub struct GameService {
     pub java_status: String,
     pub java_install_major: u32,
     pub content: ContentState,
+    pub exported_pack: Option<PathBuf>,
     pub local: resources::LocalState,
     versions_requested: bool,
     loaders_requested: Option<(String, LoaderKind)>,
@@ -113,6 +116,7 @@ impl GameService {
             java_status: String::new(),
             java_install_major: 21,
             content: ContentState::default(),
+            exported_pack: None,
             local: resources::LocalState::default(),
             versions_requested: false,
             loaders_requested: None,
@@ -248,6 +252,11 @@ impl GameService {
                     self.java_runtimes.push(runtime);
                 }
                 Event::Content(event) => self.apply_content(event, settings),
+                Event::PackExported(path) => {
+                    self.task = Task::Idle;
+                    self.notice = format!("整合包已导出：{}", path.display());
+                    self.exported_pack = Some(path);
+                }
                 Event::Local(event) => self.apply_local(event),
             }
         }
