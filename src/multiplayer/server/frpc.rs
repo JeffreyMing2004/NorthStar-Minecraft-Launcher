@@ -51,7 +51,7 @@ impl RelayServer {
             (method.clone(), parts.as_slice()),
             (
                 Method::Get,
-                ["v1", "frpc", "nodes"] | ["v1", "frpc", "rooms", _]
+                ["v1", "frpc", "health"] | ["v1", "frpc", "nodes"] | ["v1", "frpc", "rooms", _]
             ) | (
                 Method::Post,
                 ["v1", "frpc", "rooms", _, "tickets"]
@@ -81,6 +81,22 @@ impl RelayServer {
         state: &mut State,
     ) {
         match (method, parts) {
+            (Method::Get, ["v1", "frpc", "health"]) => {
+                let Some(catalog) = self.catalog() else {
+                    reply(request, 503, b"frpc catalog unavailable".to_vec());
+                    return;
+                };
+                json(
+                    request,
+                    &crate::multiplayer::frpc::ServiceInfo {
+                        service: crate::multiplayer::frpc::SERVICE_NAME.into(),
+                        protocol: 1,
+                        max_hosts: crate::multiplayer::frpc::MAX_HOSTS,
+                        nodes: catalog.nodes.len(),
+                        tunnels: catalog.nodes.iter().map(|n| n.proxies.len()).sum(),
+                    },
+                );
+            }
             (Method::Get, ["v1", "frpc", "nodes"]) => {
                 let Some(catalog) = self.catalog() else {
                     reply(request, 503, b"frpc catalog unavailable".to_vec());

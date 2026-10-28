@@ -9,6 +9,15 @@ pub use catalog::{Catalog, Node, NodeInfo, Proxy, Route};
 pub use direct::{FrpcSession, HostOptions};
 pub use probe::{NodeLatency, measure_nodes};
 pub const MAX_HOSTS: usize = 28;
+pub const SERVICE_NAME: &str = "northstar-multiplayer";
+#[derive(Serialize, Deserialize)]
+pub struct ServiceInfo {
+    pub service: String,
+    pub protocol: u32,
+    pub max_hosts: usize,
+    pub nodes: usize,
+    pub tunnels: usize,
+}
 pub(crate) use process::FrpcProcess;
 use serde::{Deserialize, Serialize};
 

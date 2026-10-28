@@ -6,9 +6,18 @@ license = "GPL-3.0-only"
 repository = "https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher"
 default-run = "nscl"
 
+[features]
+default = ["gui"]
+gui = ["dep:eframe", "dep:egui"]
+
+[[bin]]
+name = "nscl"
+path = "src/main.rs"
+required-features = ["gui"]
+
 [dependencies]
-eframe = { version = "0.37.0", features = ["glow"] }
-egui = "0.37"
+eframe = { version = "0.37.0", features = ["glow"], optional = true }
+egui = { version = "0.37", optional = true }
 log = "0.4"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 serde = { version = "1.0.229", features = ["derive"] }

@@ -106,6 +106,22 @@ impl RelayClient {
         Ok(member)
     }
 
+    pub fn check_service(&self) -> Result<super::frpc::ServiceInfo> {
+        let response = self.checked(Method::GET, "v1/frpc/health")?;
+        let info: super::frpc::ServiceInfo = response
+            .json()
+            .map_err(|_| "该地址未返回联机验证服务信息，请填写自建验证服务的 HTTPS 地址。")?;
+        if info.service != super::frpc::SERVICE_NAME
+            || info.protocol != 1
+            || info.max_hosts != super::frpc::MAX_HOSTS
+            || info.nodes == 0
+            || info.tunnels == 0
+        {
+            return Err("联机验证服务版本不兼容或节点池未就绪。".into());
+        }
+        Ok(info)
+    }
+
     pub fn host(&self, account: &Account, game_port: u16) -> Result<RelaySession> {
         self.authorize(account)?;
         if game_port == 0 {

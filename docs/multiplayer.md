@@ -72,6 +72,8 @@ target/debug/nscl-relay.exe remove relay-data/members.json UUID
 
 ## 发布 HTTPS 与 88frp
 
+使用 1Panel 的服务器可直接使用 [1Panel 部署包和操作说明](relay/1panel/README.md)，在自己的服务器上运行验证服务，再由 OpenResty 提供 HTTPS。验证服务地址和 FRP 节点地址用途不同：前者填写到启动器，后者从映射池自动获取。
+
 1. 将平台导出的原始多节点配置保存到 `relay-data/frpc-source.toml`，运行下面的导入命令；已有私有 JSON 时可以直接使用。
 2. 使用节点目录启动授权服务。Linux 使用无 `.exe` 的程序。服务仍只允许监听回环地址。
 3. 用 [nginx HTTPS 示例](relay/nginx.example.conf) 或同等代理配置有效域名证书，向玩家提供 HTTPS **授权服务地址**。可用独立管理隧道发布该入口，但不能占用房间池中同一条隧道。[旧网关发布示例](relay/frpc.88frp.example.toml) 只用于此管理入口，与房主电脑运行的 frpc 分开。

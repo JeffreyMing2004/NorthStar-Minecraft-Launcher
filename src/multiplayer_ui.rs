@@ -23,6 +23,7 @@ enum Completion {
         program: Option<PathBuf>,
     },
     Downloaded(Result<PathBuf, String>),
+    Checked(Result<String, String>),
 }
 impl Session {
     fn room(&self) -> &str {
@@ -88,6 +89,10 @@ impl MultiplayerPage {
                         return;
                     }
                     let result = match completion {
+                        Completion::Checked(result) => {
+                            self.message = result.unwrap_or_else(|error| error);
+                            return;
+                        }
                         Completion::Downloaded(result) => {
                             match result {
                                 Ok(path) => {
@@ -160,6 +165,35 @@ impl MultiplayerPage {
             };
             let result = frpc_download::install(&frpc_download::directory(), &cancel, &report);
             let _ = sender.send(Completion::Downloaded(result));
+            ctx.request_repaint();
+        });
+    }
+
+    fn check_service(&mut self, endpoint: String, ctx: &egui::Context) {
+        if self.pending.is_some() || self.session.is_some() {
+            return;
+        }
+        let client = match RelayClient::public(&endpoint) {
+            Ok(client) => client,
+            Err(error) => {
+                self.message = error;
+                return;
+            }
+        };
+        let (sender, receiver) = mpsc::channel();
+        self.pending = Some(receiver);
+        self.pending_cancel = Some(Arc::new(AtomicBool::new(false)));
+        self.message = "正在检查验证服务……".into();
+        self.progress = Arc::new(Mutex::new(self.message.clone()));
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let result = client.check_service().map(|info| {
+                format!(
+                    "验证服务已就绪：{} 个节点、{} 条隧道，最多 {} 个房主同时开房。",
+                    info.nodes, info.tunnels, info.max_hosts
+                )
+            });
+            let _ = sender.send(Completion::Checked(result));
             ctx.request_repaint();
         });
     }
@@ -289,10 +323,14 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
         ui.spacing_mut().item_spacing.y = 10.0;
         app::body(ui, &account.as_ref().map(|a| format!("当前账号：{}", a.name)).unwrap_or_else(|| "创建房间需选择账号；加入好友房间无需选择。".into()));
         ui.add_enabled_ui(!busy, |ui| {
-            ui.label("联机服务地址");
+            ui.label("验证服务地址（自建服务器）");
             ui.add(egui::TextEdit::singleline(&mut app.settings.multiplayer_endpoint)
-                .hint_text("管理员提供的 https://域名:端口")
+                .hint_text("例如 https://auth.example.com")
                 .desired_width(ui.available_width()));
+            app::hint(ui,"填写部署在你服务器上的验证服务 HTTPS 地址。88frp 的节点 IP、域名和端口由映射池自动分配。");
+            if download_button(ui,"测试验证服务",true) {
+                app.multiplayer.check_service(app.settings.multiplayer_endpoint.clone(),ui.ctx());
+            }
             ui.label("房主凭证（仅创建房间需要）");
             ui.add(egui::TextEdit::singleline(&mut app.multiplayer.token).password(true)
                 .hint_text("由联机服务管理员提供")
@@ -553,7 +591,8 @@ mod tests {
         for label in [
             "联机",
             "当前账号：Alice",
-            "联机服务地址",
+            "验证服务地址（自建服务器）",
+            "测试验证服务",
             "房主凭证（仅创建房间需要）",
             "创建联机房间",
             "加入联机房间",

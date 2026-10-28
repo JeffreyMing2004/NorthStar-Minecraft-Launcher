@@ -331,6 +331,31 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn public_service_check_reports_readiness_without_credentials() {
+    let fixture = Fixture::new();
+    let client = RelayClient::public(&fixture.endpoint).unwrap();
+    let info = client.check_service().unwrap();
+    assert_eq!(info.service, SERVICE_NAME);
+    assert_eq!(
+        (info.protocol, info.max_hosts, info.nodes, info.tunnels),
+        (1, 28, 1, 1)
+    );
+    let body = reqwest::blocking::Client::builder()
+        .no_proxy()
+        .build()
+        .unwrap()
+        .get(format!("{}/v1/frpc/health", fixture.endpoint))
+        .send()
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(!body.contains("private-fixture-user"));
+    assert!(!body.contains("fixture-proxy"));
+    fs::remove_file(fixture.directory.path().join("nodes.json")).unwrap();
+    assert!(client.check_service().is_err());
+}
+
+#[test]
 fn service_allocates_exclusive_tunnels_hides_credentials_and_frees_leases() {
     let fixture = Fixture::new();
     let body = serde_json::to_vec(&CreateRoom {

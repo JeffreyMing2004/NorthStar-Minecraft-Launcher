@@ -1,0 +1,31 @@
+services:
+  relay:
+    image: nscl-relay:debug
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Linux host networking keeps the service's loopback-only binding.
+    # Publish HTTPS through 1Panel/OpenResty on the same host.
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./relay-data:/data
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "3", "http://127.0.0.1:17630/v1/frpc/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "3"

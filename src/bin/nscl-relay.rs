@@ -62,7 +62,7 @@ fn run() -> Result<(), String> {
             .parse()
             .map_err(|_| "监听地址无效。")?;
         if !address.ip().is_loopback() {
-            return Err("授权服务仅允许监听回环地址，请通过 HTTPS 反向代理和 88frp 发布。".into());
+            return Err("验证服务仅允许监听回环地址，请通过服务器上的 HTTPS 反向代理发布。".into());
         }
         let mut service = RelayServer::new(path)?;
         if let Some(catalog) = args.get(3) {

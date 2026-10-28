@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "info": {
+        "id": "replace-node-id",
+        "name": "替换为节点名称",
+        "server_addr": "127.0.0.1",
+        "server_port": 1210,
+        "public_host": "frp.example.com"
+      },
+      "user": "REPLACE_WITH_PROVIDER_USER",
+      "login_fail_exit": false,
+      "heartbeat_interval": 10,
+      "heartbeat_timeout": 60,
+      "protocol": null,
+      "proxies": [
+        {
+          "name": "REPLACE_WITH_PROVIDER_PROXY_NAME",
+          "remote_port": 25565,
+          "use_encryption": true,
+          "use_compression": true
+        }
+      ]
+    }
+  ]
+}
