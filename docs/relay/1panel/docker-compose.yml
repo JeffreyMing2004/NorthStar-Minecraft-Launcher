@@ -4,6 +4,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        RUST_IMAGE: ${NSCL_RUST_IMAGE:-rust:1.99.1-slim-bookworm}
+        RUNTIME_IMAGE: ${NSCL_RUNTIME_IMAGE:-debian:bookworm-slim}
+        DEBIAN_MIRROR: ${NSCL_DEBIAN_MIRROR:-https://mirrors.cloud.tencent.com}
+        CARGO_MIRROR: ${NSCL_CARGO_MIRROR:-nju}
     # Linux host networking keeps the service's loopback-only binding.
     # Publish HTTPS through 1Panel/OpenResty on the same host.
     network_mode: host

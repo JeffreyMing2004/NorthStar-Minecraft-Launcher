@@ -22,6 +22,8 @@ powershell -ExecutionPolicy Bypass -File scripts/Package-Relay.ps1 -IncludePriva
 docker-compose.yml       Docker 编排
 Dockerfile               在服务器上构建 Linux 调试版
 .dockerignore            构建镜像时排除私有配置
+configure-apt.sh         腾讯云 APT 换源
+mirrors.md               Docker / APT / Cargo 镜像说明
 openresty-location.conf  可选反向代理片段
 relay-data/
   frpc-nodes.json         私有节点和隧道池
@@ -46,7 +48,7 @@ docker compose ps
 curl --fail http://127.0.0.1:17630/v1/frpc/health
 ```
 
-首次构建需要连接 Docker 官方镜像仓库和 crates.io。Dockerfile 仅执行调试构建，使用 `--no-default-features` 跳过桌面 GUI 依赖，服务器无需安装 Rust、PHP 或数据库。容器以 UID/GID 10001 读取私有节点池，目录和文件需要授予该用户读取权限。
+腾讯云服务器建议先按 [镜像配置说明](mirrors.md) 设置 Docker 内网加速。容器内默认使用腾讯云 APT 和南京大学 Cargo 源，并支持切回官方源。Dockerfile 仅执行调试构建，使用 `--no-default-features` 跳过 GUI 依赖。容器以 UID/GID 10001 读取私有节点池，目录和文件需要授予该用户读取权限。
 
 健康检查应返回类似：
 

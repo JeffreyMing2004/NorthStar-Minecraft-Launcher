@@ -21,7 +21,7 @@ if ($PoolOnly) {
     Copy-Item -LiteralPath (Join-Path $taskTemplate 'tunnel-pool.md') -Destination (Join-Path $taskPackage 'README.md')
 } else {
     New-Item -ItemType Directory -Path (Join-Path $taskPackage 'source'), (Join-Path $taskPackage 'relay-data') -Force | Out-Null
-    foreach ($taskFile in @('Dockerfile', 'docker-compose.yml', '.dockerignore', 'openresty-location.conf', 'README.md')) {
+    foreach ($taskFile in @('Dockerfile', 'docker-compose.yml', '.dockerignore', 'openresty-location.conf', 'README.md', 'configure-apt.sh', 'docker-daemon.tencent.example.json', 'mirrors.md')) {
         Copy-Item -LiteralPath (Join-Path $taskTemplate $taskFile) -Destination $taskPackage
     }
     foreach ($taskFile in @('Cargo.toml', 'Cargo.lock', 'build.rs', 'LICENSE')) {
@@ -30,6 +30,8 @@ if ($PoolOnly) {
     foreach ($taskFolder in @('src', 'assets')) {
         Copy-Item -LiteralPath (Join-Path $taskRoot $taskFolder) -Destination (Join-Path $taskPackage 'source') -Recurse
     }
+    New-Item -ItemType Directory -Path (Join-Path $taskPackage 'source/.cargo') -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $taskRoot '.cargo/config.toml') -Destination (Join-Path $taskPackage 'source/.cargo/config.toml')
     if ($IncludePrivateCatalog) {
         Copy-Item -LiteralPath $taskCatalog -Destination (Join-Path $taskPackage 'relay-data/frpc-nodes.json')
     } else {
