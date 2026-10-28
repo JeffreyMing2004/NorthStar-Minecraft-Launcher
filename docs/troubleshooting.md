@@ -1,11 +1,23 @@
-# 启动器黑屏与图形诊断
+# 故障排查
+
+## 网络与下载
+
+- 下载连接失败或校验不通过时，自动下载源会依次尝试 BMCLAPI、minguncle 和官方源。版本列表刷新失败会保留已有结果，可通过重试重新加载。
+- 默认跟随系统代理。代理无法连接时，可在设置中选择直连，或使用错误窗口提供的「切换直连并重试」。这不会修改 Windows 的系统代理配置。
+- 错误窗口提供原因、操作建议和可复制的技术详情。安装、导入等会修改文件的操作需要手动确认后重试。
+- Windows 错误 [10013](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2) 表示本地连接访问被拒绝，不是 Mojang 返回的 HTTP 状态码。请检查程序网络权限、代理和安全软件；更换下载源不能解决本地权限限制。
+- 请从普通桌面终端运行程序。隔离或受限执行环境中的程序可能继承网络访问限制。
+
+## 界面黑屏与图形诊断
 
 Windows 在 SMBIOS 固件中识别到 VMware 时默认使用 WARP CPU 软件渲染；其他 Windows 环境默认使用 OpenGL（glow），其他系统默认使用 wgpu。可在创建窗口前通过参数覆盖，皮肤模型和其他界面使用同一套 egui 绘制逻辑。固件识别只读，不记录原始固件内容；识别失败时可显式选择软件模式。
 
+在程序所在目录运行以下命令；源码构建的程序位于 `target/debug/`。请使用实际的可执行文件名。
+
 ```powershell
-.\nscl-vm-compat-debug.exe --renderer=glow
-.\nscl-vm-compat-debug.exe --renderer=wgpu
-.\nscl-vm-software-debug.exe --renderer=software
+.\nscl.exe --renderer=glow
+.\nscl.exe --renderer=wgpu
+.\nscl.exe --renderer=software
 ```
 
 软件模式只接受支持当前窗口的 DX12 CPU 适配器，通常为 `Microsoft Basic Render Driver`（WARP），不选择 VMware SVGA3D 等硬件适配器。找不到软件适配器时显示错误，避免悄悄回到已出现黑屏的路径。软件绘制速度取决于 CPU，窗口功能保持一致。WARP 的工作方式见 [Microsoft 官方说明](https://learn.microsoft.com/en-us/windows/win32/direct3darticles/directx-warp)。
@@ -19,3 +31,7 @@ Windows 在 SMBIOS 固件中识别到 VMware 时默认使用 WARP CPU 软件渲�
 VMware 测试应先安装 VMware Tools 并开启虚拟机的 3D 加速。启动器黑屏应先诊断启动器后端；游戏启动后的 OpenGL 错误使用实例的 `logs/nscl-launch.log` 和 `logs/latest.log` 排查，两者是不同的验证路径。
 
 框架依据：[eframe 渲染配置](https://docs.rs/eframe/0.37.0/eframe/enum.Renderer.html)。VMware 的客体图形支持与宿主机图形后端并不等同，支持范围见 [VMware Workstation 官方介绍](https://www.vmware.com/products/desktop-hypervisor/workstation-and-fusion)。是否解决具体虚拟机的黑屏，需要在对应客体环境实测确认。
+
+## 提交问题
+
+通过 [GitHub Issues](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues) 提交问题时，说明启动器版本、操作系统、游戏及加载器版本、复现步骤，并附相关日志。启动器窗口问题附 `nscl-startup.log`；游戏启动问题附游戏目录中的 `logs/nscl-launch.log` 和 `logs/latest.log`。分享前移除日志中的账号、令牌与个人路径等信息。
