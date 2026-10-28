@@ -10,7 +10,6 @@
   <p>
     <a href="#功能特性">功能特性</a> ·
     <a href="#快速开始">快速开始</a> ·
-    <a href="#文档">文档</a> ·
     <a href="https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues">问题反馈</a> ·
     <a href="https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher">CNB 镜像</a>
   </p>
@@ -53,38 +52,6 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 4. 回到「开始」选择实例，点击「启动游戏」。
 
 已有游戏可以直接添加其 `.minecraft` 目录；本地 `.mrpack` 整合包可拖入启动器导入。
-
-### 联机
-
-房主将游戏的局域网端口或服务端端口设置为 **25565**，在「联机」中创建房间，再把直连地址或房间码分享给好友。管理服务内置，frpc 自动检测，状态显示在左下角。无需登录或输入开房码；最多 28 个房主同时开房，关闭后释放名额。加入人数由 Minecraft 控制，游戏数据通过 frpc TCP 传输。
-
-支持自建联机管理服务，详见 [联机说明](docs/multiplayer.md) 和 [1Panel 部署指南](docs/relay/1panel/README.md)。
-
-## 从源码运行
-
-Windows 需要 Rust stable MSVC 工具链，以及 Microsoft C++ Build Tools 的「使用 C++ 的桌面开发」组件。
-
-```powershell
-git clone https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher.git
-cd NorthStar-Minecraft-Launcher
-cargo run --locked --bin nscl
-```
-
-项目使用南京大学 Cargo 镜像，依赖版本由 `Cargo.lock` 固定。联机后端的腾讯云构建配置见 [镜像说明](docs/relay/1panel/mirrors.md)。
-
-## 文档
-
-| 内容 | 文档 |
-| --- | --- |
-| 原版客户端、下载与启动 | [原版客户端](docs/vanilla-client.md) |
-| Forge / Fabric / NeoForge | [加载器](docs/loaders.md) |
-| 模组依赖、整合包与文件保护 | [模组与整合包](docs/mods-and-modpacks.md) |
-| 登录、实例与目录隔离 | [账号与实例](docs/accounts-and-instances.md) |
-| 模组、资源包与光影的本地管理 | [实例资源](docs/local-resources.md) |
-| 联机、隧道池与自建服务 | [联机说明](docs/multiplayer.md) |
-| 网络、黑屏与日志 | [故障排查](docs/troubleshooting.md) |
-| 启动器更新 | [更新机制](docs/launcher-updates.md) |
-| 仓库同步与维护 | [维护说明](docs/github-sync.md) |
 
 ## 参考与致谢
 
