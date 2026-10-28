@@ -44,6 +44,29 @@ pub fn frpc() -> Result<Option<PathBuf>, String> {
 }
 
 pub fn save_pack(filename: &str) -> Result<Option<PathBuf>, String> {
+    save_as(
+        filename,
+        "Modrinth 整合包\0*.mrpack\0\0",
+        "导出整合包（保存为新文件）\0",
+        "mrpack\0",
+    )
+}
+
+pub fn save_diagnostics() -> Result<Option<PathBuf>, String> {
+    save_as(
+        "nscl-diagnostics.zip",
+        "ZIP 诊断包\0*.zip\0\0",
+        "导出诊断包（保存为新文件）\0",
+        "zip\0",
+    )
+}
+
+fn save_as(
+    filename: &str,
+    filter: &str,
+    title: &str,
+    extension: &str,
+) -> Result<Option<PathBuf>, String> {
     #[cfg(windows)]
     {
         use std::{ffi::OsString, os::windows::ffi::OsStringExt};
@@ -51,9 +74,9 @@ pub fn save_pack(filename: &str) -> Result<Option<PathBuf>, String> {
             CommDlgExtendedError, GetSaveFileNameW, OFN_EXPLORER, OFN_NOCHANGEDIR,
             OFN_PATHMUSTEXIST, OPENFILENAMEW,
         };
-        let filter: Vec<u16> = "Modrinth 整合包\0*.mrpack\0\0".encode_utf16().collect();
-        let title: Vec<u16> = "导出整合包（保存为新文件）\0".encode_utf16().collect();
-        let extension: Vec<u16> = "mrpack\0".encode_utf16().collect();
+        let filter: Vec<u16> = filter.encode_utf16().collect();
+        let title: Vec<u16> = title.encode_utf16().collect();
+        let extension: Vec<u16> = extension.encode_utf16().collect();
         let mut buffer = vec![0u16; 32768];
         for (target, value) in buffer.iter_mut().take(32767).zip(filename.encode_utf16()) {
             *target = value;
@@ -84,8 +107,8 @@ pub fn save_pack(filename: &str) -> Result<Option<PathBuf>, String> {
     }
     #[cfg(not(windows))]
     {
-        let _ = filename;
-        Err("请在保存位置中输入 .mrpack 文件的完整路径。".into())
+        let _ = (filename, filter, title, extension);
+        Err("当前系统不支持保存文件对话框。".into())
     }
 }
 

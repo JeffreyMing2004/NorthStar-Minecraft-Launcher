@@ -5,6 +5,7 @@ mod account_ui;
 mod app;
 mod cape_ui;
 mod content_page;
+mod diagnostics;
 mod download_flow;
 mod error_ui;
 mod file_picker;

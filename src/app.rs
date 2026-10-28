@@ -60,7 +60,8 @@ pub struct NsclApp {
     pub skin: crate::skin_ui::SkinView,
     pub capes: crate::cape_ui::CapeView,
     pub updates: crate::update_service::UpdateService,
-    pub log_view: Option<String>,
+    pub log_view: Option<crate::diagnostics::Report>,
+    pub log_export_status: String,
     pub accounts: crate::account_service::AccountService,
     pub instance_browser: crate::instance_ui::BrowserState,
     pub instance_icons: crate::instance_icons::InstanceIcons,
@@ -110,6 +111,7 @@ impl NsclApp {
             capes: crate::cape_ui::CapeView::new(),
             updates: crate::update_service::UpdateService::new(),
             log_view: None,
+            log_export_status: String::new(),
             accounts,
             instance_browser: crate::instance_ui::BrowserState::default(),
             instance_icons: crate::instance_icons::InstanceIcons::default(),
@@ -180,20 +182,58 @@ impl eframe::App for NsclApp {
             self.service.error = Some(error);
         }
         pages::instance_windows(&ctx, self);
-        if let Some(text) = &self.log_view {
+        if let Some(report) = &self.log_view {
             let mut open = true;
             let mut refresh = false;
-            egui::Window::new("游戏启动日志")
+            let mut export = false;
+            egui::Window::new("日志与故障诊断")
                 .open(&mut open)
                 .default_width(800.0)
                 .show(&ctx, |ui| {
-                    if ui.button("刷新日志").clicked() {
-                        refresh = true;
+                    ui.horizontal(|ui| {
+                        if ui.button("刷新日志").clicked() {
+                            refresh = true;
+                        }
+                        if ui.button("导出脱敏诊断包").clicked() {
+                            export = true;
+                        }
+                    });
+                    ui.label("诊断仅供参考；导出包只含固定错误特征与建议，不含原始日志。");
+                    if !self.log_export_status.is_empty() {
+                        ui.label(&self.log_export_status);
                     }
                     egui::ScrollArea::both().max_height(450.0).show(ui, |ui| {
-                        ui.label(RichText::new(text).monospace());
+                        for finding in &report.findings {
+                            ui.label(
+                                RichText::new(format!("可能原因：{}", finding.reason)).strong(),
+                            );
+                            ui.label(format!("处理建议：{}", finding.advice));
+                            ui.label(format!("{}：{}", finding.source, finding.line));
+                            ui.add_space(8.0);
+                        }
+                        if report.findings.is_empty() {
+                            ui.label("未识别出常见原因，请查看原始日志中的错误和崩溃信息。");
+                        }
+                        for log in &report.logs {
+                            egui::CollapsingHeader::new(log.name).show(ui, |ui| {
+                                ui.label(RichText::new(&log.text).monospace());
+                            });
+                        }
                     });
                 });
+            if export {
+                match crate::file_picker::save_diagnostics() {
+                    Ok(Some(path)) => {
+                        if let Err(error) = report.export(&path) {
+                            self.service.error = Some(error);
+                        } else {
+                            self.log_export_status = "脱敏诊断包已导出。".into();
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(error) => self.service.error = Some(error),
+                }
+            }
             if !open {
                 self.log_view = None;
             } else if refresh {
@@ -403,20 +443,12 @@ impl NsclApp {
         }
     }
     pub fn open_log(&mut self) {
-        use std::io::{Read, Seek, SeekFrom};
+        self.log_export_status.clear();
         let Some(path) = &self.service.last_log else {
             return;
         };
-        let result = (|| -> std::io::Result<String> {
-            let mut file = std::fs::File::open(path)?;
-            let length = file.metadata()?.len();
-            file.seek(SeekFrom::Start(length.saturating_sub(65536)))?;
-            let mut bytes = Vec::new();
-            file.take(65536).read_to_end(&mut bytes)?;
-            Ok(String::from_utf8_lossy(&bytes).into_owned())
-        })();
-        match result {
-            Ok(text) => self.log_view = Some(text),
+        match crate::diagnostics::Report::load(path) {
+            Ok(report) => self.log_view = Some(report),
             Err(error) => self.service.error = Some(format!("读取日志失败：{error}")),
         }
     }
