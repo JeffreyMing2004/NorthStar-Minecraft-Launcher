@@ -3,8 +3,6 @@ use crate::accounts::{Account, AccountKind};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, path::Path};
 
-pub const MAX_MEMBERS: usize = 30;
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberIdentity {
     pub id: String,
@@ -26,9 +24,6 @@ pub struct AccessList {
 
 impl AccessList {
     pub fn validate(&self) -> Result<()> {
-        if self.members.len() > MAX_MEMBERS {
-            return Err("联机白名单最多只能登记 30 个账号。".into());
-        }
         let (mut ids, mut tokens) = (BTreeSet::new(), BTreeSet::new());
         for member in &self.members {
             let identity = &member.identity;
@@ -56,7 +51,7 @@ impl AccessList {
 
     pub fn load(path: &Path) -> Result<Self> {
         let file = std::fs::File::open(path).map_err(|_| "无法读取联机白名单。")?;
-        if file.metadata().map_err(|_| "无法读取白名单大小。")?.len() > 64 * 1024 {
+        if file.metadata().map_err(|_| "无法读取白名单大小。")?.len() > 16 * 1024 * 1024 {
             return Err("联机白名单文件过大。".into());
         }
         let list: Self = serde_json::from_reader(file).map_err(|_| "联机白名单格式错误。")?;

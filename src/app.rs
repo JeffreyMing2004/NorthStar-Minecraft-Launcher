@@ -148,6 +148,9 @@ impl eframe::App for NsclApp {
         }
         self.accounts.poll(&mut self.settings, &ctx);
         self.multiplayer.poll(self.accounts.list.current());
+        if self.page != Page::Multiplayer {
+            self.multiplayer.leave();
+        }
         self.skin
             .sync(&mut self.accounts, self.settings.online_mode, &ctx);
         self.capes.sync(

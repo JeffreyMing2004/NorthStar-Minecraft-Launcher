@@ -29,6 +29,8 @@ semver = "1"
 tiny_http = "0.12"
 hmac = "0.12"
 toml = "1.1"
+flate2 = "1"
+tar = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }

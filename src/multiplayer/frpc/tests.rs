@@ -396,6 +396,122 @@ fn service_allocates_exclusive_tunnels_hides_credentials_and_frees_leases() {
 }
 
 #[test]
+fn twenty_eight_host_slots_do_not_limit_public_guests() {
+    let fixture = Fixture::new();
+    let members = fixture.directory.path().join("members.json");
+    let mut list = AccessList::load(&members).unwrap();
+    let tokens: Vec<_> = (0..29)
+        .map(|i| issue_member(&mut list, AccountKind::Offline, "", &format!("Host{i}")).unwrap())
+        .collect();
+    crate::store::write_json(&members, &list).unwrap();
+    let mut n = node(fixture.control.local_addr().unwrap().port());
+    n.proxies = (0..29)
+        .map(|i| Proxy {
+            name: format!("fixture-{i}"),
+            remote_port: 20000 + i,
+            use_encryption: true,
+            use_compression: true,
+        })
+        .collect();
+    crate::store::write_json(
+        &fixture.directory.path().join("nodes.json"),
+        &Catalog { nodes: vec![n] },
+    )
+    .unwrap();
+    let client = reqwest::blocking::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let rooms = format!("{}/v1/frpc/rooms", fixture.endpoint);
+    let selection = serde_json::json!({"candidates":["test-node"],"avoid":[]});
+    assert_eq!(
+        client
+            .post(&rooms)
+            .json(&selection)
+            .send()
+            .unwrap()
+            .status(),
+        401
+    );
+    let mut leases = Vec::new();
+    let mut slots = std::collections::BTreeSet::new();
+    for token in &tokens[..28] {
+        let lease: Lease = client
+            .post(&rooms)
+            .bearer_auth(token)
+            .json(&selection)
+            .send()
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .unwrap();
+        assert!(slots.insert(lease.route.slot()));
+        leases.push(lease);
+    }
+    assert_eq!(
+        client
+            .post(&rooms)
+            .bearer_auth(&tokens[28])
+            .json(&selection)
+            .send()
+            .unwrap()
+            .status(),
+        409
+    );
+    let room = format!("{}/{}", rooms, leases[0].room);
+    assert_eq!(
+        client
+            .get(format!("{room}/status"))
+            .send()
+            .unwrap()
+            .status(),
+        401
+    );
+    let info = client.get(&room).send().unwrap().text().unwrap();
+    assert!(!info.contains("private-fixture-user"));
+    assert!(!info.contains(&leases[0].key));
+    // Beyond the previous six-per-account and 120-total limits, with no credentials.
+    for _ in 0..131 {
+        let challenge = crate::multiplayer::secret();
+        let ticket: tickets::Ticket = client
+            .post(format!("{room}/tickets"))
+            .json(&TicketRequest {
+                challenge: challenge.clone(),
+            })
+            .send()
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .unwrap();
+        ticket
+            .verify(&leases[0].room, &challenge, &leases[0].key)
+            .unwrap();
+    }
+    assert_eq!(
+        client
+            .delete(format!("{}/v1/rooms/{}", fixture.endpoint, leases[0].room))
+            .bearer_auth(&tokens[0])
+            .send()
+            .unwrap()
+            .status(),
+        204
+    );
+    assert_eq!(
+        client
+            .post(&rooms)
+            .bearer_auth(&tokens[28])
+            .json(&selection)
+            .send()
+            .unwrap()
+            .status(),
+        200
+    );
+}
+
+#[test]
 fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_revocation() {
     let fixture = Fixture::new();
     let _control_port = fixture.control.local_addr().unwrap();
@@ -464,9 +580,9 @@ fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_re
     tickets::send(&mut intruder, &forged).unwrap();
     let mut byte = [0];
     assert!(intruder.read(&mut byte).is_err() || byte[0] == 0);
-    let guest = fixture
-        .client(false)
-        .join_frpc(&fixture.bob, &host.room, Arc::new(AtomicBool::new(false)))
+    let guest = RelayClient::public(&fixture.endpoint)
+        .unwrap()
+        .join_frpc_room(&host.room, Arc::new(AtomicBool::new(false)))
         .unwrap();
     let mut stream = TcpStream::connect(guest.local_address.unwrap()).unwrap();
     stream
@@ -480,6 +596,14 @@ fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_re
     let members = fixture.directory.path().join("members.json");
     let mut list = AccessList::load(&members).unwrap();
     list.members.retain(|m| m.identity.id != fixture.bob.id);
+    crate::store::write_json(&members, &list).unwrap();
+    std::thread::sleep(Duration::from_millis(2200));
+    assert!(guest.running());
+    stream.write_all(b"still allowed").unwrap();
+    let mut reply = [0; 13];
+    stream.read_exact(&mut reply).unwrap();
+    assert_eq!(&reply, b"still allowed");
+    list.members.retain(|m| m.identity.id != fixture.alice.id);
     crate::store::write_json(&members, &list).unwrap();
     let deadline = Instant::now() + Duration::from_secs(7);
     while guest.running() && Instant::now() < deadline {

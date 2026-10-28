@@ -36,7 +36,16 @@ struct Events {
 }
 
 impl RelayClient {
+    pub fn public(endpoint: &str) -> Result<Self> {
+        Self::build(endpoint, String::new())
+    }
     pub fn new(endpoint: &str, token: &str) -> Result<Self> {
+        if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("联机凭证应为管理员提供的 64 位字符串。".into());
+        }
+        Self::build(endpoint, token.into())
+    }
+    fn build(endpoint: &str, token: String) -> Result<Self> {
         let url = reqwest::Url::parse(endpoint.trim())
             .map_err(|_| "请输入完整的联机服务 HTTPS 地址。")?;
         if !url.username().is_empty()
@@ -49,9 +58,6 @@ impl RelayClient {
         let loopback = matches!(url.host_str(), Some("127.0.0.1" | "[::1]" | "localhost"));
         if url.scheme() != "https" && !(url.scheme() == "http" && loopback) {
             return Err("公网联机服务必须使用 HTTPS；HTTP 仅用于本机调试。".into());
-        }
-        if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err("联机凭证应为管理员提供的 64 位字符串。".into());
         }
         let mut builder = Client::builder()
             .redirect(reqwest::redirect::Policy::none())
@@ -67,14 +73,18 @@ impl RelayClient {
         Ok(Self {
             http: builder.build().map_err(|_| "创建联机网络客户端失败。")?,
             endpoint: url.as_str().trim_end_matches('/').into(),
-            token: token.into(),
+            token,
         })
     }
 
     pub(super) fn request(&self, method: Method, path: &str, body: Vec<u8>) -> Result<Response> {
-        self.http
-            .request(method, format!("{}/{}", self.endpoint, path))
-            .bearer_auth(&self.token)
+        let mut request = self
+            .http
+            .request(method, format!("{}/{}", self.endpoint, path));
+        if !self.token.is_empty() {
+            request = request.bearer_auth(&self.token);
+        }
+        request
             .header("Cache-Control", "no-store")
             .body(body)
             .send()

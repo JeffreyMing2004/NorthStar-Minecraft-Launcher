@@ -1,5 +1,6 @@
 mod catalog;
 mod direct;
+pub mod download;
 mod probe;
 mod process;
 pub(crate) mod tickets;
@@ -7,6 +8,7 @@ pub(crate) mod tickets;
 pub use catalog::{Catalog, Node, NodeInfo, Proxy, Route};
 pub use direct::{FrpcSession, HostOptions};
 pub use probe::{NodeLatency, measure_nodes};
+pub const MAX_HOSTS: usize = 28;
 pub(crate) use process::FrpcProcess;
 use serde::{Deserialize, Serialize};
 
@@ -30,7 +32,7 @@ pub(crate) struct RoomInfo {
 }
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Status {
-    pub connections: Vec<String>,
+    pub open: bool,
 }
 #[derive(Serialize, Deserialize)]
 pub(crate) struct TicketRequest {

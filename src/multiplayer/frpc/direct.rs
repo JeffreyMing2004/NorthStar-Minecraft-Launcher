@@ -238,29 +238,16 @@ impl RelayClient {
                     poll_state.fail("frpc 进程已退出，房间已关闭。".into());
                     break;
                 }
-                let checked_connections: Vec<_> = poll_state
-                    .connections
-                    .lock()
-                    .unwrap()
-                    .keys()
-                    .cloned()
-                    .collect();
                 match client.frpc_json::<Status>(
                     Method::GET,
                     &format!("v1/frpc/rooms/{room}/status"),
                     vec![],
                 ) {
                     Ok(status) => {
-                        let mut connections = poll_state.connections.lock().unwrap();
-                        connections.retain(|id, stream| {
-                            if !checked_connections.contains(id) || status.connections.contains(id)
-                            {
-                                true
-                            } else {
-                                let _ = stream.shutdown(Shutdown::Both);
-                                false
-                            }
-                        });
+                        if !status.open {
+                            poll_state.fail("房间已关闭。".into());
+                            break;
+                        }
                     }
                     Err(error) => {
                         poll_state.fail(error);
@@ -335,8 +322,8 @@ impl RelayClient {
         }
         let status: Status =
             self.frpc_json(Method::GET, &format!("v1/frpc/rooms/{room}/status"), vec![])?;
-        if !status.connections.contains(&challenge) {
-            return Err("该账号的联机授权已撤销。".into());
+        if !status.open {
+            return Err("房主的联机权限已撤销或房间已关闭。".into());
         }
         let game = TcpStream::connect_timeout(&target, Duration::from_secs(2))
             .map_err(|_| "房主游戏端口已关闭。")?;
@@ -346,11 +333,13 @@ impl RelayClient {
     }
     pub fn join_frpc(
         &self,
-        account: &Account,
+        _account: &Account,
         code: &str,
         cancel: Arc<AtomicBool>,
     ) -> Result<FrpcSession> {
-        self.authorize(account)?;
+        self.join_frpc_room(code, cancel)
+    }
+    pub fn join_frpc_room(&self, code: &str, cancel: Arc<AtomicBool>) -> Result<FrpcSession> {
         let room = code
             .trim()
             .strip_prefix("frpc:")
@@ -397,33 +386,11 @@ impl RelayClient {
         let beat_room = room.clone();
         std::thread::spawn(move || {
             while !beat_state.stopped.load(Ordering::Relaxed) {
-                let connections: Vec<_> = beat_state
-                    .connections
-                    .lock()
-                    .unwrap()
-                    .keys()
-                    .cloned()
-                    .collect();
-                let result = client
-                    .frpc_json::<RoomInfo>(
-                        Method::GET,
-                        &format!("v1/frpc/rooms/{beat_room}"),
-                        vec![],
-                    )
-                    .map(|_| {
-                        for challenge in connections {
-                            let result = client.checked(
-                                Method::POST,
-                                &format!("v1/frpc/rooms/{beat_room}/tickets/{challenge}/heartbeat"),
-                            );
-                            if result.is_err()
-                                && let Some(stream) =
-                                    beat_state.connections.lock().unwrap().remove(&challenge)
-                            {
-                                let _ = stream.shutdown(Shutdown::Both);
-                            }
-                        }
-                    });
+                let result = client.frpc_json::<RoomInfo>(
+                    Method::GET,
+                    &format!("v1/frpc/rooms/{beat_room}"),
+                    vec![],
+                );
                 if let Err(error) = result {
                     beat_state.fail(error);
                     break;
@@ -436,13 +403,6 @@ impl RelayClient {
             while !state.stopped.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((game, _)) => {
-                        if state.connections.lock().unwrap().len()
-                            + state.pending.load(Ordering::Relaxed)
-                            >= 6
-                        {
-                            drop(game);
-                            continue;
-                        }
                         state.pending.fetch_add(1, Ordering::Relaxed);
                         let (client, state, room, info) = (
                             client.clone(),
@@ -628,7 +588,7 @@ fn frpc_error(status: u16) -> String {
     match status {
         401 | 403 => "当前账号的联机凭证无效或权限已撤销。",
         404 => "frpc 房间不存在或已关闭。",
-        409 => "暂无空闲 frpc 隧道，或该账号已有房间。",
+        409 => "暂无空闲 frpc 隧道（最多 28 个房主），或该账号已有房间。",
         429 => "联机连接数已达上限，请稍后重试。",
         503 => "管理员尚未配置 frpc 节点，或授权服务暂不可用。",
         _ => "frpc 授权服务请求失败。",

@@ -6,21 +6,78 @@ use crate::multiplayer::frpc::{
 pub(super) struct DirectRoom {
     pub key: String,
     pub route: Route,
-    pub guests: BTreeMap<String, DirectGuest>,
-}
-pub(super) struct DirectGuest {
-    pub member: Member,
-    pub seen: Instant,
 }
 
 impl RelayServer {
+    pub(super) fn handle_public_frpc(&self, mut request: Request) {
+        if request.body_length().is_some_and(|n| n > CHUNK_SIZE) {
+            reply(request, 413, vec![]);
+            return;
+        }
+        let mut body = Vec::new();
+        if request
+            .as_reader()
+            .take(CHUNK_SIZE as u64 + 1)
+            .read_to_end(&mut body)
+            .is_err()
+            || body.len() > CHUNK_SIZE
+        {
+            reply(request, 413, vec![]);
+            return;
+        }
+        let method = request.method().clone();
+        let url = request.url().to_owned();
+        let parts: Vec<_> = url
+            .split('?')
+            .next()
+            .unwrap_or("")
+            .trim_matches('/')
+            .split('/')
+            .collect();
+        let access = match AccessList::load(&self.access_file) {
+            Ok(list) => list,
+            Err(_) => {
+                reply(request, 503, vec![]);
+                return;
+            }
+        };
+        let member = request
+            .headers()
+            .iter()
+            .find(|h| h.field.equiv("Authorization"))
+            .and_then(|h| h.value.as_str().strip_prefix("Bearer "))
+            .and_then(|token| access.authenticate(token));
+        let public = matches!(
+            (method.clone(), parts.as_slice()),
+            (
+                Method::Get,
+                ["v1", "frpc", "nodes"] | ["v1", "frpc", "rooms", _]
+            ) | (
+                Method::Post,
+                ["v1", "frpc", "rooms", _, "tickets"]
+                    | ["v1", "frpc", "rooms", _, "tickets", _, "heartbeat"]
+            ) | (Method::Delete, ["v1", "frpc", "rooms", _, "tickets", _])
+        );
+        if !public && member.is_none() {
+            reply(request, 401, vec![]);
+            return;
+        }
+        let mut state = self.state.lock().unwrap();
+        state.rooms.retain(|_, room| {
+            room.seen.elapsed() < EXPIRES
+                && access.members.iter().any(|m| {
+                    m.identity == room.owner.identity && m.token_sha256 == room.owner.token_sha256
+                })
+        });
+        self.handle_frpc(request, method, &parts, &body, member, &mut state);
+    }
     pub(super) fn handle_frpc(
         &self,
         request: Request,
         method: Method,
         parts: &[&str],
         body: &[u8],
-        member: Member,
+        member: Option<Member>,
         state: &mut State,
     ) {
         match (method, parts) {
@@ -39,6 +96,13 @@ impl RelayServer {
                 );
             }
             (Method::Post, ["v1", "frpc", "rooms"]) => {
+                let member = member.unwrap();
+                if state.rooms.values().filter(|r| r.direct.is_some()).count()
+                    >= crate::multiplayer::frpc::MAX_HOSTS
+                {
+                    reply(request, 409, b"all 28 host slots are occupied".to_vec());
+                    return;
+                }
                 if state
                     .rooms
                     .values()
@@ -109,7 +173,6 @@ impl RelayServer {
                         direct: Some(DirectRoom {
                             key: key.clone(),
                             route: route.clone(),
-                            guests: BTreeMap::new(),
                         }),
                     },
                 );
@@ -130,25 +193,21 @@ impl RelayServer {
                 );
             }
             (Method::Get, ["v1", "frpc", "rooms", room, "status"]) => {
-                let Some(room) = state
-                    .rooms
-                    .get_mut(*room)
-                    .filter(|r| r.owner.identity.id == member.identity.id)
-                else {
+                let Some(room) = state.rooms.get_mut(*room).filter(|r| {
+                    member.as_ref().is_some_and(|m| {
+                        r.owner.identity.id == m.identity.id
+                            && r.owner.token_sha256 == m.token_sha256
+                    })
+                }) else {
                     reply(request, 404, vec![]);
                     return;
                 };
-                let Some(direct) = &room.direct else {
+                let Some(_direct) = &room.direct else {
                     reply(request, 404, vec![]);
                     return;
                 };
                 room.seen = Instant::now();
-                json(
-                    request,
-                    &Status {
-                        connections: direct.guests.keys().cloned().collect(),
-                    },
-                );
+                json(request, &Status { open: true });
             }
             (Method::Post, ["v1", "frpc", "rooms", room, "tickets"]) => {
                 let Ok(input) = serde_json::from_slice::<TicketRequest>(body) else {
@@ -161,45 +220,16 @@ impl RelayServer {
                     reply(request, 400, vec![]);
                     return;
                 }
-                let total: usize = state
-                    .rooms
-                    .values()
-                    .filter_map(|r| r.direct.as_ref())
-                    .map(|d| d.guests.len())
-                    .sum();
                 let Some(direct) = state.rooms.get_mut(*room).and_then(|r| r.direct.as_mut())
                 else {
                     reply(request, 404, vec![]);
                     return;
                 };
-                if total >= MAX_CONNECTIONS
-                    || direct
-                        .guests
-                        .values()
-                        .filter(|g| g.member.identity.id == member.identity.id)
-                        .count()
-                        >= 6
-                {
-                    reply(request, 429, vec![]);
-                    return;
-                }
-                if direct.guests.contains_key(&input.challenge) {
-                    reply(request, 409, vec![]);
-                    return;
-                }
-                let Ok(ticket) =
-                    Ticket::issue(room, &input.challenge, &member.identity.id, &direct.key)
-                else {
+                let guest = uuid::Uuid::new_v4().simple().to_string();
+                let Ok(ticket) = Ticket::issue(room, &input.challenge, &guest, &direct.key) else {
                     reply(request, 400, vec![]);
                     return;
                 };
-                direct.guests.insert(
-                    input.challenge,
-                    DirectGuest {
-                        member,
-                        seen: Instant::now(),
-                    },
-                );
                 json(request, &ticket);
             }
             (
@@ -214,36 +244,23 @@ impl RelayServer {
                     "heartbeat",
                 ],
             ) => {
-                let Some(guest) = state
-                    .rooms
-                    .get_mut(*room)
-                    .and_then(|r| r.direct.as_mut())
-                    .and_then(|d| d.guests.get_mut(*challenge))
-                    .filter(|g| g.member.identity.id == member.identity.id)
-                else {
-                    reply(request, 404, vec![]);
-                    return;
-                };
-                guest.seen = Instant::now();
-                reply(request, 204, vec![]);
-            }
-            (Method::Delete, ["v1", "frpc", "rooms", room, "tickets", challenge]) => {
-                let Some(room) = state.rooms.get_mut(*room) else {
-                    reply(request, 404, vec![]);
-                    return;
-                };
-                let Some(direct) = &mut room.direct else {
-                    reply(request, 404, vec![]);
-                    return;
-                };
-                if !direct.guests.get(*challenge).is_some_and(|g| {
-                    g.member.identity.id == member.identity.id
-                        || room.owner.identity.id == member.identity.id
-                }) {
+                if !state.rooms.get(*room).is_some_and(|r| r.direct.is_some()) {
                     reply(request, 404, vec![]);
                     return;
                 }
-                direct.guests.remove(*challenge);
+                let _ = challenge;
+                reply(request, 204, vec![]);
+            }
+            (Method::Delete, ["v1", "frpc", "rooms", room, "tickets", challenge]) => {
+                let Some(room) = state.rooms.get(*room) else {
+                    reply(request, 404, vec![]);
+                    return;
+                };
+                let Some(_direct) = &room.direct else {
+                    reply(request, 404, vec![]);
+                    return;
+                };
+                let _ = challenge;
                 reply(request, 204, vec![]);
             }
             _ => reply(request, 404, vec![]),

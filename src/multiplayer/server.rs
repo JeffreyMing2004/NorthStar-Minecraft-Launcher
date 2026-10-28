@@ -97,6 +97,10 @@ impl RelayServer {
     }
 
     fn handle(&self, mut request: Request) {
+        if request.url().starts_with("/v1/frpc/") {
+            self.handle_public_frpc(request);
+            return;
+        }
         let access = match AccessList::load(&self.access_file) {
             Ok(access) => access,
             Err(_) => {
@@ -142,21 +146,10 @@ impl RelayServer {
         state
             .rooms
             .retain(|_, room| room.seen.elapsed() < EXPIRES && valid(&room.owner));
-        for room in state.rooms.values_mut() {
-            if let Some(direct) = &mut room.direct {
-                direct.guests.retain(|_, guest| {
-                    guest.seen.elapsed() < Duration::from_secs(30) && valid(&guest.member)
-                });
-            }
-        }
         let rooms: Vec<_> = state.rooms.keys().cloned().collect();
         state.connections.retain(|_, c| {
             c.seen.elapsed() < EXPIRES && rooms.contains(&c.room) && valid(&c.guest)
         });
-        if parts.starts_with(&["v1", "frpc"]) {
-            self.handle_frpc(request, method, &parts, &body, member, &mut state);
-            return;
-        }
         match (method, parts.as_slice()) {
             (Method::Get, ["v1", "me"]) => json(request, &member.identity),
             (Method::Post, ["v1", "rooms"]) => {

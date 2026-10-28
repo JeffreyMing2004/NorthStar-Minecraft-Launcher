@@ -4,7 +4,7 @@ mod client;
 pub mod frpc;
 pub mod server;
 
-pub use access::{AccessList, MAX_MEMBERS, Member, MemberIdentity, issue_member};
+pub use access::{AccessList, Member, MemberIdentity, issue_member};
 pub use client::{RelayClient, RelaySession};
 
 pub type Result<T> = std::result::Result<T, String>;

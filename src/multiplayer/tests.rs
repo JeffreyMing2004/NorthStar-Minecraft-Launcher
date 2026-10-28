@@ -109,17 +109,13 @@ impl Drop for Fixture {
 }
 
 #[test]
-fn whitelist_enforces_thirty_unique_accounts_without_partial_enrollment() {
+fn host_registry_preserves_unique_identities_without_a_player_quota() {
     let mut list = AccessList::default();
-    for i in 0..MAX_MEMBERS {
+    for i in 0..32 {
         issue_member(&mut list, AccountKind::Offline, "", &format!("Player{i}")).unwrap();
     }
-    assert!(
-        issue_member(&mut list, AccountKind::Offline, "", "Extra")
-            .unwrap_err()
-            .contains("30")
-    );
-    assert_eq!(list.members.len(), 30);
+    issue_member(&mut list, AccountKind::Offline, "", "Extra").unwrap();
+    assert_eq!(list.members.len(), 33);
     assert!(issue_member(&mut list, AccountKind::Offline, "", "Player0").is_err());
     let serialized = serde_json::to_string(&list).unwrap();
     assert!(!serialized.contains("Bearer"));

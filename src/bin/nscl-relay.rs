@@ -21,9 +21,18 @@ fn main() -> std::process::ExitCode {
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.len() < 2 {
-        return Err("用法：nscl-relay init <白名单路径> | add-offline <路径> <玩家名> | add-microsoft <路径> <UUID> <玩家名> | remove <路径> <UUID> | list <路径> | import-frpc <原始配置> <私有JSON路径> | probe-frpc <私有JSON路径> | serve <白名单路径> [127.0.0.1:17630] [frpc私有JSON路径]".into());
+        return Err("用法：nscl-relay init <房主名单路径> | add-offline <路径> <玩家名> | add-microsoft <路径> <UUID> <玩家名> | remove <路径> <UUID> | list <路径> | import-frpc <原始配置> <私有JSON路径> | probe-frpc <私有JSON路径> | install-frpc <安装目录> | serve <房主名单路径> [127.0.0.1:17630] [frpc私有JSON路径]".into());
     }
     let path = Path::new(&args[1]);
+    if args[0] == "install-frpc" && args.len() == 2 {
+        let executable = nscl::multiplayer::frpc::download::install(
+            path,
+            &Arc::new(AtomicBool::new(false)),
+            &|message| println!("{message}"),
+        )?;
+        println!("frpc 程序：{}", executable.display());
+        return Ok(());
+    }
     if args[0] == "probe-frpc" {
         let catalog = nscl::multiplayer::frpc::Catalog::load(path)?;
         let nodes: Vec<_> = catalog.nodes.into_iter().map(|n| n.info).collect();
@@ -62,13 +71,13 @@ fn run() -> Result<(), String> {
         let service = Arc::new(service);
         let server = tiny_http::Server::http(address).map_err(|_| "无法监听联机服务端口。")?;
         println!(
-            "联机授权服务监听 {address}，白名单上限 30 个账号。请配置 HTTPS 和 88frp 后接入启动器。"
+            "联机服务监听 {address}，最多同时开放 28 个 frpc 房间；加入者不占房主名额。请配置 HTTPS 后接入启动器。"
         );
         return service.serve(server, Arc::new(AtomicBool::new(false)));
     }
     if args[0] == "list" {
         let list = AccessList::load(path)?;
-        println!("白名单 {}/30", list.members.len());
+        println!("已登记房主 {} 个；同时开房上限 28 个。", list.members.len());
         for member in list.members {
             println!(
                 "{} {} {:?}",
