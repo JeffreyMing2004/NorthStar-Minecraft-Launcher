@@ -88,6 +88,7 @@ pub enum Icon {
     Folder,
     Java,
     Memory,
+    Network,
 }
 
 pub fn icon(p: &egui::Painter, rect: egui::Rect, icon: Icon, color: Color32) {
@@ -100,6 +101,18 @@ pub fn icon(p: &egui::Painter, rect: egui::Rect, icon: Icon, color: Color32) {
         ));
     };
     match icon {
+        Icon::Network => {
+            line(&[(0.5, 0.28), (0.5, 0.55), (0.2, 0.55), (0.2, 0.72)]);
+            line(&[(0.5, 0.55), (0.8, 0.55), (0.8, 0.72)]);
+            for (x, y) in [(0.5, 0.18), (0.2, 0.82), (0.8, 0.82)] {
+                p.rect_stroke(
+                    egui::Rect::from_center_size(point(x, y), rect.size() * 0.21),
+                    1.0,
+                    stroke,
+                    egui::StrokeKind::Inside,
+                );
+            }
+        }
         Icon::Play => {
             p.add(egui::Shape::convex_polygon(
                 vec![point(0.28, 0.18), point(0.82, 0.5), point(0.28, 0.82)],

@@ -5,6 +5,7 @@ pub mod instances;
 pub mod java;
 pub mod memory;
 pub mod minecraft;
+pub mod multiplayer;
 pub mod network;
 pub mod skins;
 pub mod store;

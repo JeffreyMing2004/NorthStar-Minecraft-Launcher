@@ -1,0 +1,109 @@
+use nscl::{
+    accounts::AccountKind,
+    multiplayer::{AccessList, issue_member, server::RelayServer},
+};
+use std::{
+    net::SocketAddr,
+    path::Path,
+    sync::{Arc, atomic::AtomicBool},
+};
+
+fn main() -> std::process::ExitCode {
+    match run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), String> {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.len() < 2 {
+        return Err("用法：nscl-relay init <白名单路径> | add-offline <路径> <玩家名> | add-microsoft <路径> <UUID> <玩家名> | remove <路径> <UUID> | list <路径> | serve <路径> [127.0.0.1:17630]".into());
+    }
+    let path = Path::new(&args[1]);
+    if args[0] == "serve" {
+        let address: SocketAddr = args
+            .get(2)
+            .map(String::as_str)
+            .unwrap_or("127.0.0.1:17630")
+            .parse()
+            .map_err(|_| "监听地址无效。")?;
+        if !address.ip().is_loopback() {
+            return Err("授权服务仅允许监听回环地址，请通过 HTTPS 反向代理和 88frp 发布。".into());
+        }
+        let service = Arc::new(RelayServer::new(path)?);
+        let server = tiny_http::Server::http(address).map_err(|_| "无法监听联机服务端口。")?;
+        println!(
+            "联机授权服务监听 {address}，白名单上限 30 个账号。请配置 HTTPS 和 88frp 后接入启动器。"
+        );
+        return service.serve(server, Arc::new(AtomicBool::new(false)));
+    }
+    if args[0] == "list" {
+        let list = AccessList::load(path)?;
+        println!("白名单 {}/30", list.members.len());
+        for member in list.members {
+            println!(
+                "{} {} {:?}",
+                member.identity.id, member.identity.name, member.identity.kind
+            );
+        }
+        return Ok(());
+    }
+    // Serialize local administrator edits. Public HTTP requests have no enrollment endpoint.
+    let lock_path = path.with_extension("lock");
+    let lock = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+        .map_err(|_| "白名单正在编辑，或所在目录不存在。")?;
+    let result = edit(&args, path);
+    drop(lock);
+    let _ = std::fs::remove_file(lock_path);
+    result
+}
+
+fn edit(args: &[String], path: &Path) -> Result<(), String> {
+    if args[0] == "init" {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|_| "无法创建白名单，已有文件不会覆盖。")?;
+        file.write_all(b"{\"members\": []}\n")
+            .map_err(|_| "写入白名单失败。")?;
+        return Ok(());
+    }
+    let mut list = AccessList::load(path)?;
+    match args[0].as_str() {
+        "add-offline" if args.len() == 3 => {
+            let token = issue_member(&mut list, AccountKind::Offline, "", &args[2])?;
+            nscl::store::write_json(path, &list)?;
+            println!(
+                "已登记账号。请私下交付以下联机凭证（仅显示本次，勿放入 Git 或公开分享）：\n{token}"
+            );
+        }
+        "add-microsoft" if args.len() == 4 => {
+            let token = issue_member(&mut list, AccountKind::Microsoft, &args[2], &args[3])?;
+            nscl::store::write_json(path, &list)?;
+            println!(
+                "已登记账号。请私下交付以下联机凭证（仅显示本次，勿放入 Git 或公开分享）：\n{token}"
+            );
+        }
+        "remove" if args.len() == 3 => {
+            let id = args[2].replace('-', "").to_ascii_lowercase();
+            let old = list.members.len();
+            list.members.retain(|m| m.identity.id != id);
+            if old == list.members.len() {
+                return Err("白名单中没有该 UUID。".into());
+            }
+            nscl::store::write_json(path, &list)?;
+            println!("已撤销该账号的联机权限。");
+        }
+        _ => return Err("未知操作或参数数量错误。".into()),
+    }
+    Ok(())
+}

@@ -14,6 +14,7 @@ mod instance_icons;
 mod instance_mods;
 mod instance_resources;
 mod instance_ui;
+mod multiplayer_ui;
 mod pages;
 mod project_icons;
 mod renderer;

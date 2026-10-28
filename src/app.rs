@@ -7,15 +7,17 @@ pub enum Page {
     Instances,
     Account,
     Downloads,
+    Multiplayer,
     Settings,
     About,
 }
 
 impl Page {
-    pub const ALL: [Page; 5] = [
+    pub const ALL: [Page; 6] = [
         Page::Home,
         Page::Account,
         Page::Downloads,
+        Page::Multiplayer,
         Page::Settings,
         Page::About,
     ];
@@ -25,6 +27,7 @@ impl Page {
             Page::Instances => "实例管理",
             Page::Account => "账号",
             Page::Downloads => "下载",
+            Page::Multiplayer => "联机",
             Page::Settings => "设置",
             Page::About => "更多",
         }
@@ -35,6 +38,7 @@ impl Page {
             Page::Instances => theme::Icon::Folder,
             Page::Account => theme::Icon::User,
             Page::Downloads => theme::Icon::Download,
+            Page::Multiplayer => theme::Icon::Network,
             Page::Settings => theme::Icon::Settings,
             Page::About => theme::Icon::More,
         }
@@ -66,6 +70,7 @@ pub struct NsclApp {
     pub new_instance_version: String,
     pub archive_confirm: Option<crate::instances::Instance>,
     pub instance_status: String,
+    pub multiplayer: crate::multiplayer_ui::MultiplayerPage,
     #[cfg(debug_assertions)]
     pub screenshot_pending: bool,
 }
@@ -114,6 +119,7 @@ impl NsclApp {
             new_instance_version: String::new(),
             archive_confirm: None,
             instance_status: String::new(),
+            multiplayer: crate::multiplayer_ui::MultiplayerPage::default(),
             #[cfg(debug_assertions)]
             screenshot_pending: std::env::var_os("NSCL_SCREENSHOT").is_some(),
         }
@@ -141,6 +147,7 @@ impl eframe::App for NsclApp {
             self.remember_instance();
         }
         self.accounts.poll(&mut self.settings, &ctx);
+        self.multiplayer.poll(self.accounts.list.current());
         self.skin
             .sync(&mut self.accounts, self.settings.online_mode, &ctx);
         self.capes.sync(
@@ -265,6 +272,7 @@ impl eframe::App for NsclApp {
                         Page::Instances => unreachable!(),
                         Page::Account => pages::account(ui, self),
                         Page::Downloads => unreachable!(),
+                        Page::Multiplayer => crate::multiplayer_ui::show(ui, self),
                         Page::Settings => pages::settings(ui, self),
                         Page::About => pages::about(ui, self),
                     });
@@ -458,7 +466,7 @@ impl NsclApp {
                     },
                 );
 
-                let navigation_rect = egui::Rect::from_center_size(center, Vec2::new(476.0, 50.0));
+                let navigation_rect = egui::Rect::from_center_size(center, Vec2::new(569.0, 50.0));
                 ui.painter()
                     .rect_filled(navigation_rect, 15.0, theme::INPUT_BG);
                 ui.painter().rect_stroke(
@@ -471,7 +479,7 @@ impl NsclApp {
                     UiBuilder::new()
                         .max_rect(egui::Rect::from_center_size(
                             center,
-                            Vec2::new(460.0, rect.height()),
+                            Vec2::new(553.0, rect.height()),
                         ))
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
