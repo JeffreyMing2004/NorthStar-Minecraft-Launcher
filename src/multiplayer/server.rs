@@ -1,3 +1,4 @@
+use super::access::HostIdentity;
 use super::{AccessList, CHUNK_SIZE, Member, QUEUE_LIMIT, Result};
 use serde::Serialize;
 use std::{
@@ -18,7 +19,7 @@ const MAX_REQUESTS: usize = 192;
 const EXPIRES: Duration = Duration::from_secs(60);
 
 struct Room {
-    owner: Member,
+    owner: HostIdentity,
     seen: Instant,
     pending: VecDeque<String>,
     direct: Option<frpc::DirectRoom>,
@@ -145,7 +146,7 @@ impl RelayServer {
         };
         state
             .rooms
-            .retain(|_, room| room.seen.elapsed() < EXPIRES && valid(&room.owner));
+            .retain(|_, room| room.seen.elapsed() < EXPIRES && access.host_active(&room.owner));
         let rooms: Vec<_> = state.rooms.keys().cloned().collect();
         state.connections.retain(|_, c| {
             c.seen.elapsed() < EXPIRES && rooms.contains(&c.room) && valid(&c.guest)
@@ -156,7 +157,7 @@ impl RelayServer {
                 if state
                     .rooms
                     .values()
-                    .any(|r| r.owner.identity.id == member.identity.id)
+                    .any(|r| r.owner.id == member.identity.id)
                 {
                     reply(request, 409, b"one hosted room per account".to_vec());
                     return;
@@ -165,7 +166,7 @@ impl RelayServer {
                 state.rooms.insert(
                     id.clone(),
                     Room {
-                        owner: member,
+                        owner: member.into(),
                         seen: Instant::now(),
                         pending: VecDeque::new(),
                         direct: None,
@@ -177,7 +178,7 @@ impl RelayServer {
                 if !state
                     .rooms
                     .get(*room)
-                    .is_some_and(|r| r.owner.identity.id == member.identity.id)
+                    .is_some_and(|r| r.owner.id == member.identity.id)
                 {
                     reply(request, 404, b"room not found".to_vec());
                     return;
@@ -191,7 +192,7 @@ impl RelayServer {
                 if !state
                     .rooms
                     .get(*room)
-                    .is_some_and(|r| r.owner.identity.id == member.identity.id)
+                    .is_some_and(|r| r.owner.id == member.identity.id)
                 {
                     reply(request, 404, b"room not found".to_vec());
                     return;
@@ -279,7 +280,7 @@ impl RelayServer {
                     state
                         .rooms
                         .get(&c.room)
-                        .is_some_and(|r| r.owner.identity.id == member.identity.id)
+                        .is_some_and(|r| r.owner.id == member.identity.id)
                 } else {
                     c.guest.identity.id == member.identity.id
                 };
@@ -409,7 +410,7 @@ fn allowed(state: &State, connection: &str, member: &Member) -> bool {
             || state
                 .rooms
                 .get(&c.room)
-                .is_some_and(|r| r.owner.identity.id == member.identity.id)
+                .is_some_and(|r| r.owner.id == member.identity.id)
     })
 }
 

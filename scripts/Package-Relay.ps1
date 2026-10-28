@@ -30,7 +30,7 @@ if ($PoolOnly) {
     foreach ($taskFolder in @('src', 'assets')) {
         Copy-Item -LiteralPath (Join-Path $taskRoot $taskFolder) -Destination (Join-Path $taskPackage 'source') -Recurse
     }
-    [IO.File]::WriteAllText((Join-Path $taskPackage 'relay-data/members.json'), "{`"members`": []}`n", [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $taskPackage 'relay-data/members.json'), "{`"members`": [], `"host_keys`": []}`n", [Text.UTF8Encoding]::new($false))
     if ($IncludePrivateCatalog) {
         Copy-Item -LiteralPath $taskCatalog -Destination (Join-Path $taskPackage 'relay-data/frpc-nodes.json')
     } else {

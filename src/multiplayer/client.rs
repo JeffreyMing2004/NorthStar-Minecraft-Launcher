@@ -41,7 +41,7 @@ impl RelayClient {
     }
     pub fn new(endpoint: &str, token: &str) -> Result<Self> {
         if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err("联机凭证应为管理员提供的 64 位字符串。".into());
+            return Err("房主凭证应为管理员发放的 64 位开房码。".into());
         }
         Self::build(endpoint, token.into())
     }
@@ -118,6 +118,9 @@ impl RelayClient {
             || info.tunnels == 0
         {
             return Err("联机验证服务版本不兼容或节点池未就绪。".into());
+        }
+        if !info.host_codes || info.game_port != super::frpc::GAME_PORT {
+            return Err("验证服务需要更新：当前后端尚未支持免登记开房码或固定 25565 端口。".into());
         }
         Ok(info)
     }
@@ -407,7 +410,7 @@ fn check(response: Response) -> Result<Response> {
         409 => "此账号已有创建的房间，请先关闭原房间或等待一分钟后重试。",
         410 => "联机连接已关闭。",
         429 => "联机连接数或缓冲区已满，请稍后重试。",
-        503 => "联机服务或白名单暂不可用，请联系管理员。",
+        503 => "联机服务或凭证文件暂不可用，请联系管理员。",
         _ => "联机服务请求失败。",
     }
     .into())

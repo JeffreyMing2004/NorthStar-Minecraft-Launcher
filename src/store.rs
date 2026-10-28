@@ -49,7 +49,7 @@ impl Default for Settings {
             microsoft_redirect_uri: crate::accounts::DEFAULT_REDIRECT_URI.into(),
             online_mode: false,
             selected_instance: String::new(),
-            multiplayer_endpoint: String::new(),
+            multiplayer_endpoint: crate::multiplayer::frpc::VERIFICATION_ENDPOINTS[0].into(),
             frpc_path: String::new(),
         }
     }

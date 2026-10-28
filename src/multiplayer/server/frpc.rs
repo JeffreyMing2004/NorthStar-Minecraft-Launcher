@@ -46,7 +46,7 @@ impl RelayServer {
             .iter()
             .find(|h| h.field.equiv("Authorization"))
             .and_then(|h| h.value.as_str().strip_prefix("Bearer "))
-            .and_then(|token| access.authenticate(token));
+            .and_then(|token| access.authenticate_host(token));
         let public = matches!(
             (method.clone(), parts.as_slice()),
             (
@@ -63,12 +63,9 @@ impl RelayServer {
             return;
         }
         let mut state = self.state.lock().unwrap();
-        state.rooms.retain(|_, room| {
-            room.seen.elapsed() < EXPIRES
-                && access.members.iter().any(|m| {
-                    m.identity == room.owner.identity && m.token_sha256 == room.owner.token_sha256
-                })
-        });
+        state
+            .rooms
+            .retain(|_, room| room.seen.elapsed() < EXPIRES && access.host_active(&room.owner));
         self.handle_frpc(request, method, &parts, &body, member, &mut state);
     }
     pub(super) fn handle_frpc(
@@ -77,10 +74,11 @@ impl RelayServer {
         method: Method,
         parts: &[&str],
         body: &[u8],
-        member: Option<Member>,
+        member: Option<HostIdentity>,
         state: &mut State,
     ) {
         match (method, parts) {
+            (Method::Get, ["v1", "frpc", "host"]) => reply(request, 204, vec![]),
             (Method::Get, ["v1", "frpc", "health"]) => {
                 let Some(catalog) = self.catalog() else {
                     reply(request, 503, b"frpc catalog unavailable".to_vec());
@@ -94,6 +92,8 @@ impl RelayServer {
                         max_hosts: crate::multiplayer::frpc::MAX_HOSTS,
                         nodes: catalog.nodes.len(),
                         tunnels: catalog.nodes.iter().map(|n| n.proxies.len()).sum(),
+                        host_codes: true,
+                        game_port: crate::multiplayer::frpc::GAME_PORT,
                     },
                 );
             }
@@ -119,12 +119,8 @@ impl RelayServer {
                     reply(request, 409, b"all 28 host slots are occupied".to_vec());
                     return;
                 }
-                if state
-                    .rooms
-                    .values()
-                    .any(|r| r.owner.identity.id == member.identity.id)
-                {
-                    reply(request, 409, b"one hosted room per account".to_vec());
+                if state.rooms.values().any(|r| r.owner.id == member.id) {
+                    reply(request, 409, b"one hosted room per credential".to_vec());
                     return;
                 }
                 let Some(catalog) = self.catalog() else {
@@ -211,8 +207,7 @@ impl RelayServer {
             (Method::Get, ["v1", "frpc", "rooms", room, "status"]) => {
                 let Some(room) = state.rooms.get_mut(*room).filter(|r| {
                     member.as_ref().is_some_and(|m| {
-                        r.owner.identity.id == m.identity.id
-                            && r.owner.token_sha256 == m.token_sha256
+                        r.owner.id == m.id && r.owner.token_sha256 == m.token_sha256
                     })
                 }) else {
                     reply(request, 404, vec![]);
@@ -224,6 +219,19 @@ impl RelayServer {
                 };
                 room.seen = Instant::now();
                 json(request, &Status { open: true });
+            }
+            (Method::Delete, ["v1", "frpc", "rooms", room]) => {
+                if !state.rooms.get(*room).is_some_and(|r| {
+                    r.direct.is_some()
+                        && member.as_ref().is_some_and(|m| {
+                            r.owner.id == m.id && r.owner.token_sha256 == m.token_sha256
+                        })
+                }) {
+                    reply(request, 404, vec![]);
+                    return;
+                }
+                state.rooms.remove(*room);
+                reply(request, 204, vec![]);
             }
             (Method::Post, ["v1", "frpc", "rooms", room, "tickets"]) => {
                 let Ok(input) = serde_json::from_slice::<TicketRequest>(body) else {

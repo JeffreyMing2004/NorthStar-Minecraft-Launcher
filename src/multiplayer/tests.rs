@@ -109,6 +109,36 @@ impl Drop for Fixture {
 }
 
 #[test]
+fn independent_host_codes_need_no_player_enrollment_and_store_only_hashes() {
+    let mut list = AccessList::default();
+    let (id, token) = issue_host(&mut list).unwrap();
+    assert!(list.members.is_empty());
+    assert_eq!(list.host_keys.len(), 1);
+    let owner = list.authenticate_host(&token).unwrap();
+    assert_eq!(owner.id, id);
+    assert!(owner.account.is_none());
+    assert!(list.host_active(&owner));
+    assert!(list.authenticate(&token).is_none());
+    assert!(list.authenticate_host(&"0".repeat(64)).is_none());
+    let json = serde_json::to_string(&list).unwrap();
+    assert!(!json.contains(&token));
+    assert!(!json.contains("name"));
+    assert!(!json.contains("kind"));
+    let mut duplicate = list.clone();
+    duplicate.host_keys.push(list.host_keys[0].clone());
+    assert!(duplicate.validate().is_err());
+    list.host_keys.clear();
+    assert!(!list.host_active(&owner));
+    assert!(list.authenticate_host(&token).is_none());
+    assert!(
+        serde_json::from_str::<AccessList>("{\"members\":[]}")
+            .unwrap()
+            .host_keys
+            .is_empty()
+    );
+}
+
+#[test]
 fn host_registry_preserves_unique_identities_without_a_player_quota() {
     let mut list = AccessList::default();
     for i in 0..32 {

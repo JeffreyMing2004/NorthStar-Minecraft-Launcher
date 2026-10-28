@@ -16,10 +16,36 @@ pub struct Member {
     pub token_sha256: String,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostKey {
+    pub id: String,
+    pub token_sha256: String,
+}
+
+#[derive(Clone)]
+pub(crate) struct HostIdentity {
+    pub id: String,
+    pub token_sha256: String,
+    pub account: Option<MemberIdentity>,
+}
+impl From<Member> for HostIdentity {
+    fn from(member: Member) -> Self {
+        Self {
+            id: member.identity.id.clone(),
+            token_sha256: member.token_sha256,
+            account: Some(member.identity),
+        }
+    }
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AccessList {
+    #[serde(default)]
     pub members: Vec<Member>,
+    #[serde(default)]
+    pub host_keys: Vec<HostKey>,
 }
 
 impl AccessList {
@@ -46,6 +72,17 @@ impl AccessList {
                 return Err("白名单包含无效或重复的凭证摘要。".into());
             }
         }
+        for key in &self.host_keys {
+            if !crate::accounts::valid_profile_id(&key.id)
+                || key.id != key.id.to_ascii_lowercase()
+                || !ids.insert(&key.id)
+                || key.token_sha256.len() != 64
+                || !key.token_sha256.bytes().all(|b| b.is_ascii_hexdigit())
+                || !tokens.insert(key.token_sha256.to_ascii_lowercase())
+            {
+                return Err("房主凭证包含无效或重复的编号、摘要。".into());
+            }
+        }
         Ok(())
     }
 
@@ -69,6 +106,50 @@ impl AccessList {
             .find(|member| constant_eq(&member.token_sha256.to_ascii_lowercase(), &hash))
             .cloned()
     }
+
+    pub(crate) fn authenticate_host(&self, token: &str) -> Option<HostIdentity> {
+        if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        let hash = digest(token);
+        self.host_keys
+            .iter()
+            .find(|key| constant_eq(&key.token_sha256.to_ascii_lowercase(), &hash))
+            .map(|key| HostIdentity {
+                id: key.id.clone(),
+                token_sha256: key.token_sha256.clone(),
+                account: None,
+            })
+            .or_else(|| self.authenticate(token).map(Into::into))
+    }
+
+    pub(crate) fn host_active(&self, host: &HostIdentity) -> bool {
+        match &host.account {
+            Some(identity) => self
+                .members
+                .iter()
+                .any(|m| &m.identity == identity && m.token_sha256 == host.token_sha256),
+            None => self
+                .host_keys
+                .iter()
+                .any(|key| key.id == host.id && key.token_sha256 == host.token_sha256),
+        }
+    }
+}
+
+/// Issue an independent hosting code without collecting a player name or UUID.
+pub fn issue_host(list: &mut AccessList) -> Result<(String, String)> {
+    list.validate()?;
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    let token = secret();
+    let mut next = list.clone();
+    next.host_keys.push(HostKey {
+        id: id.clone(),
+        token_sha256: digest(&token),
+    });
+    next.validate()?;
+    *list = next;
+    Ok((id, token))
 }
 
 fn constant_eq(a: &str, b: &str) -> bool {

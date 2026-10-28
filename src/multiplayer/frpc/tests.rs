@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     accounts::{Account, AccountKind},
-    multiplayer::{AccessList, RelayClient, issue_member, server::RelayServer},
+    multiplayer::{AccessList, RelayClient, issue_host, issue_member, server::RelayServer},
 };
 use std::{
     fs,
@@ -287,17 +287,6 @@ impl Fixture {
             bob_token,
         }
     }
-    fn client(&self, alice: bool) -> RelayClient {
-        RelayClient::new(
-            &self.endpoint,
-            if alice {
-                &self.alice_token
-            } else {
-                &self.bob_token
-            },
-        )
-        .unwrap()
-    }
     fn request(
         &self,
         method: reqwest::Method,
@@ -336,6 +325,8 @@ fn public_service_check_reports_readiness_without_credentials() {
     let client = RelayClient::public(&fixture.endpoint).unwrap();
     let info = client.check_service().unwrap();
     assert_eq!(info.service, SERVICE_NAME);
+    assert!(info.host_codes);
+    assert_eq!(info.game_port, 25565);
     assert_eq!(
         (info.protocol, info.max_hosts, info.nodes, info.tunnels),
         (1, 28, 1, 1)
@@ -353,6 +344,21 @@ fn public_service_check_reports_readiness_without_credentials() {
     assert!(!body.contains("fixture-proxy"));
     fs::remove_file(fixture.directory.path().join("nodes.json")).unwrap();
     assert!(client.check_service().is_err());
+}
+
+#[test]
+fn public_host_entry_rejects_ports_other_than_25565() {
+    let client = RelayClient::new("http://127.0.0.1:1", &"a".repeat(64)).unwrap();
+    let result = client.host_frpc_room(
+        25566,
+        HostOptions {
+            executable: std::env::current_exe().unwrap(),
+            runtime_directory: Path::new("unused").into(),
+            cancel: Arc::new(AtomicBool::new(false)),
+            report: Arc::new(|_| {}),
+        },
+    );
+    assert!(result.err().unwrap().contains("25565"));
 }
 
 #[test]
@@ -424,10 +430,8 @@ fn service_allocates_exclusive_tunnels_hides_credentials_and_frees_leases() {
 fn twenty_eight_host_slots_do_not_limit_public_guests() {
     let fixture = Fixture::new();
     let members = fixture.directory.path().join("members.json");
-    let mut list = AccessList::load(&members).unwrap();
-    let tokens: Vec<_> = (0..29)
-        .map(|i| issue_member(&mut list, AccountKind::Offline, "", &format!("Host{i}")).unwrap())
-        .collect();
+    let mut list = AccessList::default();
+    let tokens: Vec<_> = (0..29).map(|_| issue_host(&mut list).unwrap().1).collect();
     crate::store::write_json(&members, &list).unwrap();
     let mut n = node(fixture.control.local_addr().unwrap().port());
     n.proxies = (0..29)
@@ -517,7 +521,10 @@ fn twenty_eight_host_slots_do_not_limit_public_guests() {
     }
     assert_eq!(
         client
-            .delete(format!("{}/v1/rooms/{}", fixture.endpoint, leases[0].room))
+            .delete(format!(
+                "{}/v1/frpc/rooms/{}",
+                fixture.endpoint, leases[0].room
+            ))
             .bearer_auth(&tokens[0])
             .send()
             .unwrap()
@@ -539,6 +546,11 @@ fn twenty_eight_host_slots_do_not_limit_public_guests() {
 #[test]
 fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_revocation() {
     let fixture = Fixture::new();
+    let members = fixture.directory.path().join("members.json");
+    let mut list = AccessList::load(&members).unwrap();
+    let (host_id, host_token) = issue_host(&mut list).unwrap();
+    assert_ne!(host_id, fixture.alice.id);
+    crate::store::write_json(&members, &list).unwrap();
     let _control_port = fixture.control.local_addr().unwrap();
     let game = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = game.local_addr().unwrap().port();
@@ -574,10 +586,10 @@ fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_re
     });
     let cancel = Arc::new(AtomicBool::new(false));
     let report = Arc::new(|_: String| {});
-    let host = fixture
-        .client(true)
-        .host_frpc(
-            &fixture.alice,
+    // The TCP fixture uses an ephemeral game port; the public entry's fixed-port rule is tested above.
+    let host = RelayClient::new(&fixture.endpoint, &host_token)
+        .unwrap()
+        .host_frpc_local(
             port,
             HostOptions {
                 executable: std::env::current_exe().unwrap(),
@@ -618,7 +630,6 @@ fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_re
     let mut reply = vec![0; bytes.len()];
     stream.read_exact(&mut reply).unwrap();
     assert_eq!(reply, bytes);
-    let members = fixture.directory.path().join("members.json");
     let mut list = AccessList::load(&members).unwrap();
     list.members.retain(|m| m.identity.id != fixture.bob.id);
     crate::store::write_json(&members, &list).unwrap();
@@ -628,7 +639,7 @@ fn managed_frpc_fixture_and_authorized_game_stream_reject_raw_connections_and_re
     let mut reply = [0; 13];
     stream.read_exact(&mut reply).unwrap();
     assert_eq!(&reply, b"still allowed");
-    list.members.retain(|m| m.identity.id != fixture.alice.id);
+    list.host_keys.retain(|key| key.id != host_id);
     crate::store::write_json(&members, &list).unwrap();
     let deadline = Instant::now() + Duration::from_secs(7);
     while guest.running() && Instant::now() < deadline {

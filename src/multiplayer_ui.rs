@@ -4,7 +4,7 @@ use crate::{
     theme,
 };
 use nscl::multiplayer::frpc::download as frpc_download;
-use nscl::multiplayer::frpc::{FrpcSession, HostOptions};
+use nscl::multiplayer::frpc::{FrpcSession, GAME_PORT, HostOptions, VERIFICATION_ENDPOINTS};
 use nscl::{accounts::Account, multiplayer::RelayClient};
 use std::{
     net::SocketAddr,
@@ -49,10 +49,8 @@ impl Session {
 #[derive(Default)]
 pub struct MultiplayerPage {
     token: String,
-    game_port: String,
     room_code: String,
     message: String,
-    identity: Option<String>,
     pending: Option<Receiver<Completion>>,
     pending_cancel: Option<Arc<AtomicBool>>,
     progress: Arc<Mutex<String>>,
@@ -63,18 +61,7 @@ pub struct MultiplayerPage {
 }
 
 impl MultiplayerPage {
-    pub fn poll(&mut self, account: Option<&Account>) {
-        let current = account.map(|a| a.id.clone());
-        if self.identity != current {
-            if let Some(cancel) = self.pending_cancel.take() {
-                cancel.store(true, Ordering::Relaxed);
-            }
-            self.session = None;
-            self.pending = None;
-            self.token.clear();
-            self.message.clear();
-            self.identity = current;
-        }
+    pub fn poll(&mut self, _account: Option<&Account>) {
         if let Some(receiver) = &self.pending {
             match receiver.try_recv() {
                 Ok(completion) => {
@@ -198,14 +185,7 @@ impl MultiplayerPage {
         });
     }
 
-    fn start(
-        &mut self,
-        endpoint: String,
-        account: Option<Account>,
-        hosting: bool,
-        executable: String,
-        ctx: &egui::Context,
-    ) {
+    fn start(&mut self, endpoint: String, hosting: bool, executable: String, ctx: &egui::Context) {
         if self.pending.is_some() || self.session.is_some() {
             return;
         }
@@ -220,21 +200,7 @@ impl MultiplayerPage {
                 return;
             }
         };
-        if hosting && account.is_none() {
-            self.message = "请先选择房主的启动器账号。".into();
-            return;
-        }
-        let port = if hosting {
-            match self.game_port.trim().parse::<u16>() {
-                Ok(port) if port > 0 => port,
-                _ => {
-                    self.message = "请填写游戏内显示的局域网端口（1–65535）。".into();
-                    return;
-                }
-            }
-        } else {
-            0
-        };
+        let port = GAME_PORT;
         let (sender, receiver) = mpsc::channel();
         self.pending = Some(receiver);
         self.message = if hosting {
@@ -265,8 +231,7 @@ impl MultiplayerPage {
                 executable.and_then(|executable| {
                     program = Some(executable.clone());
                     client
-                        .host_frpc(
-                            account.as_ref().unwrap(),
+                        .host_frpc_room(
                             port,
                             HostOptions {
                                 executable,
@@ -299,6 +264,9 @@ impl Drop for MultiplayerPage {
 }
 
 pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
+    if app.settings.multiplayer_endpoint.trim().is_empty() {
+        app.settings.multiplayer_endpoint = VERIFICATION_ENDPOINTS[0].into();
+    }
     let account = app.accounts.list.current().cloned();
     app.multiplayer.poll(account.as_ref());
     app.multiplayer
@@ -312,6 +280,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
     app::heading(ui, "联机");
     ui.add_space(8.0);
     app::body(ui, "房主通过 frpc 连接 88frp，自动测速并分配空闲隧道。");
+    app::body(ui, "开房端口：25565（固定）");
     app::hint(
         ui,
         "最多 28 个房主同时开房；加入不占名额，无需凭证和 frpc，人数由 Minecraft 自身决定。",
@@ -321,21 +290,26 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
     theme::card(18).show(ui, |ui| {
         ui.set_width((ui.available_width() - 4.0).max(0.0));
         ui.spacing_mut().item_spacing.y = 10.0;
-        app::body(ui, &account.as_ref().map(|a| format!("当前账号：{}", a.name)).unwrap_or_else(|| "创建房间需选择账号；加入好友房间无需选择。".into()));
+        app::body(ui, &account.as_ref().map(|a| format!("当前账号：{}", a.name)).unwrap_or_else(|| "持房主凭证即可开房，无需选择或登记启动器账号。".into()));
         ui.add_enabled_ui(!busy, |ui| {
             ui.label("验证服务地址（自建服务器）");
             ui.add(egui::TextEdit::singleline(&mut app.settings.multiplayer_endpoint)
-                .hint_text("例如 https://auth.example.com")
+                .hint_text(VERIFICATION_ENDPOINTS[0])
                 .desired_width(ui.available_width()));
+            ui.horizontal(|ui| {
+                for (label,endpoint) in [("主验证地址",VERIFICATION_ENDPOINTS[0]),("备用验证地址",VERIFICATION_ENDPOINTS[1])] {
+                    if download_button(ui,label,true) {app.settings.multiplayer_endpoint=endpoint.into();}
+                }
+            });
             app::hint(ui,"填写部署在你服务器上的验证服务 HTTPS 地址。88frp 的节点 IP、域名和端口由映射池自动分配。");
             if download_button(ui,"测试验证服务",true) {
                 app.multiplayer.check_service(app.settings.multiplayer_endpoint.clone(),ui.ctx());
             }
             ui.label("房主凭证（仅创建房间需要）");
             ui.add(egui::TextEdit::singleline(&mut app.multiplayer.token).password(true)
-                .hint_text("由联机服务管理员提供")
+                .hint_text("直接填写管理员发放的开房码")
                 .desired_width(ui.available_width()));
-            app::hint(ui, "联机凭证仅保留在本次运行内，不会保存到设置或导出包。");
+            app::hint(ui, "房主凭证不绑定玩家名或 UUID，仅保留在本次运行内，不会保存到设置或导出包。");
             egui::CollapsingHeader::new("房主 frpc 程序设置").show(ui,|ui| {
                 ui.label("frpc 程序路径（仅房主需要）");
                 ui.add(egui::TextEdit::singleline(&mut app.settings.frpc_path).hint_text("选择或输入本地 frpc.exe 完整路径").desired_width(ui.available_width()));
@@ -423,15 +397,11 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
     } else {
         theme::card(18).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 10.0;
-            ui.add_enabled_ui(!busy && account.is_some(), |ui| {
+            ui.add_enabled_ui(!busy, |ui| {
                 app::body(ui, "创建房间");
-                app::hint(ui, "先启动游戏并进入世界，选择「对局域网开放」，填入游戏显示的端口。好友需使用兼容的游戏版本和模组。");
-                ui.horizontal(|ui| {
-                    ui.label("游戏局域网端口");
-                    ui.add(egui::TextEdit::singleline(&mut app.multiplayer.game_port).hint_text("例如 51234").desired_width(130.0));
-                });
+                app::hint(ui, "只能使用 25565 端口开房。请将游戏「对局域网开放」的端口或服务端端口设为 25565，再创建房间。好友需使用兼容的游戏版本和模组。");
                 if app::primary_button(ui, "创建联机房间") {
-                    app.multiplayer.start(app.settings.multiplayer_endpoint.clone(), account.clone(), true,app.settings.frpc_path.clone(), ui.ctx());
+                    app.multiplayer.start(app.settings.multiplayer_endpoint.clone(), true,app.settings.frpc_path.clone(), ui.ctx());
                 }
                 ui.add_space(14.0);
             });
@@ -439,7 +409,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
                 app::body(ui, "加入房间");
                 ui.add(egui::TextEdit::singleline(&mut app.multiplayer.room_code).hint_text("粘贴朋友分享的房间码").desired_width(ui.available_width()));
                 if download_button(ui, "加入联机房间", true) {
-                    app.multiplayer.start(app.settings.multiplayer_endpoint.clone(), None, false,String::new(), ui.ctx());
+                    app.multiplayer.start(app.settings.multiplayer_endpoint.clone(), false,String::new(), ui.ctx());
                 }
             });
         });
@@ -530,13 +500,7 @@ mod tests {
     fn joining_needs_neither_selected_account_host_token_nor_frpc() {
         let (_root, _, ctx) = crate::service::tests::fixture();
         let mut page = MultiplayerPage::default();
-        page.start(
-            "http://127.0.0.1:1".into(),
-            None,
-            false,
-            String::new(),
-            &ctx,
-        );
+        page.start("http://127.0.0.1:1".into(), false, String::new(), &ctx);
         assert!(page.pending.is_some());
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         while page.pending.is_some() && std::time::Instant::now() < deadline {
@@ -549,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn multiplayer_page_is_available_and_account_changes_clear_credentials() {
+    fn independent_host_codes_survive_launcher_account_changes() {
         assert!(Page::ALL.contains(&Page::Multiplayer));
         let alice = Account::offline("Alice").unwrap();
         let bob = Account::offline("Bob").unwrap();
@@ -560,11 +524,19 @@ mod tests {
         page.poll(Some(&alice));
         assert_eq!(page.token.len(), 64);
         page.poll(Some(&bob));
-        assert!(page.token.is_empty());
-        assert!(page.message.is_empty());
-        page.token = "b".repeat(64);
+        assert_eq!(page.token, "a".repeat(64));
+        assert_eq!(page.message, "old account");
         page.poll(None);
-        assert!(page.token.is_empty());
+        assert_eq!(page.token, "a".repeat(64));
+    }
+
+    #[test]
+    fn hosting_requests_a_code_without_requiring_an_account() {
+        let (_root, _, ctx) = crate::service::tests::fixture();
+        let mut page = MultiplayerPage::default();
+        page.start("http://127.0.0.1:1".into(), true, String::new(), &ctx);
+        assert!(page.message.contains("房主凭证"));
+        assert!(page.pending.is_none());
     }
 
     #[test]
@@ -595,6 +567,7 @@ mod tests {
             "测试验证服务",
             "房主凭证（仅创建房间需要）",
             "创建联机房间",
+            "开房端口：25565（固定）",
             "加入联机房间",
         ] {
             crate::service::tests::text_rect(&output, label);

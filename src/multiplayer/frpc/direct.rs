@@ -119,13 +119,33 @@ impl RelayClient {
         game_port: u16,
         options: HostOptions,
     ) -> Result<FrpcSession> {
+        self.authorize(account)?;
+        self.host_frpc_room(game_port, options)
+    }
+
+    pub fn host_frpc_room(&self, game_port: u16, options: HostOptions) -> Result<FrpcSession> {
+        if game_port != super::GAME_PORT {
+            return Err(
+                "仅支持使用本机 25565 端口开房，请将游戏的局域网或服务端端口设置为 25565。".into(),
+            );
+        }
+        self.host_frpc_local(game_port, options)
+    }
+
+    pub(super) fn host_frpc_local(
+        &self,
+        game_port: u16,
+        options: HostOptions,
+    ) -> Result<FrpcSession> {
         if !options.executable.is_file() {
             return Err("请先选择本地 frpc 程序，下载地址可稍后配置。".into());
         }
-        self.authorize(account)?;
+        self.checked(Method::GET, "v1/frpc/host")?;
         let target = SocketAddr::from(([127, 0, 0, 1], game_port));
         if game_port == 0 || TcpStream::connect_timeout(&target, Duration::from_secs(2)).is_err() {
-            return Err("无法连接本机游戏端口，请先对局域网开放。".into());
+            return Err(
+                "无法连接本机 25565 端口，请先启动游戏并在 25565 端口对局域网开放。".into(),
+            );
         }
         (options.report)("正在随机测速北京、广州、杭州和上海节点……".into());
         let nodes: Vec<NodeInfo> = self.frpc_json(Method::GET, "v1/frpc/nodes", vec![])?;
@@ -528,7 +548,7 @@ impl RelayClient {
         );
     }
     fn release_room(&self, room: &str) {
-        let _ = self.checked(Method::DELETE, &format!("v1/rooms/{room}"));
+        let _ = self.checked(Method::DELETE, &format!("v1/frpc/rooms/{room}"));
     }
 }
 
@@ -588,7 +608,7 @@ fn frpc_error(status: u16) -> String {
     match status {
         401 | 403 => "当前账号的联机凭证无效或权限已撤销。",
         404 => "frpc 房间不存在或已关闭。",
-        409 => "暂无空闲 frpc 隧道（最多 28 个房主），或该账号已有房间。",
+        409 => "暂无空闲 frpc 隧道（最多 28 个房主），或此凭证已有房间。",
         429 => "联机连接数已达上限，请稍后重试。",
         503 => "管理员尚未配置 frpc 节点，或授权服务暂不可用。",
         _ => "frpc 授权服务请求失败。",

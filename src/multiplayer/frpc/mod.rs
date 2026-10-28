@@ -9,6 +9,9 @@ pub use catalog::{Catalog, Node, NodeInfo, Proxy, Route};
 pub use direct::{FrpcSession, HostOptions};
 pub use probe::{NodeLatency, measure_nodes};
 pub const MAX_HOSTS: usize = 28;
+pub const GAME_PORT: u16 = 25565;
+pub const VERIFICATION_ENDPOINTS: [&str; 2] =
+    ["https://auth.minguncle.cn", "https://auth.northstarmc.cn"];
 pub const SERVICE_NAME: &str = "northstar-multiplayer";
 #[derive(Serialize, Deserialize)]
 pub struct ServiceInfo {
@@ -17,6 +20,10 @@ pub struct ServiceInfo {
     pub max_hosts: usize,
     pub nodes: usize,
     pub tunnels: usize,
+    #[serde(default)]
+    pub host_codes: bool,
+    #[serde(default)]
+    pub game_port: u16,
 }
 pub(crate) use process::FrpcProcess;
 use serde::{Deserialize, Serialize};
