@@ -29,6 +29,10 @@ pub struct SkinView {
     generation: u64,
     sender: Sender<Loaded>,
     receiver: Receiver<Loaded>,
+    history: Vec<crate::skin_history::Entry>,
+    history_sender: Sender<(u64, Result<usize, String>)>,
+    history_receiver: Receiver<(u64, Result<usize, String>)>,
+    history_pending: bool,
     yaw: f32,
     pitch: f32,
 }
@@ -36,6 +40,7 @@ pub struct SkinView {
 impl SkinView {
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel();
+        let (history_sender, history_receiver) = mpsc::channel();
         Self {
             image: skins::default_skin(),
             texture: None,
@@ -48,6 +53,10 @@ impl SkinView {
             generation: 0,
             sender,
             receiver,
+            history: Vec::new(),
+            history_sender,
+            history_receiver,
+            history_pending: false,
             yaw: -0.4,
             pitch: 0.12,
         }
@@ -60,9 +69,16 @@ impl SkinView {
             .map(|a| a.id.clone());
         if selected != self.account {
             self.account = selected;
+            self.history_pending = false;
+            self.history = self
+                .account
+                .as_deref()
+                .map(|id| crate::skin_history::list(&crate::skin_history::root(), id))
+                .unwrap_or_default();
             self.generation += 1;
             self.pending = false;
             self.local = false;
+            self.path.clear();
             self.image = skins::default_skin();
             self.texture = None;
             self.model = Model::Classic;
@@ -87,6 +103,22 @@ impl SkinView {
                     }
                 }
                 Err(error) => self.status = error,
+            }
+            if let Some(id) = &self.account {
+                self.history = crate::skin_history::list(&crate::skin_history::root(), id);
+            }
+        }
+        while let Ok((generation, result)) = self.history_receiver.try_recv() {
+            if generation != self.generation {
+                continue;
+            }
+            self.history_pending = false;
+            self.status = match result {
+                Ok(count) => format!("公开历史已查询：获取 {count} 个皮肤；第三方记录可能不完整。"),
+                Err(error) => error,
+            };
+            if let Some(id) = &self.account {
+                self.history = crate::skin_history::list(&crate::skin_history::root(), id);
             }
         }
     }
@@ -144,6 +176,18 @@ impl SkinView {
                 .join("skins")
                 .join(format!("{}.png", account.id));
             let result = (|| {
+                let old_model = if std::fs::read_to_string(cache.with_extension("model"))
+                    .ok()
+                    .as_deref()
+                    == Some("slim")
+                {
+                    Model::Slim
+                } else {
+                    Model::Classic
+                };
+                if let Ok((_, old)) = skins::read(&cache, old_model) {
+                    crate::skin_history::save(&crate::skin_history::root(), &account.id, &old)?;
+                }
                 let session = AuthClient::new()?.resume(
                     &account,
                     cached,
@@ -151,7 +195,7 @@ impl SkinView {
                     &AtomicBool::new(false),
                 )?;
                 let client = skins::SkinClient::new()?;
-                let (image, status) = if upload {
+                let (image, mut status): (Skin, String) = if upload {
                     let (bytes, image) = skins::read(&path, model)?;
                     client.upload(&session, bytes, model)?;
                     (
@@ -161,6 +205,11 @@ impl SkinView {
                 } else {
                     (client.current(&session)?, "账号皮肤已刷新。".into())
                 };
+                if crate::skin_history::save(&crate::skin_history::root(), &account.id, &image)
+                    .is_err()
+                {
+                    status.push_str(" 本地皮肤库保存失败，请检查目录权限。");
+                }
                 if let Some(parent) = cache.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
@@ -186,6 +235,23 @@ impl SkinView {
                 }
                 Err(error)
             });
+            let _ = sender.send((generation, result));
+            ctx.request_repaint();
+        });
+    }
+    fn fetch_history(&mut self, ctx: &egui::Context) {
+        if self.history_pending || self.pending {
+            return;
+        }
+        let Some(id) = self.account.clone() else {
+            self.status = "请先登录 Microsoft 正版账号。".into();
+            return;
+        };
+        self.history_pending = true;
+        self.status = "正在查询第三方公开皮肤历史……".into();
+        let (sender, generation, ctx) = (self.history_sender.clone(), self.generation, ctx.clone());
+        std::thread::spawn(move || {
+            let result = crate::skin_history::fetch(&crate::skin_history::root(), &id);
             let _ = sender.send((generation, result));
             ctx.request_repaint();
         });
@@ -369,6 +435,46 @@ pub fn controls(ui: &mut Ui, app: &mut NsclApp) {
         ui.add_space(12.0);
         form_controls(ui, app);
     }
+    ui.add_space(12.0);
+    ui.label(RichText::new("历史皮肤").strong());
+    app::hint(
+        ui,
+        "本地保存当前账号皮肤；查询会向 mc-api.bisai.dev 发送账号 UUID，不含登录凭证，最多获取最近 20 条记录。选择后预览，再上传到正版账号。",
+    );
+    if ui
+        .add_enabled(
+            app.settings.online_mode && !app.skin.pending && !app.skin.history_pending,
+            egui::Button::new("查询公开皮肤历史"),
+        )
+        .clicked()
+    {
+        app.skin.fetch_history(ui.ctx());
+    }
+    if app.skin.history_pending {
+        ui.label("正在查询公开历史……");
+    }
+    let entries = app.skin.history.clone();
+    if entries.is_empty() {
+        app::hint(ui, "暂无保存的历史皮肤。");
+    }
+    egui::ScrollArea::vertical()
+        .id_salt("skin-history-list")
+        .max_height(180.0)
+        .show(ui, |ui| {
+            for (index, entry) in entries.iter().enumerate() {
+                if ui
+                    .add_enabled(
+                        !app.skin.pending && !app.skin.history_pending,
+                        egui::Button::new(format!("皮肤 {} · {}", index + 1, entry.model.label())),
+                    )
+                    .clicked()
+                {
+                    app.skin.path = entry.path.to_string_lossy().into_owned();
+                    app.skin.model = entry.model;
+                    app.skin.preview(ui.ctx());
+                }
+            }
+        });
 }
 
 fn form_controls(ui: &mut Ui, app: &mut NsclApp) {

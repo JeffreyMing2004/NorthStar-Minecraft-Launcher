@@ -42,6 +42,10 @@ Windows 使用凭据管理器，macOS 使用 Keychain，保存 Microsoft 刷新�
 
 皮肤通过 Minecraft 官方角色服务上传，纹理从 `textures.minecraft.net` 获取，下载纹理时不携带账号令牌。缓存位于设置文件旁的 `cache/skins/`，仅包含皮肤图片与模型类型。模拟服务测试验证上传表单、身份匹配、图片格式及纹理请求不泄漏令牌；真实账号上传需用户在界面主动操作。
 
+「历史皮肤」按正版账号在 `cache/skin-history/` 中保存启动器已有的皮肤缓存及后续读取、上传的皮肤，并保留标准或纤细手臂模型。选择列表中的皮肤可预览，再点击「上传到当前正版账号」应用到 Minecraft 档案。旧版本只缓存最后一次皮肤，因此更早的皮肤不一定还在本地。
+
+点击「查询公开皮肤历史」可从 [mc-api](https://mc-api.bisai.dev/docs) 获取最近最多 20 条第三方观察记录，查询仅发送当前账号 UUID，不发送登录令牌；服务未观察到的旧皮肤不会出现。结果下载并保存到该账号的本地皮肤库，玩家需要手动选择和上传，查询不会修改正版档案。
+
 接口参考：[Minecraft 用户服务实现](https://github.com/Voxelum/minecraft-launcher-core-node/blob/master/packages/user/mojang.ts)。
 
 ## 披风管理

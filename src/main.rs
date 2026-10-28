@@ -21,6 +21,7 @@ mod project_icons;
 mod renderer;
 mod service;
 mod settings_ui;
+mod skin_history;
 mod skin_ui;
 mod theme;
 mod update_service;
