@@ -148,6 +148,20 @@ impl eframe::App for NsclApp {
         }
         self.accounts.poll(&mut self.settings, &ctx);
         self.multiplayer.poll(self.accounts.list.current());
+        self.multiplayer.detect_program(
+            &self.settings.frpc_path,
+            &nscl::multiplayer::frpc::download::directory(),
+            &ctx,
+        );
+        if let Some(path) = self.multiplayer.take_program() {
+            let path = path.to_string_lossy().into_owned();
+            if self.settings.frpc_path != path {
+                self.settings.frpc_path = path;
+                if let Err(error) = crate::store::save(&self.settings) {
+                    self.save_status = error;
+                }
+            }
+        }
         if self.page != Page::Multiplayer {
             self.multiplayer.leave();
         }
@@ -213,18 +227,19 @@ impl eframe::App for NsclApp {
                     |ui| {
                         ui.add_space(28.0);
                         ui.label(RichText::new("●").size(6.0).color(theme::ACCENT));
+                        let activity = if self.service.busy() {
+                            self.service.progress.stage.as_str()
+                        } else if self.service.game.is_some() {
+                            "游戏正在运行"
+                        } else if self.updates.available() {
+                            "发现启动器新版本，请前往「更多」更新"
+                        } else {
+                            "准备就绪"
+                        };
                         ui.label(
-                            RichText::new(if self.service.busy() {
-                                self.service.progress.stage.as_str()
-                            } else if self.service.game.is_some() {
-                                "游戏正在运行"
-                            } else if self.updates.available() {
-                                "发现启动器新版本，请前往「更多」更新"
-                            } else {
-                                "准备就绪"
-                            })
-                            .size(11.0)
-                            .color(theme::FOOTER_TEXT),
+                            RichText::new(format!("{activity}  ·  {}", self.multiplayer.status()))
+                                .size(11.0)
+                                .color(theme::FOOTER_TEXT),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(20.0);

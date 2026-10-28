@@ -553,7 +553,17 @@ fn twenty_eight_host_slots_do_not_limit_public_guests() {
 }
 
 #[test]
-fn anonymous_host_and_guest_streams_reject_forgery_and_close_with_the_room() {
+fn coordinator_selection_falls_back_before_allocating_a_room() {
+    let fixture = Fixture::new();
+    let closed = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let unavailable = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+    let client = RelayClient::available(&[&unavailable, &fixture.endpoint]).unwrap();
+    assert!(client.check_service().unwrap().anonymous_hosts);
+}
+
+#[test]
+fn minecraft_tcp_and_room_code_streams_are_transparent_and_close_with_the_room() {
     let fixture = Fixture::new();
     let members = fixture.directory.path().join("members.json");
     let _control_port = fixture.control.local_addr().unwrap();
@@ -606,22 +616,23 @@ fn anonymous_host_and_guest_streams_reject_forgery_and_close_with_the_room() {
         .unwrap();
     assert!(host.running());
     assert!(host.room.starts_with("frpc:"));
-    // A raw TCP visitor cannot pass the authenticated handshake to reach Minecraft.
-    let mut intruder = TcpStream::connect(&host.public_address).unwrap();
-    intruder
+    // A real Minecraft status handshake used to be read as a huge u32 JSON frame length.
+    let mut direct = TcpStream::connect(&host.public_address).unwrap();
+    direct
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
-    let challenge: serde_json::Value = tickets::receive(&mut intruder).unwrap();
-    let forged = tickets::Ticket::issue(
-        challenge["room"].as_str().unwrap(),
-        challenge["challenge"].as_str().unwrap(),
-        &"a".repeat(32),
-        "wrong-key",
-    )
-    .unwrap();
-    tickets::send(&mut intruder, &forged).unwrap();
-    let mut byte = [0];
-    assert!(intruder.read(&mut byte).is_err() || byte[0] == 0);
+    let handshake = [
+        0x10, 0x00, 0xff, 0x05, 0x09, b'l', b'o', b'c', b'a', b'l', b'h', b'o', b's', b't', 0x63,
+        0xdd, 0x01, 0x01, 0x00,
+    ];
+    // Send in fragments to also catch greeting injection and first-packet sniffing.
+    direct.write_all(&handshake[..2]).unwrap();
+    std::thread::sleep(Duration::from_millis(30));
+    direct.write_all(&handshake[2..]).unwrap();
+    let mut direct_reply = [0; 19];
+    direct.read_exact(&mut direct_reply).unwrap();
+    assert_eq!(direct_reply, handshake);
+    assert!(host.message().is_empty(), "{}", host.message());
     let guest = RelayClient::public(&fixture.endpoint)
         .unwrap()
         .join_frpc_room(&host.room, Arc::new(AtomicBool::new(false)))
@@ -657,6 +668,7 @@ fn anonymous_host_and_guest_streams_reject_forgery_and_close_with_the_room() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert_eq!(host.connections(), 0);
+    assert_eq!(direct.read(&mut [0]).unwrap_or(0), 0);
     host.stop();
     let deadline = Instant::now() + Duration::from_secs(7);
     while fs::read_dir(fixture.directory.path().join("runtime"))

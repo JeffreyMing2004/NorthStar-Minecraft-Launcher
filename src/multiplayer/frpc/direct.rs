@@ -1,13 +1,9 @@
-use super::{
-    CreateRoom, FrpcProcess, Lease, NodeInfo, RoomInfo, Status, TicketRequest, measure_nodes,
-    tickets::{self, Ticket},
-};
+use super::{CreateRoom, FrpcProcess, Lease, NodeInfo, RoomInfo, Status, measure_nodes};
 use crate::{
     accounts::Account,
     multiplayer::{RelayClient, Result, secret},
 };
 use reqwest::Method;
-use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     io::{Read, Write},
@@ -15,7 +11,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -26,19 +22,8 @@ pub struct HostOptions {
     pub cancel: Arc<AtomicBool>,
     pub report: Arc<dyn Fn(String) + Send + Sync>,
 }
-#[derive(Serialize, Deserialize)]
-struct Challenge {
-    room: String,
-    challenge: String,
-}
-#[derive(Serialize, Deserialize)]
-struct Accepted {
-    accepted: bool,
-}
-
 struct Runtime {
     stopped: Arc<AtomicBool>,
-    pending: AtomicUsize,
     connections: Mutex<BTreeMap<String, TcpStream>>,
     message: Mutex<String>,
 }
@@ -46,7 +31,6 @@ impl Runtime {
     fn new(stopped: Arc<AtomicBool>) -> Arc<Self> {
         Arc::new(Self {
             stopped,
-            pending: AtomicUsize::new(0),
             connections: Mutex::new(BTreeMap::new()),
             message: Mutex::new(String::new()),
         })
@@ -152,7 +136,7 @@ impl RelayClient {
         let mut candidates: Vec<_> = results.iter().map(|r| r.node.id.clone()).collect();
         let mut avoid = Vec::new();
         let listener =
-            TcpListener::bind(("127.0.0.1", 0)).map_err(|_| "无法创建本地联机授权入口。")?;
+            TcpListener::bind(("127.0.0.1", 0)).map_err(|_| "无法创建本地联机转发入口。")?;
         listener
             .set_nonblocking(true)
             .map_err(|_| "无法配置本地联机入口。")?;
@@ -280,27 +264,13 @@ impl RelayClient {
             drop(process);
             client.release_room(&room);
         });
-        let client = self.clone();
         std::thread::spawn(move || {
             while !state.stopped.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        if state.pending.fetch_add(1, Ordering::Relaxed) >= 16 {
-                            state.pending.fetch_sub(1, Ordering::Relaxed);
-                            drop(stream);
-                            continue;
-                        }
-                        let (client, state, room, key) = (
-                            client.clone(),
-                            state.clone(),
-                            lease.room.clone(),
-                            lease.key.clone(),
-                        );
+                        let state = state.clone();
                         std::thread::spawn(move || {
-                            let result =
-                                client.accept_peer(stream, &room, &key, target, state.clone());
-                            state.pending.fetch_sub(1, Ordering::Relaxed);
-                            // Unauthenticated probes never publish peer data or raw frpc output.
+                            let result = Self::accept_peer(stream, target, state.clone());
                             if let Err(error) = result {
                                 *state.message.lock().unwrap() = error;
                             }
@@ -310,7 +280,7 @@ impl RelayClient {
                         std::thread::sleep(Duration::from_millis(25))
                     }
                     Err(_) => {
-                        state.fail("本地 frpc 授权入口已关闭。".into());
+                        state.fail("本地 frpc 转发入口已关闭。".into());
                         break;
                     }
                 }
@@ -318,37 +288,15 @@ impl RelayClient {
         });
         Ok(session)
     }
-    fn accept_peer(
-        &self,
-        mut stream: TcpStream,
-        room: &str,
-        key: &str,
-        target: SocketAddr,
-        state: Arc<Runtime>,
-    ) -> Result<()> {
+    fn accept_peer(stream: TcpStream, target: SocketAddr, state: Arc<Runtime>) -> Result<()> {
         configure(&stream)?;
-        let challenge = secret();
-        tickets::send(
-            &mut stream,
-            &Challenge {
-                room: room.into(),
-                challenge: challenge.clone(),
-            },
-        )?;
-        let ticket: Ticket = tickets::receive(&mut stream)?;
-        ticket.verify(room, &challenge, key)?;
         if state.stopped.load(Ordering::Relaxed) {
             return Err("联机已停止。".into());
         }
-        let status: Status =
-            self.frpc_json(Method::GET, &format!("v1/frpc/rooms/{room}/status"), vec![])?;
-        if !status.open {
-            return Err("房主的联机权限已撤销或房间已关闭。".into());
-        }
         let game = TcpStream::connect_timeout(&target, Duration::from_secs(2))
             .map_err(|_| "房主游戏端口已关闭。")?;
-        tickets::send(&mut stream, &Accepted { accepted: true })?;
-        self.copy_peer(room.into(), challenge, stream, game, state);
+        // Minecraft owns the wire protocol. Never inject a launcher greeting or parse game bytes.
+        Self::copy_peer(stream, game, state);
         Ok(())
     }
     pub fn join_frpc(
@@ -378,9 +326,8 @@ impl RelayClient {
         {
             return Err("frpc 房间地址无效。".into());
         }
-        let probe = self.connect_peer(room, &info)?;
-        let _ = probe.0.shutdown(Shutdown::Both);
-        self.release_ticket(room, &probe.1);
+        let probe = Self::connect_peer(&info)?;
+        let _ = probe.shutdown(Shutdown::Both);
         if cancel.load(Ordering::Relaxed) {
             return Err("操作已取消。".into());
         }
@@ -402,8 +349,7 @@ impl RelayClient {
             latency_ms: None,
             state: state.clone(),
         };
-        let (client, room, beat_state) = (self.clone(), room.to_owned(), state.clone());
-        let beat_room = room.clone();
+        let (client, beat_room, beat_state) = (self.clone(), room.to_owned(), state.clone());
         std::thread::spawn(move || {
             while !beat_state.stopped.load(Ordering::Relaxed) {
                 let result = client.frpc_json::<RoomInfo>(
@@ -418,30 +364,21 @@ impl RelayClient {
                 pause(&beat_state.stopped, 20);
             }
         });
-        let client = self.clone();
         std::thread::spawn(move || {
             while !state.stopped.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((game, _)) => {
-                        state.pending.fetch_add(1, Ordering::Relaxed);
-                        let (client, state, room, info) = (
-                            client.clone(),
+                        let (state, info) = (
                             state.clone(),
-                            room.clone(),
                             RoomInfo {
                                 node_name: info.node_name.clone(),
                                 public_host: info.public_host.clone(),
                                 remote_port: info.remote_port,
                             },
                         );
-                        std::thread::spawn(move || {
-                            match client.connect_peer(&room, &info) {
-                                Ok((stream, challenge)) => {
-                                    client.copy_peer(room, challenge, stream, game, state.clone())
-                                }
-                                Err(error) => state.fail(error),
-                            }
-                            state.pending.fetch_sub(1, Ordering::Relaxed);
+                        std::thread::spawn(move || match Self::connect_peer(&info) {
+                            Ok(stream) => Self::copy_peer(stream, game, state.clone()),
+                            Err(error) => state.fail(error),
                         });
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -456,50 +393,19 @@ impl RelayClient {
         });
         Ok(session)
     }
-    fn connect_peer(&self, room: &str, info: &RoomInfo) -> Result<(TcpStream, String)> {
+    fn connect_peer(info: &RoomInfo) -> Result<TcpStream> {
         let addresses = (info.public_host.as_str(), info.remote_port)
             .to_socket_addrs()
             .map_err(|_| "无法解析房间连接域名。")?;
-        let mut stream = addresses
+        let stream = addresses
             .take(4)
             .find_map(|a| TcpStream::connect_timeout(&a, Duration::from_secs(3)).ok())
             .ok_or("无法连接 frpc 房间，请检查节点域名和隧道状态。")?;
         configure(&stream)?;
-        let challenge: Challenge = tickets::receive(&mut stream)?;
-        if challenge.room != room || challenge.challenge.len() != 64 {
-            return Err("房间握手不匹配。".into());
-        }
-        let ticket: Ticket = self.frpc_json(
-            Method::POST,
-            &format!("v1/frpc/rooms/{room}/tickets"),
-            serde_json::to_vec(&TicketRequest {
-                challenge: challenge.challenge.clone(),
-            })
-            .unwrap(),
-        )?;
-        let result = (|| {
-            tickets::send(&mut stream, &ticket)?;
-            let accepted: Accepted = tickets::receive(&mut stream)?;
-            if !accepted.accepted {
-                return Err("房主拒绝了联机授权。".into());
-            }
-            Ok(())
-        })();
-        if let Err(error) = result {
-            self.release_ticket(room, &challenge.challenge);
-            return Err(error);
-        }
-        Ok((stream, challenge.challenge))
+        Ok(stream)
     }
-    fn copy_peer(
-        &self,
-        room: String,
-        challenge: String,
-        mut tunnel: TcpStream,
-        mut game: TcpStream,
-        state: Arc<Runtime>,
-    ) {
-        let client = self.clone();
+    fn copy_peer(mut tunnel: TcpStream, mut game: TcpStream, state: Arc<Runtime>) {
+        let connection = secret();
         let report_state = state.clone();
         let result = (|| -> Result<()> {
             configure(&game)?;
@@ -512,14 +418,13 @@ impl RelayClient {
             let tracked = tunnel.try_clone().map_err(|_| "无法跟踪联机连接。")?;
             let mut outgoing = tunnel.try_clone().map_err(|_| "无法复制联机连接。")?;
             let mut incoming = game.try_clone().map_err(|_| "无法复制游戏连接。")?;
-            if state.stopped.load(Ordering::Relaxed) {
-                return Err("联机已停止。".into());
+            {
+                let mut connections = state.connections.lock().unwrap();
+                if state.stopped.load(Ordering::Relaxed) {
+                    return Err("联机已停止。".into());
+                }
+                connections.insert(connection.clone(), tracked);
             }
-            state
-                .connections
-                .lock()
-                .unwrap()
-                .insert(challenge.clone(), tracked);
             let owner = state.clone();
             std::thread::spawn(move || {
                 let failed = Arc::new(AtomicBool::new(false));
@@ -532,20 +437,13 @@ impl RelayClient {
                 let _ = upload.join();
                 let _ = tunnel.shutdown(Shutdown::Both);
                 let _ = incoming.shutdown(Shutdown::Both);
-                owner.connections.lock().unwrap().remove(&challenge);
-                client.release_ticket(&room, &challenge);
+                owner.connections.lock().unwrap().remove(&connection);
             });
             Ok(())
         })();
         if let Err(error) = result {
             *report_state.message.lock().unwrap() = error;
         }
-    }
-    fn release_ticket(&self, room: &str, challenge: &str) {
-        let _ = self.checked(
-            Method::DELETE,
-            &format!("v1/frpc/rooms/{room}/tickets/{challenge}"),
-        );
     }
     fn release_room(&self, room: &str) {
         let _ = self.checked(Method::DELETE, &format!("v1/frpc/rooms/{room}"));

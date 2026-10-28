@@ -56,7 +56,7 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 
 ### 联机
 
-房主将游戏的局域网端口或服务端端口设置为 **25565**，在「联机」中创建房间，再把房间码分享给好友。无需登录或输入开房码；最多 28 个房主同时开房，关闭后释放名额。加入人数由 Minecraft 控制，游戏数据通过 frpc TCP 传输。
+房主将游戏的局域网端口或服务端端口设置为 **25565**，在「联机」中创建房间，再把直连地址或房间码分享给好友。管理服务内置，frpc 自动检测，状态显示在左下角。无需登录或输入开房码；最多 28 个房主同时开房，关闭后释放名额。加入人数由 Minecraft 控制，游戏数据通过 frpc TCP 传输。
 
 支持自建联机管理服务，详见 [联机说明](docs/multiplayer.md) 和 [1Panel 部署指南](docs/relay/1panel/README.md)。
 

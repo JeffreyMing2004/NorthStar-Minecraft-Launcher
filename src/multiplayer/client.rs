@@ -36,6 +36,21 @@ struct Events {
 }
 
 impl RelayClient {
+    /// Select a healthy coordinator before creating a room, so retrying cannot allocate twice.
+    pub fn available(endpoints: &[&str]) -> Result<Self> {
+        let mut error = "联机服务暂不可用，请稍后重试。".into();
+        for endpoint in endpoints {
+            match Self::public(endpoint).and_then(|client| {
+                client.check_service()?;
+                Ok(client)
+            }) {
+                Ok(client) => return Ok(client),
+                Err(failure) => error = failure,
+            }
+        }
+        Err(error)
+    }
+
     pub fn public(endpoint: &str) -> Result<Self> {
         Self::build(endpoint, String::new())
     }
