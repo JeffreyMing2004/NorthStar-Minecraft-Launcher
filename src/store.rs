@@ -27,6 +27,7 @@ pub struct Settings {
     pub online_mode: bool,
     pub selected_instance: String,
     pub multiplayer_endpoint: String,
+    pub frpc_path: String,
 }
 
 impl Default for Settings {
@@ -49,6 +50,7 @@ impl Default for Settings {
             online_mode: false,
             selected_instance: String::new(),
             multiplayer_endpoint: String::new(),
+            frpc_path: String::new(),
         }
     }
 }

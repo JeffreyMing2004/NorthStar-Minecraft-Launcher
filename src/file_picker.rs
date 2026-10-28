@@ -1,6 +1,48 @@
 use crate::content::LocalKind;
 use std::path::PathBuf;
 
+pub fn frpc() -> Result<Option<PathBuf>, String> {
+    #[cfg(windows)]
+    {
+        use std::{ffi::OsString, os::windows::ffi::OsStringExt};
+        use windows_sys::Win32::UI::Controls::Dialogs::{
+            CommDlgExtendedError, GetOpenFileNameW, OFN_EXPLORER, OFN_FILEMUSTEXIST,
+            OFN_NOCHANGEDIR, OPENFILENAMEW,
+        };
+        let filter: Vec<u16> = "frpc 程序\0frpc.exe\0可执行文件\0*.exe\0\0"
+            .encode_utf16()
+            .collect();
+        let title: Vec<u16> = "选择 frpc 程序\0".encode_utf16().collect();
+        let mut buffer = vec![0u16; 32768];
+        let mut options = OPENFILENAMEW {
+            lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
+            lpstrFilter: filter.as_ptr(),
+            lpstrTitle: title.as_ptr(),
+            nFilterIndex: 1,
+            lpstrFile: buffer.as_mut_ptr(),
+            nMaxFile: buffer.len() as u32,
+            Flags: OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR,
+            ..Default::default()
+        };
+        // SAFETY: all pointers refer to live UTF-16 buffers of the declared capacities.
+        if unsafe { GetOpenFileNameW(&mut options) } == 0 {
+            // SAFETY: retrieves the dialog error for this calling thread.
+            let error = unsafe { CommDlgExtendedError() };
+            return if error == 0 {
+                Ok(None)
+            } else {
+                Err(format!("打开 frpc 选择器失败：{error}"))
+            };
+        }
+        let end = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+        Ok(Some(PathBuf::from(OsString::from_wide(&buffer[..end]))))
+    }
+    #[cfg(not(windows))]
+    {
+        Err("请直接填写本地 frpc 程序路径。".into())
+    }
+}
+
 pub fn save_pack(filename: &str) -> Result<Option<PathBuf>, String> {
     #[cfg(windows)]
     {

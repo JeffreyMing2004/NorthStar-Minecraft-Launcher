@@ -11,6 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
+mod frpc;
 
 const MAX_CONNECTIONS: usize = 120;
 const MAX_REQUESTS: usize = 192;
@@ -20,6 +21,7 @@ struct Room {
     owner: Member,
     seen: Instant,
     pending: VecDeque<String>,
+    direct: Option<frpc::DirectRoom>,
 }
 
 #[derive(Default)]
@@ -50,6 +52,7 @@ pub struct RelayServer {
     access_file: PathBuf,
     state: Mutex<State>,
     changed: Condvar,
+    frpc_catalog: Option<PathBuf>,
 }
 
 impl RelayServer {
@@ -59,7 +62,14 @@ impl RelayServer {
             access_file: access_file.into(),
             state: Mutex::new(State::default()),
             changed: Condvar::new(),
+            frpc_catalog: None,
         })
+    }
+
+    pub fn with_frpc_catalog(mut self, path: &Path) -> Result<Self> {
+        super::frpc::Catalog::load(path)?;
+        self.frpc_catalog = Some(path.into());
+        Ok(self)
     }
 
     /// Bind to loopback behind an HTTPS reverse proxy; never publish this HTTP listener directly.
@@ -132,10 +142,21 @@ impl RelayServer {
         state
             .rooms
             .retain(|_, room| room.seen.elapsed() < EXPIRES && valid(&room.owner));
+        for room in state.rooms.values_mut() {
+            if let Some(direct) = &mut room.direct {
+                direct.guests.retain(|_, guest| {
+                    guest.seen.elapsed() < Duration::from_secs(30) && valid(&guest.member)
+                });
+            }
+        }
         let rooms: Vec<_> = state.rooms.keys().cloned().collect();
         state.connections.retain(|_, c| {
             c.seen.elapsed() < EXPIRES && rooms.contains(&c.room) && valid(&c.guest)
         });
+        if parts.starts_with(&["v1", "frpc"]) {
+            self.handle_frpc(request, method, &parts, &body, member, &mut state);
+            return;
+        }
         match (method, parts.as_slice()) {
             (Method::Get, ["v1", "me"]) => json(request, &member.identity),
             (Method::Post, ["v1", "rooms"]) => {
@@ -154,6 +175,7 @@ impl RelayServer {
                         owner: member,
                         seen: Instant::now(),
                         pending: VecDeque::new(),
+                        direct: None,
                     },
                 );
                 json(request, &serde_json::json!({"room":id}));

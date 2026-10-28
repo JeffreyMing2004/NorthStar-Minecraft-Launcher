@@ -1,6 +1,7 @@
 //! Authenticated Minecraft relay. Only the administrator can enroll accounts.
 mod access;
 mod client;
+pub mod frpc;
 pub mod server;
 
 pub use access::{AccessList, MAX_MEMBERS, Member, MemberIdentity, issue_member};

@@ -3,11 +3,62 @@ use crate::{
     pages::download_button,
     theme,
 };
+use nscl::multiplayer::frpc::{FrpcSession, HostOptions};
 use nscl::{
     accounts::Account,
     multiplayer::{RelayClient, RelaySession},
 };
-use std::sync::mpsc::{self, Receiver};
+use std::{
+    net::SocketAddr,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver},
+    },
+};
+
+enum Session {
+    Frpc(FrpcSession),
+    Legacy(RelaySession),
+}
+impl Session {
+    fn room(&self) -> &str {
+        match self {
+            Self::Frpc(s) => &s.room,
+            Self::Legacy(s) => &s.room,
+        }
+    }
+    fn hosting(&self) -> bool {
+        match self {
+            Self::Frpc(s) => s.hosting,
+            Self::Legacy(s) => s.hosting,
+        }
+    }
+    fn address(&self) -> Option<SocketAddr> {
+        match self {
+            Self::Frpc(s) => s.local_address,
+            Self::Legacy(s) => s.local_address,
+        }
+    }
+    fn connections(&self) -> usize {
+        match self {
+            Self::Frpc(s) => s.connections(),
+            Self::Legacy(s) => s.connections(),
+        }
+    }
+    fn message(&self) -> String {
+        match self {
+            Self::Frpc(s) => s.message(),
+            Self::Legacy(s) => s.message(),
+        }
+    }
+    fn running(&self) -> bool {
+        match self {
+            Self::Frpc(s) => s.running(),
+            Self::Legacy(s) => s.running(),
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct MultiplayerPage {
@@ -16,14 +67,19 @@ pub struct MultiplayerPage {
     room_code: String,
     message: String,
     identity: Option<String>,
-    pending: Option<Receiver<Result<RelaySession, String>>>,
-    session: Option<RelaySession>,
+    pending: Option<Receiver<Result<Session, String>>>,
+    pending_cancel: Option<Arc<AtomicBool>>,
+    progress: Arc<Mutex<String>>,
+    session: Option<Session>,
 }
 
 impl MultiplayerPage {
     pub fn poll(&mut self, account: Option<&Account>) {
         let current = account.map(|a| a.id.clone());
         if self.identity != current {
+            if let Some(cancel) = self.pending_cancel.take() {
+                cancel.store(true, Ordering::Relaxed);
+            }
             self.session = None;
             self.pending = None;
             self.token.clear();
@@ -34,6 +90,15 @@ impl MultiplayerPage {
             match receiver.try_recv() {
                 Ok(result) => {
                     self.pending = None;
+                    let cancelled = self
+                        .pending_cancel
+                        .take()
+                        .is_some_and(|c| c.load(Ordering::Relaxed));
+                    if cancelled {
+                        drop(result);
+                        self.message = "操作已取消。".into();
+                        return;
+                    }
                     match result {
                         Ok(session) => {
                             self.message = "联机连接已就绪。".into();
@@ -44,6 +109,7 @@ impl MultiplayerPage {
                 }
                 Err(mpsc::TryRecvError::Disconnected) => {
                     self.pending = None;
+                    self.pending_cancel = None;
                     self.message = "联机任务已结束，请重试。".into();
                 }
                 Err(mpsc::TryRecvError::Empty) => {}
@@ -51,7 +117,14 @@ impl MultiplayerPage {
         }
     }
 
-    fn start(&mut self, endpoint: String, account: Account, hosting: bool, ctx: &egui::Context) {
+    fn start(
+        &mut self,
+        endpoint: String,
+        account: Account,
+        hosting: bool,
+        executable: String,
+        ctx: &egui::Context,
+    ) {
         if self.pending.is_some() || self.session.is_some() {
             return;
         }
@@ -76,16 +149,49 @@ impl MultiplayerPage {
         let (sender, receiver) = mpsc::channel();
         self.pending = Some(receiver);
         self.message = "正在验证联机权限并连接房间……".into();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.pending_cancel = Some(cancel.clone());
+        self.progress = Arc::new(Mutex::new(self.message.clone()));
+        let progress = self.progress.clone();
         let (room, ctx) = (self.room_code.clone(), ctx.clone());
         std::thread::spawn(move || {
             let result = if hosting {
-                client.host(&account, port)
+                let report_ctx = ctx.clone();
+                client
+                    .host_frpc(
+                        &account,
+                        port,
+                        HostOptions {
+                            executable: std::path::PathBuf::from(
+                                executable.trim().trim_matches('"'),
+                            ),
+                            runtime_directory: crate::store::settings_path()
+                                .with_file_name("relay-data")
+                                .join("frpc-runtime"),
+                            cancel,
+                            report: Arc::new(move |message| {
+                                *progress.lock().unwrap() = message;
+                                report_ctx.request_repaint();
+                            }),
+                        },
+                    )
+                    .map(Session::Frpc)
+            } else if room.trim().starts_with("frpc:") {
+                client.join_frpc(&account, &room, cancel).map(Session::Frpc)
             } else {
-                client.join(&account, &room)
+                client.join(&account, &room).map(Session::Legacy)
             };
             let _ = sender.send(result);
             ctx.request_repaint();
         });
+    }
+}
+
+impl Drop for MultiplayerPage {
+    fn drop(&mut self) {
+        if let Some(cancel) = &self.pending_cancel {
+            cancel.store(true, Ordering::Relaxed);
+        }
     }
 }
 
@@ -94,7 +200,10 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
     app.multiplayer.poll(account.as_ref());
     app::heading(ui, "联机");
     ui.add_space(8.0);
-    app::body(ui, "通过 88frp 联机网关，与白名单中的朋友一起游玩。");
+    app::body(
+        ui,
+        "房主通过 frpc 连接 88frp，自动测速选择节点，与白名单中的朋友一起游玩。",
+    );
     app::hint(
         ui,
         "服务仅向管理员登记的最多 30 个正版或离线账号开放，创建和加入都需要独立联机凭证。",
@@ -115,6 +224,16 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
                 .hint_text("由联机服务管理员提供")
                 .desired_width(ui.available_width()));
             app::hint(ui, "联机凭证仅保留在本次运行内，不会保存到设置或导出包。");
+            egui::CollapsingHeader::new("房主 frpc 程序设置").show(ui,|ui| {
+                ui.label("frpc 程序路径（仅房主需要）");
+                ui.add(egui::TextEdit::singleline(&mut app.settings.frpc_path).hint_text("选择或输入本地 frpc.exe 完整路径").desired_width(ui.available_width()));
+                if download_button(ui,"选择 frpc 程序",cfg!(windows)) {
+                    match crate::file_picker::frpc() {
+                        Ok(Some(path))=>app.settings.frpc_path=path.to_string_lossy().into_owned(),
+                        Ok(None)=>{},Err(error)=>app.multiplayer.message=error,
+                    }
+                }
+            });
             theme::toolbar(ui, |ui| {
                 if download_button(ui, "保存服务地址", true) {
                     app.multiplayer.message = match crate::store::save(&app.settings) {
@@ -131,9 +250,14 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
     if let Some(session) = &app.multiplayer.session {
         theme::card(18).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 10.0;
-            app::body(ui, if session.hosting {"我的房间"} else {"已加入房间"});
-            app::body(ui, &format!("房间码：{}", session.room));
-            if let Some(address) = session.local_address {
+            app::body(ui, if session.hosting() {"我的房间"} else {"已加入房间"});
+            app::body(ui, &format!("房间码：{}", session.room()));
+            if let Session::Frpc(frpc)=session {
+                let latency=frpc.latency_ms.map(|n|format!(" · TCP 延迟 {n} ms")).unwrap_or_default();
+                app::body(ui,&format!("节点：{}{latency}",frpc.node_name));
+                app::hint(ui,&format!("隧道地址：{}（好友请通过房间码授权加入）",frpc.public_address));
+            }
+            if let Some(address) = session.address() {
                 app::body(ui, &format!("游戏连接地址：{address}"));
                 app::hint(ui, "在 Minecraft「多人游戏 → 直接连接」中输入此地址，并保持启动器开启。");
             } else {
@@ -144,8 +268,8 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
             if !message.is_empty() {app::hint(ui, &message);}
             if !session.running() {app::hint(ui, "联机已停止，请关闭后重新连接。");}
             theme::toolbar(ui, |ui| {
-                if download_button(ui, "复制房间码", true) {ui.ctx().copy_text(session.room.clone());}
-                if let Some(address) = session.local_address
+                if download_button(ui, "复制房间码", true) {ui.ctx().copy_text(session.room().to_owned());}
+                if let Some(address) = session.address()
                     && download_button(ui, "复制连接地址", true)
                 {ui.ctx().copy_text(address.to_string());}
             });
@@ -166,20 +290,31 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
                     ui.add(egui::TextEdit::singleline(&mut app.multiplayer.game_port).hint_text("例如 51234").desired_width(130.0));
                 });
                 if app::primary_button(ui, "创建联机房间") {
-                    app.multiplayer.start(app.settings.multiplayer_endpoint.clone(), account.clone().unwrap(), true, ui.ctx());
+                    app.multiplayer.start(app.settings.multiplayer_endpoint.clone(), account.clone().unwrap(), true,app.settings.frpc_path.clone(), ui.ctx());
                 }
                 ui.add_space(14.0);
                 app::body(ui, "加入房间");
                 ui.add(egui::TextEdit::singleline(&mut app.multiplayer.room_code).hint_text("粘贴朋友分享的房间码").desired_width(ui.available_width()));
                 if download_button(ui, "加入联机房间", true) {
-                    app.multiplayer.start(app.settings.multiplayer_endpoint.clone(), account.clone().unwrap(), false, ui.ctx());
+                    app.multiplayer.start(app.settings.multiplayer_endpoint.clone(), account.clone().unwrap(), false,String::new(), ui.ctx());
                 }
             });
         });
     }
     if !app.multiplayer.message.is_empty() {
         ui.add_space(12.0);
-        app::hint(ui, &app.multiplayer.message);
+        let message = if app.multiplayer.pending.is_some() {
+            app.multiplayer.progress.lock().unwrap().clone()
+        } else {
+            app.multiplayer.message.clone()
+        };
+        app::hint(ui, &message);
+    }
+    if app.multiplayer.pending.is_some()
+        && download_button(ui, "取消连接", true)
+        && let Some(cancel) = &app.multiplayer.pending_cancel
+    {
+        cancel.store(true, Ordering::Relaxed);
     }
     if busy {
         ui.ctx()

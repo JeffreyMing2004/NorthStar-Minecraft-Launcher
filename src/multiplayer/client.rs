@@ -71,7 +71,7 @@ impl RelayClient {
         })
     }
 
-    fn request(&self, method: Method, path: &str, body: Vec<u8>) -> Result<Response> {
+    pub(super) fn request(&self, method: Method, path: &str, body: Vec<u8>) -> Result<Response> {
         self.http
             .request(method, format!("{}/{}", self.endpoint, path))
             .bearer_auth(&self.token)
@@ -81,7 +81,7 @@ impl RelayClient {
             .map_err(|_| "联机服务连接失败，请检查地址、网络和证书。".into())
     }
 
-    fn checked(&self, method: Method, path: &str) -> Result<Response> {
+    pub(super) fn checked(&self, method: Method, path: &str) -> Result<Response> {
         check(self.request(method, path, vec![])?)
     }
 

@@ -21,9 +21,30 @@ fn main() -> std::process::ExitCode {
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.len() < 2 {
-        return Err("用法：nscl-relay init <白名单路径> | add-offline <路径> <玩家名> | add-microsoft <路径> <UUID> <玩家名> | remove <路径> <UUID> | list <路径> | serve <路径> [127.0.0.1:17630]".into());
+        return Err("用法：nscl-relay init <白名单路径> | add-offline <路径> <玩家名> | add-microsoft <路径> <UUID> <玩家名> | remove <路径> <UUID> | list <路径> | import-frpc <原始配置> <私有JSON路径> | probe-frpc <私有JSON路径> | serve <白名单路径> [127.0.0.1:17630] [frpc私有JSON路径]".into());
     }
     let path = Path::new(&args[1]);
+    if args[0] == "probe-frpc" {
+        let catalog = nscl::multiplayer::frpc::Catalog::load(path)?;
+        let nodes: Vec<_> = catalog.nodes.into_iter().map(|n| n.info).collect();
+        let results =
+            nscl::multiplayer::frpc::measure_nodes(&nodes, &Arc::new(AtomicBool::new(false)))?;
+        for result in results {
+            println!("{} · TCP {} ms", result.node.name, result.latency_ms);
+        }
+        return Ok(());
+    }
+    if args[0] == "import-frpc" && args.len() == 3 {
+        let text = std::fs::read_to_string(path).map_err(|_| "无法读取 frpc 原始配置。")?;
+        let catalog = nscl::multiplayer::frpc::Catalog::import(&text)?;
+        nscl::store::write_json(Path::new(&args[2]), &catalog)?;
+        println!(
+            "已导入 {} 个节点、{} 条隧道；私有配置不会输出到终端。",
+            catalog.nodes.len(),
+            catalog.nodes.iter().map(|n| n.proxies.len()).sum::<usize>()
+        );
+        return Ok(());
+    }
     if args[0] == "serve" {
         let address: SocketAddr = args
             .get(2)
@@ -34,7 +55,11 @@ fn run() -> Result<(), String> {
         if !address.ip().is_loopback() {
             return Err("授权服务仅允许监听回环地址，请通过 HTTPS 反向代理和 88frp 发布。".into());
         }
-        let service = Arc::new(RelayServer::new(path)?);
+        let mut service = RelayServer::new(path)?;
+        if let Some(catalog) = args.get(3) {
+            service = service.with_frpc_catalog(Path::new(catalog))?;
+        }
+        let service = Arc::new(service);
         let server = tiny_http::Server::http(address).map_err(|_| "无法监听联机服务端口。")?;
         println!(
             "联机授权服务监听 {address}，白名单上限 30 个账号。请配置 HTTPS 和 88frp 后接入启动器。"
