@@ -4,11 +4,10 @@ use super::{
 };
 use crate::minecraft::{Downloader, LoaderKind, ProxyMode, Result};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use std::{
-    collections::BTreeMap,
-    io::Read,
-    sync::{Mutex, OnceLock},
-};
+use std::{collections::BTreeMap, io::Read};
+
+// 申请成功后在此填入启动器的 CurseForge API Key。
+const API_KEY: &str = "";
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Provider {
@@ -23,45 +22,6 @@ impl Provider {
             Self::CurseForge => "CurseForge",
         }
     }
-}
-static KEY: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-pub fn set_api_key(key: &str) -> Result<String> {
-    let key = key.trim();
-    if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
-        return Err("API Key 不能为空或包含控制字符。".into());
-    }
-    *KEY.get_or_init(|| Mutex::new(None))
-        .lock()
-        .map_err(|_| "凭据状态不可用。")? = Some(key.into());
-    #[cfg(any(windows, target_os = "macos"))]
-    {
-        if keyring::Entry::new("NorthStar Minecraft Launcher", "curseforge-api-key")
-            .and_then(|e| e.set_password(key))
-            .is_ok()
-        {
-            return Ok("CurseForge API Key 已保存到系统凭据库。".into());
-        }
-    }
-    Ok("API Key 仅在当前会话有效；也可通过 NSCL_CURSEFORGE_API_KEY 环境变量提供。".into())
-}
-fn api_key() -> Option<String> {
-    if let Ok(key) = std::env::var("NSCL_CURSEFORGE_API_KEY")
-        && !key.trim().is_empty()
-    {
-        return Some(key);
-    }
-    if let Ok(key) = KEY.get_or_init(|| Mutex::new(None)).lock()
-        && key.is_some()
-    {
-        return key.clone();
-    }
-    #[cfg(any(windows, target_os = "macos"))]
-    if let Ok(key) = keyring::Entry::new("NorthStar Minecraft Launcher", "curseforge-api-key")
-        .and_then(|e| e.get_password())
-    {
-        return Some(key);
-    }
-    None
 }
 #[derive(Deserialize)]
 struct Envelope<T> {
@@ -132,9 +92,15 @@ pub(super) struct CurseForge {
 }
 impl CurseForge {
     pub fn new(downloader: Downloader) -> Result<Self> {
-        let key =
-            api_key().ok_or("使用 CurseForge 需要 API Key，请在设置中保存 API Key 后重试。")?;
-        Self::configured(downloader, key, "https://api.curseforge.com/v1".into())
+        let key = API_KEY.trim();
+        if key.is_empty() {
+            return Err("CurseForge 内容来源暂未启用，请先使用 Modrinth。".into());
+        }
+        Self::configured(
+            downloader,
+            key.into(),
+            "https://api.curseforge.com/v1".into(),
+        )
     }
     #[cfg(test)]
     pub(super) fn with_base(downloader: Downloader, base: String) -> Self {

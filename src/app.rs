@@ -47,7 +47,6 @@ impl Page {
 
 pub struct NsclApp {
     pub migration: crate::migration_ui::Dialog,
-    pub curseforge_key: String,
     pub manual_path: String,
     pub tasks_open: bool,
     pub queue_version: String,
@@ -106,7 +105,6 @@ impl NsclApp {
         let service = crate::service::GameService::new(&settings);
         Self {
             migration: Default::default(),
-            curseforge_key: String::new(),
             manual_path: String::new(),
             tasks_open: false,
             queue_version: String::new(),

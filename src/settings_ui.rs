@@ -76,24 +76,6 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
                 ui.checkbox(&mut app.settings.appearance.reduced_motion,"减少界面动画");
                 ui.label("Tab / Shift+Tab 在控件间移动，Enter / 空格激活；F1 查看快捷键，Ctrl+0 恢复 100% 缩放。");
             });
-            egui::CollapsingHeader::new("CurseForge 内容来源").show(ui, |ui| {
-                ui.hyperlink_to("申请 CurseForge API Key（第三方启动器）", "https://support.curseforge.com/support/solutions/articles/9000208346-about-the-curseforge-api-and-how-to-apply-for-a-key");
-                ui.label("API Key 保存到系统凭据库，不写入设置、整合包或任务记录。");
-                ui.add(
-                    egui::TextEdit::singleline(&mut app.curseforge_key)
-                        .password(true)
-                        .hint_text("填写自己的 CurseForge API Key"),
-                );
-                if ui.button("保存 CurseForge API Key").clicked() {
-                    app.save_status = match crate::content::set_api_key(&app.curseforge_key) {
-                        Ok(s) => {
-                            app.curseforge_key.clear();
-                            s
-                        }
-                        Err(e) => e,
-                    };
-                }
-            });
         });
 }
 

@@ -1,6 +1,6 @@
 mod curseforge;
 mod download;
-pub use curseforge::{Provider, set_api_key, website as curseforge_website};
+pub use curseforge::{Provider, website as curseforge_website};
 pub use files::provide_manual;
 pub fn manual_file_hash(path: &Path) -> Result<String> {
     Ok(files::record(path, String::new())?.hashes["sha1"].clone())

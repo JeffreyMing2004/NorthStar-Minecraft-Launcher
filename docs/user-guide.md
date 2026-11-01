@@ -56,9 +56,7 @@ Forge 实例概览提供「本地 OptiFine」。从 [OptiFine 官方下载页](h
 
 ## 内容来源与手动文件
 
-下载页及实例模组搜索支持 Modrinth、CurseForge。使用 CurseForge 前，在「设置 → CurseForge 内容来源」保存自己的 API Key；支持的平台会将其保存到系统凭据库，也可使用 `NSCL_CURSEFORGE_API_KEY` 环境变量。API Key 不写入设置、任务记录或整合包。
-
-API Key 通过 [CurseForge 官方申请入口](https://support.curseforge.com/support/solutions/articles/9000208346-about-the-curseforge-api-and-how-to-apply-for-a-key)中的第三方 API 申请表申请。填写联系方式、启动器项目介绍和仓库链接、API 用途，审核通过后由 Overwolf 邮件联系。此功能使用第三方服务 API Key。
+下载页及实例模组搜索支持 Modrinth，并预留 CurseForge 接口。CurseForge API Key 由启动器内置配置提供，设置页无需填写。目前 Key 尚未配置，CurseForge 查询暂不可用，请先使用 Modrinth。API Key 不写入设置、任务记录或整合包。
 
 CurseForge 作者限制第三方下载或 API 未返回下载地址时，启动器提供官方文件页面。下载指定版本后，在「手动补齐官方文件」填写 JAR / ZIP 的完整本地路径，点击「校验并补齐此文件」。大小和官方哈希一致后才缓存并用于安装，不根据文件编号猜测受限下载地址。没有 API Key 时无法查询 CurseForge 文件元数据。参见 [CurseForge API](https://docs.curseforge.com/rest-api/) 和[项目分发开关说明](https://support.curseforge.com/support/solutions/articles/9000207877)。
 
