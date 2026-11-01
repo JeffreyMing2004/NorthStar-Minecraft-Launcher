@@ -115,14 +115,16 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
         dialog.plan = None;
         dialog.notice = "已完成复制迁入，来源保持不变。".into();
     }
-    let mut open = dialog.open;
     let mut scan = false;
     let mut preview = false;
     let mut reuse = false;
     let mut apply = false;
-    egui::Window::new("迁入已有实例").open(&mut open).default_width(660.0).vscroll(true).max_height((ctx.content_rect().height()-64.0).max(250.0)).show(ctx,|ui| {
-        ui.label("先退出原启动器与游戏。复用会继续使用原目录；复制会在当前 NSCL 游戏目录建立独立实例。");
-        let editable=dialog.pending.is_none() && !app.service.busy() && app.service.game.is_none();
+    let mut open = crate::accessibility::dialog(ctx, "迁入已有实例", 660.0, |ui| {
+        ui.label(
+            "先退出原启动器与游戏。复用会继续使用原目录；复制会在当前 NSCL 游戏目录建立独立实例。",
+        );
+        let editable =
+            dialog.pending.is_none() && !app.service.busy() && app.service.game.is_none();
         ui.add_enabled_ui(editable,|ui| {
             ui.label("来源 .minecraft 或启动器游戏目录");
             if ui.text_edit_singleline(&mut dialog.path).changed(){dialog.source=None;dialog.instances.clear();dialog.plan=None;}
@@ -143,10 +145,24 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
                 if ui.button("确认复制迁入").clicked(){apply=true;}
             }
         });
-        if dialog.pending.is_some(){ui.spinner();if ui.button("取消预览").clicked(){dialog.cancel.store(true,Ordering::Relaxed);}}
-        if app.service.busy(){ui.label(&app.service.progress.stage);if ui.button("取消迁入").clicked(){app.service.cancel();}}
-        if !dialog.notice.is_empty(){ui.label(&dialog.notice);}
-        if let Some(e)=&app.service.error {ui.label(e);}
+        if dialog.pending.is_some() {
+            ui.spinner();
+            if ui.button("取消预览").clicked() {
+                dialog.cancel.store(true, Ordering::Relaxed);
+            }
+        }
+        if app.service.busy() {
+            ui.label(&app.service.progress.stage);
+            if ui.button("取消迁入").clicked() {
+                app.service.cancel();
+            }
+        }
+        if !dialog.notice.is_empty() {
+            ui.label(&dialog.notice);
+        }
+        if let Some(e) = &app.service.error {
+            ui.label(e);
+        }
     });
     if scan {
         dialog.start(crate::store::game_directory(&app.settings), false, ctx);
@@ -170,6 +186,7 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
         app.service.copy_migration(plan.clone(), &app.settings, ctx);
     }
     if !open {
+        crate::accessibility::finish_dialog(ctx, "迁入已有实例");
         dialog.cancel.store(true, Ordering::Relaxed);
     }
     dialog.open = open;

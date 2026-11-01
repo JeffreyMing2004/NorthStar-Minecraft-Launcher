@@ -585,52 +585,65 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
             .request_repaint_after(std::time::Duration::from_millis(250));
     }
     if let Some(review) = app.multiplayer.review.clone() {
-        let mut open = true;
-        egui::Window::new("房间环境检查").open(&mut open).default_width(600.0).vscroll(true).max_height(480.0).show(ui.ctx(),|ui|{
-            ui.label("版本和模组差异可能影响连接；仅客户端模组不同也可能正常游戏，请按服务器要求确认。");
-            for difference in &review.differences{ui.label(difference);}
-            if ui.button("确认按当前环境加入").clicked(){app.multiplayer.approved=Some((review.room.clone(),review.remote.clone(),review.local.clone()));app.multiplayer.room_code=review.room.clone();app.multiplayer.review=None;app.multiplayer.start(&VERIFICATION_ENDPOINTS,false,String::new(),ui.ctx());}
+        let open = crate::accessibility::dialog(ui.ctx(), "房间环境检查", 600.0, |ui| {
+            ui.label(
+                "版本和模组差异可能影响连接；仅客户端模组不同也可能正常游戏，请按服务器要求确认。",
+            );
+            for difference in &review.differences {
+                ui.label(difference);
+            }
+            if ui.button("确认按当前环境加入").clicked() {
+                app.multiplayer.approved = Some((
+                    review.room.clone(),
+                    review.remote.clone(),
+                    review.local.clone(),
+                ));
+                app.multiplayer.room_code = review.room.clone();
+                app.multiplayer.review = None;
+                app.multiplayer
+                    .start(&VERIFICATION_ENDPOINTS, false, String::new(), ui.ctx());
+            }
         });
         if !open {
             app.multiplayer.review = None;
             app.multiplayer.approved = None;
         }
+        if app.multiplayer.review.is_none() {
+            crate::accessibility::finish_dialog(ui.ctx(), "房间环境检查");
+        }
     }
     if app.multiplayer.download_prompt {
-        let mut open = true;
-        egui::Window::new("需要下载 frpc")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(420.0)
-            .show(ui.ctx(), |ui| {
-                app::body(
-                    ui,
-                    "创建房间需要 frpc。启动器可以从 FRP 官方下载并校验后安装。",
-                );
-                app::hint(ui, "仅加入好友房间不需要下载，也不占 28 个房主名额。");
-                ui.add_space(12.0);
-                if ui
-                    .add_enabled_ui(!busy, |ui| app::primary_button(ui, "下载 frpc"))
-                    .inner
-                {
-                    app.multiplayer.download(ui.ctx());
-                }
-                if download_button(ui, "仅加入房间", true) {
-                    app.multiplayer.download_prompt = false;
-                }
-                if download_button(ui, "选择已有 frpc", cfg!(windows) && !busy) {
-                    match crate::file_picker::frpc() {
-                        Ok(Some(path)) => {
-                            app.multiplayer.accept_program(path);
-                        }
-                        Ok(None) => {}
-                        Err(error) => app.multiplayer.message = error,
+        let open = crate::accessibility::dialog(ui.ctx(), "需要下载 frpc", 420.0, |ui| {
+            app::body(
+                ui,
+                "创建房间需要 frpc。启动器可以从 FRP 官方下载并校验后安装。",
+            );
+            app::hint(ui, "仅加入好友房间不需要下载，也不占 28 个房主名额。");
+            ui.add_space(12.0);
+            if ui
+                .add_enabled_ui(!busy, |ui| app::primary_button(ui, "下载 frpc"))
+                .inner
+            {
+                app.multiplayer.download(ui.ctx());
+            }
+            if download_button(ui, "仅加入房间", true) {
+                app.multiplayer.download_prompt = false;
+            }
+            if download_button(ui, "选择已有 frpc", cfg!(windows) && !busy) {
+                match crate::file_picker::frpc() {
+                    Ok(Some(path)) => {
+                        app.multiplayer.accept_program(path);
                     }
+                    Ok(None) => {}
+                    Err(error) => app.multiplayer.message = error,
                 }
-            });
+            }
+        });
         if !open {
             app.multiplayer.download_prompt = false;
+        }
+        if !app.multiplayer.download_prompt {
+            crate::accessibility::finish_dialog(ui.ctx(), "需要下载 frpc");
         }
     }
 }

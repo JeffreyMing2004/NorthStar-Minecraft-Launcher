@@ -92,33 +92,34 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
         app.instance_browser.invalidate_archives();
     }
     let editable = !app.service.busy() && app.service.game.is_none();
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if download_button(ui, "返回开始", true) {
             app.page = Page::Home;
         }
         app::heading(ui, "版本管理");
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if download_button(ui, "迁入已有实例", editable) {
-                app.migration.open = true;
-            }
-            if download_button(ui, "安装新版本", !app.service.busy()) {
-                app.page = Page::Downloads;
-                app.category = 0;
-                app.download = Default::default();
-            }
-            if download_button(
-                ui,
-                "新建实例",
-                editable && !app.service.installed.is_empty(),
-            ) {
-                app.instance_browser.creating = true;
-            }
-            if download_button(ui, "刷新列表", editable) {
-                app.service.refresh(&app.settings);
-                app.instance_browser.invalidate_archives();
-                app.instance_icons.clear();
-            }
-        });
+    });
+    ui.add_space(8.0);
+    theme::toolbar(ui, |ui| {
+        if download_button(ui, "迁入已有实例", editable) {
+            app.migration.open = true;
+        }
+        if download_button(ui, "安装新版本", !app.service.busy()) {
+            app.page = Page::Downloads;
+            app.category = 0;
+            app.download = Default::default();
+        }
+        if download_button(
+            ui,
+            "新建实例",
+            editable && !app.service.installed.is_empty(),
+        ) {
+            app.instance_browser.creating = true;
+        }
+        if download_button(ui, "刷新列表", editable) {
+            app.service.refresh(&app.settings);
+            app.instance_browser.invalidate_archives();
+            app.instance_icons.clear();
+        }
     });
     ui.add_space(16.0);
     let height = (ui.available_height()
@@ -796,79 +797,78 @@ fn create_dialog(ctx: &egui::Context, app: &mut NsclApp, root: &Path, editable: 
     if !app.instance_browser.creating {
         return;
     }
-    let (mut open, mut created) = (true, false);
-    egui::Window::new("新建实例")
-        .open(&mut open)
-        .default_width(440.0)
-        .show(ctx, |ui| {
-            ui.spacing_mut().item_spacing.y = 12.0;
-            ui.add_enabled_ui(editable, |ui| {
-                ui.label("实例名称");
-                ui.add(
-                    egui::TextEdit::singleline(&mut app.new_instance_name)
-                        .hint_text("例如 生存世界")
-                        .desired_width(ui.available_width()),
-                );
-                ui.label("已安装的游戏版本");
-                if !app
+    let mut created = false;
+    let open = crate::accessibility::dialog(ctx, "新建实例", 440.0, |ui| {
+        ui.spacing_mut().item_spacing.y = 12.0;
+        ui.add_enabled_ui(editable, |ui| {
+            ui.label("实例名称");
+            ui.add(
+                egui::TextEdit::singleline(&mut app.new_instance_name)
+                    .hint_text("例如 生存世界")
+                    .desired_width(ui.available_width()),
+            );
+            ui.label("已安装的游戏版本");
+            if !app
+                .service
+                .installed
+                .iter()
+                .any(|v| v.id == app.new_instance_version)
+            {
+                app.new_instance_version = app
                     .service
                     .installed
-                    .iter()
-                    .any(|v| v.id == app.new_instance_version)
-                {
-                    app.new_instance_version = app
-                        .service
-                        .installed
-                        .first()
-                        .map(|v| v.id.clone())
-                        .unwrap_or_default();
-                }
-                egui::ComboBox::from_id_salt("new-instance-version")
-                    .width(360.0)
-                    .selected_text(&app.new_instance_version)
-                    .show_ui(ui, |ui| {
-                        for version in &app.service.installed {
-                            ui.selectable_value(
-                                &mut app.new_instance_version,
-                                version.id.clone(),
-                                &version.id,
-                            );
-                        }
-                    });
-                app::hint(
-                    ui,
-                    &format!("游戏目录：{}", app.settings.default_isolation.label()),
-                );
-                if download_button(
-                    ui,
-                    "创建实例",
-                    !app.new_instance_name.trim().is_empty()
-                        && !app.new_instance_version.is_empty(),
-                ) {
-                    match instances::create_with_isolation(
-                        root,
-                        &app.new_instance_version,
-                        &app.new_instance_name,
-                        app.settings.default_isolation,
-                    ) {
-                        Ok(instance) => {
-                            app.service.refresh(&app.settings);
-                            app.service.selected = instance.id.clone();
-                            app.instance_browser.selected = instance.id;
-                            app.instance_browser.filter = Filter::All;
-                            app.instance_browser.tab = DetailTab::Overview;
-                            app.instance_browser.search.clear();
-                            app.remember_instance();
-                            app.new_instance_name.clear();
-                            app.instance_status = "实例已创建。".into();
-                            created = true;
-                        }
-                        Err(error) => app.service.error = Some(error),
+                    .first()
+                    .map(|v| v.id.clone())
+                    .unwrap_or_default();
+            }
+            egui::ComboBox::from_id_salt("new-instance-version")
+                .width(360.0)
+                .selected_text(&app.new_instance_version)
+                .show_ui(ui, |ui| {
+                    for version in &app.service.installed {
+                        ui.selectable_value(
+                            &mut app.new_instance_version,
+                            version.id.clone(),
+                            &version.id,
+                        );
                     }
+                });
+            app::hint(
+                ui,
+                &format!("游戏目录：{}", app.settings.default_isolation.label()),
+            );
+            if download_button(
+                ui,
+                "创建实例",
+                !app.new_instance_name.trim().is_empty() && !app.new_instance_version.is_empty(),
+            ) {
+                match instances::create_with_isolation(
+                    root,
+                    &app.new_instance_version,
+                    &app.new_instance_name,
+                    app.settings.default_isolation,
+                ) {
+                    Ok(instance) => {
+                        app.service.refresh(&app.settings);
+                        app.service.selected = instance.id.clone();
+                        app.instance_browser.selected = instance.id;
+                        app.instance_browser.filter = Filter::All;
+                        app.instance_browser.tab = DetailTab::Overview;
+                        app.instance_browser.search.clear();
+                        app.remember_instance();
+                        app.new_instance_name.clear();
+                        app.instance_status = "实例已创建。".into();
+                        created = true;
+                    }
+                    Err(error) => app.service.error = Some(error),
                 }
-            });
+            }
         });
+    });
     app.instance_browser.creating = open && !created;
+    if !app.instance_browser.creating {
+        crate::accessibility::finish_dialog(ctx, "新建实例");
+    }
 }
 
 #[cfg(test)]

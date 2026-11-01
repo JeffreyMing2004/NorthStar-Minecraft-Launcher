@@ -68,6 +68,8 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 
 源代码托管于 [GitHub](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher) 与 [CNB](https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher)。
 
+普通分支提交和 Pull Request 会运行 Windows 调试 CI，检查格式、Clippy、全部自动测试并构建调试版二进制。主题和键盘回归覆盖三种主题、100% / 175% 缩放及 1× / 2× DPI。
+
 ## 许可与声明
 
 本项目采用 [GNU GPL v3.0（仅限第 3 版）](LICENSE)，即 `GPL-3.0-only`。修改和再分发时请遵守许可证，并按其要求提供相应源代码。

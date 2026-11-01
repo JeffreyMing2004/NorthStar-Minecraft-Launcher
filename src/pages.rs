@@ -495,15 +495,10 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
     let root = crate::store::game_directory(&app.settings);
     let editable = !app.service.busy() && app.service.game.is_none();
     if let Some(mut instance) = app.instance_edit.take() {
-        let mut open = true;
         let mut saved = false;
-        egui::Window::new("实例配置")
-            .open(&mut open)
-            .default_width(530.0)
-            .max_height((ctx.content_rect().height() - 120.0).max(220.0))
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.y = 12.0;
-                ui.add_enabled_ui(editable, |ui| {
+        let open = crate::accessibility::dialog(ctx, "实例配置", 530.0, |ui| {
+            ui.spacing_mut().item_spacing.y = 12.0;
+            ui.add_enabled_ui(editable, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("instance-configuration-form")
                         .max_height((ctx.content_rect().height() - 260.0).max(140.0))
@@ -631,16 +626,16 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                         }
                     }
                 });
-            });
+        });
         if open && !saved {
             app.instance_edit = Some(instance);
+        } else {
+            crate::accessibility::finish_dialog(ctx, "实例配置");
         }
     }
     if let Some(instance) = app.archive_confirm.clone() {
-        egui::Window::new("归档实例确认")
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
+        let open =
+            crate::accessibility::dialog(ctx, "归档实例确认", 500.0, |ui| {
                 ui.label(format!("将「{}」移入归档？", instance.name));
                 ui.label(if instance.isolation != crate::instances::Isolation::Isolated {
                     "只归档该实例配置及保留的独立目录；实际游戏目录中的存档、模组和配置留在原处。"
@@ -668,6 +663,12 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                     }
                 });
             });
+        if !open {
+            app.archive_confirm = None;
+        }
+        if app.archive_confirm.is_none() {
+            crate::accessibility::finish_dialog(ctx, "归档实例确认");
+        }
     }
 }
 

@@ -459,16 +459,27 @@ impl Login {
         self.selected.is_some()
     }
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Agent {
     build_number: u64,
     download_url: String,
     checksums: Checksums,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Checksums {
     sha256: String,
 }
+#[derive(Serialize, Deserialize)]
+struct AgentCache {
+    #[serde(flatten)]
+    agent: Agent,
+    #[serde(default)]
+    checked_at: u64,
+    #[serde(default)]
+    retry_after: u64,
+}
+const AGENT_CHECK_INTERVAL: u64 = 24 * 60 * 60;
+const AGENT_RETRY_INTERVAL: u64 = 60 * 60;
 #[cfg(test)]
 #[path = "external_auth_tests.rs"]
 mod tests;
@@ -480,21 +491,89 @@ pub fn install_agent(directory: &Path, d: &Downloader) -> Result<PathBuf> {
     )
 }
 fn install_agent_from(directory: &Path, d: &Downloader, manifest: &str) -> Result<PathBuf> {
+    install_agent_at(directory, d, manifest, crate::accounts::now())
+}
+fn install_agent_at(directory: &Path, d: &Downloader, manifest: &str, now: u64) -> Result<PathBuf> {
+    d.check_cancelled()?;
     let cache = directory.join("authlib-injector");
     for p in cache.ancestors() {
         crate::instances::reject_link(p)?;
     }
     let record = cache.join("artifact.json");
     crate::instances::reject_link(&record)?;
-    let stored: Option<Agent> = std::fs::metadata(&record)
+    let stored: Option<AgentCache> = std::fs::metadata(&record)
         .ok()
         .filter(|m| m.len() < 16384)
         .and_then(|_| std::fs::read(&record).ok())
         .and_then(|b| serde_json::from_slice(&b).ok());
-    let agent = match stored {
-        Some(a) => a,
-        None => d.json::<Agent>(manifest)?,
-    };
+    let previous = stored.as_ref().and_then(|c| {
+        let path = agent_path(&cache, &c.agent).ok()?;
+        verified_agent(&path, &c.agent).then_some(path)
+    });
+    let fresh = stored.as_ref().is_some_and(|c| {
+        c.checked_at > 0 && now >= c.checked_at && now - c.checked_at < AGENT_CHECK_INTERVAL
+    });
+    let retry_pending = stored
+        .as_ref()
+        .is_some_and(|c| c.retry_after > now && c.retry_after - now <= AGENT_RETRY_INTERVAL);
+    if let Some(path) = &previous
+        && (fresh || retry_pending)
+    {
+        d.check_cancelled()?;
+        return Ok(path.clone());
+    }
+    let updated = (|| {
+        let agent = if fresh {
+            stored.as_ref().unwrap().agent.clone()
+        } else {
+            d.phase("检查 authlib-injector 更新", 1);
+            d.json::<Agent>(manifest)?
+        };
+        if previous.is_some()
+            && let Some(old) = &stored
+            && (agent.build_number < old.agent.build_number
+                || agent.build_number == old.agent.build_number
+                    && !agent
+                        .checksums
+                        .sha256
+                        .eq_ignore_ascii_case(&old.agent.checksums.sha256))
+        {
+            return Err("authlib-injector 更新版本信息不一致。".into());
+        }
+        let path = fetch_agent(&cache, &agent, d)?;
+        d.check_cancelled()?;
+        let checked_at = if fresh {
+            stored.as_ref().unwrap().checked_at
+        } else {
+            now
+        };
+        crate::store::write_json(
+            &record,
+            &AgentCache {
+                agent,
+                checked_at,
+                retry_after: 0,
+            },
+        )?;
+        Ok(path)
+    })();
+    match updated {
+        Ok(path) => Ok(path),
+        Err(error) => {
+            // Cancellation must stop launch, including when a verified older JAR exists.
+            d.check_cancelled()?;
+            if let (Some(path), Some(mut old)) = (previous, stored) {
+                old.retry_after = now.saturating_add(AGENT_RETRY_INTERVAL);
+                let _ = crate::store::write_json(&record, &old);
+                d.phase("更新检查未完成，继续使用已校验的 authlib-injector", 1);
+                Ok(path)
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+fn agent_path(cache: &Path, agent: &Agent) -> Result<PathBuf> {
     let hash = &agent.checksums.sha256;
     let download =
         Url::parse(&agent.download_url).map_err(|_| "authlib-injector 下载地址无效。")?;
@@ -517,22 +596,30 @@ fn install_agent_from(directory: &Path, d: &Downloader, manifest: &str) -> Resul
         hash.to_ascii_lowercase()
     ));
     crate::instances::reject_link(&path)?;
-    if let Some(b) = std::fs::metadata(&path)
+    Ok(path)
+}
+fn verified_agent(path: &Path, agent: &Agent) -> bool {
+    std::fs::metadata(path)
         .ok()
         .filter(|m| m.len() <= 16 * 1024 * 1024)
-        .and_then(|_| std::fs::read(&path).ok())
-        && format!("{:x}", Sha256::digest(&b)).eq_ignore_ascii_case(hash)
-    {
+        .and_then(|_| std::fs::read(path).ok())
+        .is_some_and(|b| {
+            format!("{:x}", Sha256::digest(&b)).eq_ignore_ascii_case(&agent.checksums.sha256)
+        })
+}
+fn fetch_agent(cache: &Path, agent: &Agent, d: &Downloader) -> Result<PathBuf> {
+    let path = agent_path(cache, agent)?;
+    if verified_agent(&path, agent) {
         return Ok(path);
     }
     d.phase("下载并验证 authlib-injector", 1);
     d.fetch(&agent.download_url, |b| {
-        if b.len() > 32 * 1024 * 1024
-            || !format!("{:x}", Sha256::digest(b)).eq_ignore_ascii_case(hash)
+        if b.len() > 16 * 1024 * 1024
+            || !format!("{:x}", Sha256::digest(b)).eq_ignore_ascii_case(&agent.checksums.sha256)
         {
             return Err("authlib-injector SHA-256 校验失败。".into());
         }
-        std::fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(cache).map_err(|e| e.to_string())?;
         let temp = cache.join(format!("agent-{}.tmp", uuid::Uuid::new_v4().simple()));
         let result = (|| {
             std::fs::write(&temp, b).map_err(|e| e.to_string())?;
@@ -542,6 +629,5 @@ fn install_agent_from(directory: &Path, d: &Downloader, manifest: &str) -> Resul
         let _ = std::fs::remove_file(temp);
         result
     })?;
-    crate::store::write_json(&record, &agent)?;
     Ok(path)
 }

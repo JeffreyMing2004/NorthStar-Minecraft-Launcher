@@ -103,27 +103,23 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
         app.force_stop_confirm = false;
     }
     if app.force_stop_confirm {
-        let mut open = true;
-        egui::Window::new("确认强制结束游戏")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.label(
-                    "强制结束当前由 NSCL 启动的游戏可能丢失尚未保存的进度。建议先尝试停止游戏。",
-                );
-                ui.horizontal(|ui| {
-                    if ui.button("确认强制结束").clicked() {
-                        app.service.stop_game(true);
-                        app.force_stop_confirm = false;
-                    }
-                    if ui.button("继续运行").clicked() {
-                        app.force_stop_confirm = false;
-                    }
-                });
+        let open = crate::accessibility::dialog(ctx, "确认强制结束游戏", 500.0, |ui| {
+            ui.label("强制结束当前由 NSCL 启动的游戏可能丢失尚未保存的进度。建议先尝试停止游戏。");
+            ui.horizontal(|ui| {
+                if ui.button("确认强制结束").clicked() {
+                    app.service.stop_game(true);
+                    app.force_stop_confirm = false;
+                }
+                if ui.button("继续运行").clicked() {
+                    app.force_stop_confirm = false;
+                }
             });
+        });
         if !open {
             app.force_stop_confirm = false;
+        }
+        if !app.force_stop_confirm {
+            crate::accessibility::finish_dialog(ctx, "确认强制结束游戏");
         }
     }
     let Some(v) = app.log_view.as_mut() else {

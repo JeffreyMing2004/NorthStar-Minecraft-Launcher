@@ -236,13 +236,21 @@ fn browsing_filters_files_and_configuration_preserve_the_launch_selection() {
     for label in ["存档", "日志"] {
         assert!(text_rect(&output, label).max.x < 876.0);
     }
+    let file_scroll = output
+        .shapes
+        .iter()
+        .find_map(|s| match &s.shape {
+            egui::Shape::Text(t) if t.galley.job.text == "日志" => Some(s.clip_rect.center()),
+            _ => None,
+        })
+        .unwrap();
     output.drop_without_applying_deltas();
     frame(
         &ctx,
         &mut app,
         Vec2::new(876.0, 430.0),
         vec![
-            Event::PointerMoved(Pos2::new(700.0, 350.0)),
+            Event::PointerMoved(file_scroll),
             Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
                 delta: Vec2::new(0.0, -300.0),

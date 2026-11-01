@@ -425,41 +425,39 @@ pub fn show(
             .content_preview(version, &app.settings, ui.ctx());
     }
     if let Some(entry) = app.service.local.remove.clone() {
-        let mut open = true;
-        egui::Window::new("移除资源")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .show(ui.ctx(), |ui| {
-                ui.label(format!("移除「{}」？", entry.name));
-                ui.label(if entry.missing {
-                    "此文件已缺失，将只清理失效的安装记录。"
-                } else {
-                    "文件会保留到此实例的本地回收目录，可打开目录找回。"
-                });
-                if kind == LocalKind::Mods && entry.project.is_none() {
-                    app::hint(ui, "此文件没有单独的依赖记录，请确认其他模组不需要它。");
-                }
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(modify, egui::Button::new("确认移除"))
-                        .clicked()
-                    {
-                        app.service.local.remove = None;
-                        app.service.local_change(
-                            entry.clone(),
-                            LocalAction::Remove,
-                            &app.settings,
-                            ui.ctx(),
-                        );
-                    }
-                    if ui.button("取消").clicked() {
-                        app.service.local.remove = None;
-                    }
-                });
+        let open = crate::accessibility::dialog(ui.ctx(), "移除资源", 500.0, |ui| {
+            ui.label(format!("移除「{}」？", entry.name));
+            ui.label(if entry.missing {
+                "此文件已缺失，将只清理失效的安装记录。"
+            } else {
+                "文件会保留到此实例的本地回收目录，可打开目录找回。"
             });
+            if kind == LocalKind::Mods && entry.project.is_none() {
+                app::hint(ui, "此文件没有单独的依赖记录，请确认其他模组不需要它。");
+            }
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(modify, egui::Button::new("确认移除"))
+                    .clicked()
+                {
+                    app.service.local.remove = None;
+                    app.service.local_change(
+                        entry.clone(),
+                        LocalAction::Remove,
+                        &app.settings,
+                        ui.ctx(),
+                    );
+                }
+                if ui.button("取消").clicked() {
+                    app.service.local.remove = None;
+                }
+            });
+        });
         if !open {
             app.service.local.remove = None;
+        }
+        if app.service.local.remove.is_none() {
+            crate::accessibility::finish_dialog(ui.ctx(), "移除资源");
         }
     }
     if (catalog.has_trash || app.service.local.notice.contains("回收目录"))

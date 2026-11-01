@@ -333,3 +333,124 @@ fn injector_artifacts_are_hash_verified_cached_and_repaired_without_trusting_cha
             .exists()
     );
 }
+
+#[test]
+fn injector_refreshes_daily_preserves_verified_versions_on_failure_and_never_ignores_cancellation()
+{
+    let address = Arc::new(Mutex::new(String::new()));
+    let url = address.clone();
+    let mode = Arc::new(AtomicUsize::new(1));
+    let response_mode = mode.clone();
+    let server = Server::new(move |path, _| {
+        let mode = response_mode.load(Ordering::Relaxed);
+        if path == "/manifest" {
+            if mode == 3 {
+                return (503, b"offline".to_vec(), vec![]);
+            }
+            let build = if mode == 4 { 3 } else { mode };
+            let bytes = format!("agent build {build}");
+            reply(
+                json!({"build_number":build,"download_url":format!("{}/agent-{build}.jar",url.lock().unwrap()),"checksums":{"sha256":format!("{:x}",Sha256::digest(bytes.as_bytes()))}}),
+            )
+        } else if mode == 4 {
+            (200, b"CORRUPT_NEW_DOWNLOAD".to_vec(), vec![])
+        } else {
+            let build = path.trim_start_matches("/agent-").trim_end_matches(".jar");
+            (200, format!("agent build {build}").into_bytes(), vec![])
+        }
+    });
+    *address.lock().unwrap() = server.base.clone();
+    let root = temporary();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let d = Downloader::new(
+        crate::minecraft::Source {
+            proxy_mode: crate::minecraft::ProxyMode::Direct,
+            ..Default::default()
+        },
+        cancel.clone(),
+        Arc::new(|_| {}),
+    )
+    .unwrap();
+    let manifest = format!("{}/manifest", server.base);
+    let start = 1_000_000;
+    let v1 = install_agent_at(root.path(), &d, &manifest, start).unwrap();
+    mode.store(2, Ordering::Relaxed);
+    let seen = server.seen.load(Ordering::Relaxed);
+    assert_eq!(
+        install_agent_at(root.path(), &d, &manifest, start + AGENT_CHECK_INTERVAL - 1).unwrap(),
+        v1
+    );
+    assert_eq!(server.seen.load(Ordering::Relaxed), seen);
+    let refreshed_at = start + AGENT_CHECK_INTERVAL;
+    let v2 = install_agent_at(root.path(), &d, &manifest, refreshed_at).unwrap();
+    assert_ne!(v1, v2);
+    assert_eq!(std::fs::read(&v2).unwrap(), b"agent build 2");
+    assert!(v1.exists());
+    let failed_at = refreshed_at + AGENT_CHECK_INTERVAL;
+    mode.store(3, Ordering::Relaxed);
+    assert_eq!(
+        install_agent_at(root.path(), &d, &manifest, failed_at).unwrap(),
+        v2
+    );
+    let seen = server.seen.load(Ordering::Relaxed);
+    assert_eq!(
+        install_agent_at(root.path(), &d, &manifest, failed_at + 1).unwrap(),
+        v2
+    );
+    assert_eq!(server.seen.load(Ordering::Relaxed), seen);
+    mode.store(4, Ordering::Relaxed);
+    let invalid_at = failed_at + AGENT_RETRY_INTERVAL;
+    assert_eq!(
+        install_agent_at(root.path(), &d, &manifest, invalid_at).unwrap(),
+        v2
+    );
+    let record = root.path().join("authlib-injector/artifact.json");
+    let stored: AgentCache = serde_json::from_slice(&std::fs::read(&record).unwrap()).unwrap();
+    assert_eq!(stored.agent.build_number, 2);
+    mode.store(1, Ordering::Relaxed);
+    assert_eq!(
+        install_agent_at(
+            root.path(),
+            &d,
+            &manifest,
+            invalid_at + AGENT_RETRY_INTERVAL
+        )
+        .unwrap(),
+        v2
+    );
+    cancel.store(true, Ordering::Relaxed);
+    assert!(install_agent_at(root.path(), &d, &manifest, invalid_at + 1).is_err());
+    cancel.store(false, Ordering::Relaxed);
+    std::fs::write(&v2, b"corrupt cached jar").unwrap();
+    mode.store(3, Ordering::Relaxed);
+    assert!(
+        install_agent_at(
+            root.path(),
+            &d,
+            &manifest,
+            invalid_at + AGENT_RETRY_INTERVAL + 1
+        )
+        .is_err()
+    );
+    // Old releases stored the bare descriptor. It must trigger a check and remain
+    // usable offline only if its JAR still passes the original SHA-256 check.
+    std::fs::write(&v2, b"agent build 2").unwrap();
+    crate::store::write_json(&record, &stored.agent).unwrap();
+    let seen = server.seen.load(Ordering::Relaxed);
+    assert_eq!(
+        install_agent_at(root.path(), &d, &manifest, invalid_at).unwrap(),
+        v2
+    );
+    assert!(server.seen.load(Ordering::Relaxed) > seen);
+    mode.store(2, Ordering::Relaxed);
+    assert_eq!(
+        install_agent_at(
+            root.path(),
+            &d,
+            &manifest,
+            invalid_at + AGENT_RETRY_INTERVAL
+        )
+        .unwrap(),
+        v2
+    );
+}

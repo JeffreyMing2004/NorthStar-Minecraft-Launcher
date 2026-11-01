@@ -39,7 +39,7 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
         app::body(ui, &app.save_status);
     }
     ui.add_space(18.0);
-    egui::ScrollArea::vertical()
+    egui::ScrollArea::both()
         .id_salt("launcher-settings")
         .auto_shrink([false, false])
         .show(ui, |ui| {

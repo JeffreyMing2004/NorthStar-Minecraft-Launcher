@@ -1,5 +1,6 @@
 #![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
 
+mod accessibility;
 mod account_service;
 mod account_ui;
 mod app;

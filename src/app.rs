@@ -150,8 +150,14 @@ impl NsclApp {
 
 impl NsclApp {
     pub(crate) fn accessibility(&mut self, ctx: &egui::Context) {
+        let modal = ctx.memory(|m| m.top_modal_layer().is_some());
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1)) {
-            self.shortcuts_help = !self.shortcuts_help;
+            if self.shortcuts_help {
+                self.shortcuts_help = false;
+                crate::accessibility::finish_dialog(ctx, "键盘操作");
+            } else if !modal {
+                self.shortcuts_help = true;
+            }
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Num0)) {
             self.settings.appearance.scale = 1.0;
@@ -164,16 +170,19 @@ impl NsclApp {
             (egui::Key::Num5, Page::Multiplayer),
             (egui::Key::Num6, Page::Settings),
         ] {
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, key)) {
+            if !modal
+                && !self.shortcuts_help
+                && ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, key))
+            {
                 self.page = page;
             }
         }
         theme::apply_appearance(ctx, &self.settings.appearance);
         if self.shortcuts_help {
-            egui::Window::new("键盘操作").open(&mut self.shortcuts_help).show(ctx,|ui|{
-            ui.label("Ctrl+1 开始 · Ctrl+2 实例 · Ctrl+3 账号 · Ctrl+4 下载 · Ctrl+5 联机 · Ctrl+6 设置");
-            ui.label("Tab / Shift+Tab 移动焦点；Enter / 空格激活控件；Ctrl+0 恢复 100% 缩放；F1 显示/隐藏本窗口。");
-        });
+            self.shortcuts_help = crate::accessibility::dialog(ctx, "键盘操作", 600.0, |ui| {
+                ui.label("Ctrl+1 开始 · Ctrl+2 实例 · Ctrl+3 账号 · Ctrl+4 下载 · Ctrl+5 联机 · Ctrl+6 设置");
+                ui.label("Tab / Shift+Tab 移动焦点；Enter / 空格激活控件；Esc 关闭弹窗；Ctrl+0 恢复 100% 缩放；F1 显示/隐藏本窗口。");
+            });
         }
     }
 }
@@ -268,7 +277,13 @@ impl eframe::App for NsclApp {
             self.screenshot_pending = false;
             ctx.request_screenshot(move |image| save_screenshot(&image));
         }
-        self.top_bar(ui, &ctx);
+        self.render_shell(ui, &ctx);
+        crate::renderer::record_first_frame(&ctx);
+    }
+}
+impl NsclApp {
+    pub(crate) fn render_shell(&mut self, ui: &mut Ui, ctx: &Context) {
+        self.top_bar(ui, ctx);
         egui::Panel::bottom("footer")
             .exact_size(32.0)
             .show_separator_line(false)
@@ -293,10 +308,16 @@ impl eframe::App for NsclApp {
                         } else {
                             "准备就绪"
                         };
-                        ui.label(
-                            RichText::new(format!("{activity}  ·  {}", self.multiplayer.status()))
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(format!(
+                                    "{activity}  ·  {}",
+                                    self.multiplayer.status()
+                                ))
                                 .size(11.0)
                                 .color(theme::footer_text()),
+                            )
+                            .truncate(),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(20.0);
@@ -328,7 +349,10 @@ impl eframe::App for NsclApp {
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 if self.page == Page::Downloads {
-                    pages::downloads(ui, self);
+                    egui::ScrollArea::both()
+                        .id_salt("downloads-viewport")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| pages::downloads(ui, self));
                     return;
                 }
                 if self.page == Page::Settings {
@@ -336,7 +360,10 @@ impl eframe::App for NsclApp {
                     return;
                 }
                 if self.page == Page::Instances {
-                    crate::instance_ui::show(ui, self);
+                    egui::ScrollArea::both()
+                        .id_salt("instances-viewport")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| crate::instance_ui::show(ui, self));
                     return;
                 }
                 egui::ScrollArea::vertical()
@@ -352,7 +379,6 @@ impl eframe::App for NsclApp {
                         Page::About => pages::about(ui, self),
                     });
             });
-        crate::renderer::record_first_frame(&ctx);
     }
 }
 
@@ -468,8 +494,9 @@ impl NsclApp {
     }
 
     fn top_bar(&mut self, ui: &mut Ui, ctx: &Context) {
+        let stacked = ctx.content_rect().width() < 1000.0;
         egui::Panel::top("topbar")
-            .exact_size(76.0)
+            .exact_size(if stacked { 118.0 } else { 76.0 })
             .show_separator_line(false)
             .frame(
                 egui::Frame::default()
@@ -478,11 +505,20 @@ impl NsclApp {
             )
             .show(ui, |ui| {
                 let rect = ui.available_rect_before_wrap();
-                let center = rect.center();
+                let header_bottom = if stacked {
+                    rect.top() + 56.0
+                } else {
+                    rect.bottom()
+                };
+                let center = if stacked {
+                    egui::pos2(rect.center().x, rect.bottom() - 31.0)
+                } else {
+                    rect.center()
+                };
                 let drag = ui.interact(
                     rect,
                     ui.scope_id().with(egui::IdSalt::new("topbar-drag")),
-                    Sense::drag(),
+                    Sense::DRAG,
                 );
                 if drag.dragged() {
                     ctx.send_viewport_cmd(ViewportCommand::StartDrag);
@@ -494,7 +530,7 @@ impl NsclApp {
                     UiBuilder::new()
                         .max_rect(egui::Rect::from_two_pos(
                             egui::pos2(rect.left() + 20.0, rect.top()),
-                            egui::pos2(rect.left() + 20.0 + brand_width, rect.bottom()),
+                            egui::pos2(rect.left() + 20.0 + brand_width, header_bottom),
                         ))
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
@@ -530,7 +566,9 @@ impl NsclApp {
                     },
                 );
 
-                let navigation_rect = egui::Rect::from_center_size(center, Vec2::new(569.0, 50.0));
+                let nav_width = 569.0_f32.min(rect.width() - 24.0);
+                let navigation_rect =
+                    egui::Rect::from_center_size(center, Vec2::new(nav_width, 50.0));
                 ui.painter()
                     .rect_filled(navigation_rect, 15.0, theme::input_bg());
                 ui.painter().rect_stroke(
@@ -543,7 +581,7 @@ impl NsclApp {
                     UiBuilder::new()
                         .max_rect(egui::Rect::from_center_size(
                             center,
-                            Vec2::new(553.0, rect.height()),
+                            Vec2::new(nav_width - 16.0, 50.0),
                         ))
                         .layout(egui::Layout::left_to_right(egui::Align::Center)),
                 );
@@ -552,7 +590,8 @@ impl NsclApp {
                     for item in Page::ALL {
                         let active = self.page == item
                             || (self.page == Page::Instances && item == Page::Home);
-                        let response = navigation_button(ui, item, active);
+                        let response =
+                            navigation_button(ui, item, active, (nav_width - 41.0) / 6.0);
                         if response.clicked() {
                             self.page = item;
                         }
@@ -563,7 +602,7 @@ impl NsclApp {
                     UiBuilder::new()
                         .max_rect(egui::Rect::from_two_pos(
                             egui::pos2(rect.right() - 140.0, rect.top()),
-                            egui::pos2(rect.right() - 16.0, rect.bottom()),
+                            egui::pos2(rect.right() - 16.0, header_bottom),
                         ))
                         .layout(egui::Layout::right_to_left(egui::Align::Center)),
                 );
@@ -588,8 +627,8 @@ impl NsclApp {
     }
 }
 
-fn navigation_button(ui: &mut Ui, page: Page, selected: bool) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(88.0, 38.0), Sense::click());
+fn navigation_button(ui: &mut Ui, page: Page, selected: bool, width: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 38.0), Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, page.title()));
     let fill = if selected {
         theme::nav_active_bg()
@@ -604,15 +643,25 @@ fn navigation_button(ui: &mut Ui, page: Page, selected: bool) -> egui::Response 
         theme::nav_text()
     };
     ui.painter().rect_filled(rect, 10.0, fill);
-    theme::icon(
-        ui.painter(),
-        egui::Rect::from_min_size(rect.min + Vec2::new(14.0, 11.0), Vec2::splat(16.0)),
-        page.icon(),
-        color,
-    );
+    if width >= 70.0 {
+        theme::icon(
+            ui.painter(),
+            egui::Rect::from_min_size(rect.min + Vec2::new(14.0, 11.0), Vec2::splat(16.0)),
+            page.icon(),
+            color,
+        );
+    }
     ui.painter().text(
-        rect.min + Vec2::new(40.0, 19.0),
-        egui::Align2::LEFT_CENTER,
+        if width >= 70.0 {
+            rect.min + Vec2::new(40.0, 19.0)
+        } else {
+            rect.center()
+        },
+        if width >= 70.0 {
+            egui::Align2::LEFT_CENTER
+        } else {
+            egui::Align2::CENTER_CENTER
+        },
         page.title(),
         egui::FontId::proportional(14.0),
         color,
@@ -641,6 +690,12 @@ fn window_button(ui: &mut Ui, label: &str, hover: Color32, action: impl FnOnce()
             ..Default::default()
         },
     );
+    let accessible_name = match label {
+        "✕" => "关闭启动器",
+        "▢" => "最大化或还原窗口",
+        _ => "最小化窗口",
+    };
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, accessible_name));
     if response.clicked() {
         action();
     }

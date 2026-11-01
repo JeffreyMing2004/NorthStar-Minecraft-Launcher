@@ -60,6 +60,15 @@ fn instance_configuration_saves_isolation_without_changing_existing_files() {
     let shared = super::tests::text_rect(&output, Isolation::Shared.label()).center();
     output.drop_without_applying_deltas();
     click(&ctx, &mut app, shared).drop_without_applying_deltas();
+    assert!(
+        app.instance_edit.is_some(),
+        "selecting an option must not dismiss the configuration dialog"
+    );
+    assert_eq!(
+        app.instance_edit.as_ref().unwrap().isolation,
+        Isolation::Shared,
+        "dropdown selection must update the open form"
+    );
     let output = frame(&ctx, &mut app, vec![]);
     let save = super::tests::text_rect(&output, "保存实例配置").center();
     output.drop_without_applying_deltas();
