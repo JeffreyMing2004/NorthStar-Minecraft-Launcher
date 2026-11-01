@@ -341,7 +341,17 @@ pub fn provider(ui: &mut Ui, app: &mut NsclApp) {
                 crate::content::Provider::CurseForge,
             ] {
                 if ui
-                    .selectable_value(&mut app.service.content.provider, source, source.label())
+                    .add_enabled_ui(source.available(), |ui| {
+                        ui.selectable_value(
+                            &mut app.service.content.provider,
+                            source,
+                            source.label(),
+                        )
+                    })
+                    .inner
+                    .on_disabled_hover_text(
+                        "此测试版尚未启用 CurseForge，请使用 Modrinth 或导入本地文件。",
+                    )
                     .changed()
                 {
                     app.service.content.results = Default::default();
@@ -351,6 +361,12 @@ pub fn provider(ui: &mut Ui, app: &mut NsclApp) {
             }
         });
     });
+    if !crate::content::Provider::CurseForge.available() {
+        app::hint(
+            ui,
+            "CurseForge 尚未启用；当前可使用 Modrinth 和本地文件导入。",
+        );
+    }
 }
 
 pub fn resource_browser(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {

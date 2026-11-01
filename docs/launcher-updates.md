@@ -2,9 +2,11 @@
 
 ## 获取更新
 
-启动器从公开仓库 [JeffreyMing2004/NorthStar-Minecraft-Launcher 的 Releases](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases) 获取最新正式版本，不需要登录 GitHub 或填写访问令牌。默认启动时后台检查，可在「更多」关闭启动检查或手动重试。
+启动器从公开仓库 [JeffreyMing2004/NorthStar-Minecraft-Launcher 的 Releases](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases) 获取更新，不需要登录 GitHub 或填写访问令牌。默认启动时后台检查，可在「更多」关闭启动检查或手动重试，该页同时显示当前更新通道。
 
-版本按语义化版本号比较，只提示比当前程序新的稳定版本，跳过草稿和预发布，不自动降级。没有正式 Release 时显示「GitHub 暂无已发布的正式 Release」；网络或 API 限流失败会显示错误并保留当前程序。
+正式版只提示比当前程序新的稳定版本，跳过草稿和预发布。版本号带 `-beta.1` 等预发布标识的测试版读取最近 100 个公开 Release，按语义版本顺序选择有效的测试版或正式版，也可从 Beta 升级到同一版本的正式版。版本比较不使用发布时间，也不因构建元数据变化提示升级；所有通道均不自动降级。
+
+没有对应通道的发布时显示暂无版本；网络或 API 限流失败会显示错误并保留当前程序。草稿、非本仓库来源、无效版本号以及预发布标记与版本号不一致的发布不会成为候选更新。
 
 在「更多」点击「下载更新」，下载适配当前架构的 Windows 便携 ZIP 或 EXE。资产名称需以 `nscl` 开始，包含 `windows` 和 `x86_64`（也接受 `x64`）或 `aarch64`，不使用 `setup` / `installer` 安装包。ZIP 内必须包含唯一的 `NSCL.exe`，只读取该文件，不解压其他内容。
 
@@ -20,11 +22,13 @@
 
 ## 发布构建
 
-`.github/workflows/release.yml` 在推送 `v*` 标签时执行格式、Clippy、自动测试及 Windows x86_64 Release 构建，然后通过 GitHub CLI 创建 Release，附带：
+当前仅发布调试测试包。`.github/workflows/release.yml` 在推送 `v*-*` 预发布标签时执行格式、Clippy 和自动测试，再调用 `scripts/Package-TestRelease.ps1` 构建 Windows x86_64 **Debug** 程序，通过 GitHub CLI 创建标记为预发布的 Release，附带：
 
-- `nscl-v<版本>-windows-x86_64.zip`，内含 `NSCL.exe`。
+- `nscl-v<版本>-windows-x86_64-debug.zip`，内含 `NSCL.exe`、使用说明、测试说明、许可证和相关文档。
 - `SHA256SUMS`，UTF-8 格式的 SHA-256 清单。
 
-发布标签必须与 `Cargo.toml` 中的稳定版本完全一致，例如 `v0.1.1` 对应 `version = "0.1.1"`。维护者先完成版本号及锁文件更新、检查和双仓库推送，再创建标签并推送到两个远程。工作流失败时不会创建 Release。手动运行工作流只上传构建产物，不发布版本。
+发布标签必须与 `Cargo.toml` 中的预发布版本完全一致，例如 `v0.1.0-beta.1` 对应 `version = "0.1.0-beta.1"`，并提供 `docs/releases/0.1.0-beta.1.md`。维护者先完成版本号及锁文件更新、检查和双仓库推送，再创建标签并推送到两个远程。工作流失败时不会创建 Release。手动运行工作流只上传构建产物，不发布版本。本地可执行 `./scripts/Package-TestRelease.ps1 -Tag v0.1.0-beta.1`；产物位于 `target/test-release/`，已有同名包会拒绝覆盖。
 
-首次正式发布前，客户端会显示暂无 Release；普通源码推送不会产生可安装的更新。更新源使用公开 Release，不从分支或 Actions 产物获取程序。
+测试包完整解压到可写目录后运行。调试构建的 `nscl-settings.json` 与缓存保存在可执行文件旁；升级时保留这些文件及游戏目录。打包脚本只复制明确列出的程序和文档，不收集开发机的设置、账号或中继凭据。
+
+首次正式发布前，正式版通道会显示暂无正式版；测试版通道可读取测试发布。普通源码推送不会产生可安装的更新。更新源使用公开 Release，不从分支或 Actions 产物获取程序。

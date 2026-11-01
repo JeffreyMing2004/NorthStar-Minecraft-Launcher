@@ -26,8 +26,8 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 - **实例管理**：独立或共享目录、分组与固定、快捷启动和迁入预览，支持内容备份、历史恢复点和独立克隆。
 - **存档与截图**：世界名称、版本、模式和游玩时间，存档备份入口，截图缩略图、搜索与最近日期筛选。
 - **界面与键盘**：深色、浅色、高对比度主题，界面与字体缩放、减少动画，以及键盘导航和页面快捷键。
-- **内容管理**：Modrinth / CurseForge 模组与依赖安装，本地模组识别、批量更新及版本锁定；资源包与光影在线管理。
-- **整合包**：Modrinth `.mrpack` 导入导出、CurseForge 包导入，支持版本预览、升级前恢复点及历史回退。
+- **内容管理**：Modrinth 模组与依赖安装，本地模组识别、批量更新及版本锁定；资源包与光影在线管理。CurseForge 接口待启用。
+- **整合包**：Modrinth `.mrpack` 导入导出，支持版本预览、升级前恢复点及历史回退；CurseForge 包安装需先启用 API。
 - **运行环境**：自动匹配 Java 和内存配置，支持手动调整；Windows 可下载所需 Java 运行时。
 - **联机**：自动下载 frpc、测速并分配隧道，可选本地端口、发现局域网世界并检查房间环境，最多同时开放 28 个房间。
 - **下载与更新**：下载源自动切换、校验续传、持久安装队列及失败重试，支持启动器更新检查。
@@ -49,7 +49,9 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 
 操作说明见[使用指南](docs/user-guide.md)、[实例备份](docs/instance-backups.md)和[故障排查](docs/troubleshooting.md)。
 
-当前通过源码构建运行。可用发布包以 [GitHub Releases](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases) 为准。
+首个公开测试版为 **v0.1.0-beta.1**（Windows x86_64 调试便携包），从 [GitHub Releases](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases/tag/v0.1.0-beta.1) 下载 ZIP，完整解压到可写目录后运行 `NSCL.exe`。包内附使用说明、许可证和诊断指南，发布页附 SHA-256 校验清单。
+
+测试范围、尚未完成功能与已知限制见[测试版说明](docs/releases/0.1.0-beta.1.md)。建议使用独立游戏目录测试，修改已有实例前先备份。
 
 1. 在「设置」选择游戏目录。默认使用启动器所在目录；若目录中有 `.minecraft`，会优先使用它。
 2. 在「账号」登录 Microsoft 账号，或创建离线账号。正版登录需要拥有 Minecraft Java Edition 授权。

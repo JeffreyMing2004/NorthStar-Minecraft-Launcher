@@ -124,7 +124,7 @@ fn search(ui: &mut Ui, app: &mut NsclApp) {
         back = download_button(ui, "返回已装模组", !busy);
         ui.add(
             egui::Label::new(
-                RichText::new("从 Modrinth 添加")
+                RichText::new(format!("从 {} 添加", app.service.content.provider.label()))
                     .size(16.0)
                     .color(theme::heading()),
             )

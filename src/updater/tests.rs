@@ -70,6 +70,69 @@ fn zip_extracts_only_the_single_launcher_and_rejects_bad_payloads() {
     fs::write(&payload, b"not a PE").unwrap();
     assert!(validate_executable(&payload).is_err());
 }
+
+fn tagged(tag: &str, prerelease: bool) -> Release {
+    let mut release = release();
+    release.tag_name = tag.into();
+    release.html_url = format!("{RELEASES_URL}/tag/{tag}");
+    release.prerelease = prerelease;
+    release
+}
+
+#[test]
+fn test_builds_follow_prereleases_and_can_graduate_to_stable_without_downgrading() {
+    let beta = tagged("v0.1.0-beta.2", true);
+    assert!(beta.newer_than("0.1.0-beta.1").unwrap());
+    assert!(!beta.newer_than("0.1.0-beta.2").unwrap());
+    assert!(!beta.newer_than("0.1.0-rc.1").unwrap());
+    assert!(!beta.newer_than("0.1.0").unwrap());
+    assert!(validate_release_for(&beta, "0.1.0-beta.1").is_ok());
+    assert!(validate_release_for(&beta, "0.1.0").is_err());
+    let stable = tagged("v0.1.0", false);
+    assert!(stable.newer_than("0.1.0-beta.1").unwrap());
+    assert!(!stable.newer_than("0.2.0-beta.1").unwrap());
+    assert!(
+        !tagged("v0.1.0+build.2", false)
+            .newer_than("0.1.0+build.1")
+            .unwrap()
+    );
+    assert!(!tagged("v0.1.0", true).newer_than("0.1.0-beta.1").unwrap());
+    assert!(
+        !tagged("v0.1.0-beta.2", false)
+            .newer_than("0.1.0-beta.1")
+            .unwrap()
+    );
+}
+
+#[test]
+fn release_selection_uses_semantic_precedence_and_rejects_drafts_and_foreign_sources() {
+    let mut draft = tagged("v9.0.0", false);
+    draft.draft = true;
+    let mut foreign = tagged("v8.0.0", false);
+    foreign.html_url = "https://example.com/releases/tag/v8.0.0".into();
+    let releases = vec![
+        tagged("v0.1.0-beta.2", true),
+        tagged("v0.1.0-beta.10", true),
+        tagged("v0.1.0-beta.9", true),
+        tagged("not-a-version", false),
+        draft,
+        foreign,
+    ];
+    assert_eq!(
+        select_release(releases.clone(), "0.1.0-beta.1")
+            .unwrap()
+            .tag_name,
+        "v0.1.0-beta.10"
+    );
+    assert!(select_release(releases.clone(), "0.1.0").is_none());
+    let mut releases = releases;
+    releases.push(tagged("v0.1.0", false));
+    assert_eq!(
+        select_release(releases, "0.1.0-beta.1").unwrap().tag_name,
+        "v0.1.0"
+    );
+    assert!(select_release(Vec::new(), "0.1.0-beta.1").is_none());
+}
 #[test]
 fn replacement_preserves_a_backup_and_rejects_changed_payloads() {
     let dir = temporary();

@@ -16,6 +16,12 @@ pub enum Provider {
     CurseForge,
 }
 impl Provider {
+    pub fn available(self) -> bool {
+        match self {
+            Self::Modrinth => true,
+            Self::CurseForge => !API_KEY.trim().is_empty(),
+        }
+    }
     pub fn label(self) -> &'static str {
         match self {
             Self::Modrinth => "Modrinth",

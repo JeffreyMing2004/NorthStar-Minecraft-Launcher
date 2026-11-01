@@ -1284,6 +1284,7 @@ pub fn about(ui: &mut Ui, app: &mut NsclApp) {
                 .family(theme::bold_family()),
         );
         ui.add_space(10.0);
+        app::hint(ui, &format!("更新通道：{}", nscl::updater::channel_label()));
         let before = app.settings.check_updates;
         ui.checkbox(&mut app.settings.check_updates, "启动时检查更新");
         if before != app.settings.check_updates {
