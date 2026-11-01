@@ -51,6 +51,7 @@ jobs:
           name: nscl-windows-x86_64-debug
           path: |
             target/test-release/*.zip
+            target/test-release/*.exe
             target/test-release/SHA256SUMS
           if-no-files-found: error
       - name: Publish tagged prerelease
@@ -61,6 +62,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $archive = (Get-ChildItem -LiteralPath target/test-release -Filter *.zip).FullName
+          $executable = (Get-ChildItem -LiteralPath target/test-release -Filter *.exe).FullName
           $notes = 'docs/releases/' + $env:RELEASE_TAG.Substring(1) + '.md'
-          gh release create $env:RELEASE_TAG $archive target/test-release/SHA256SUMS --verify-tag --prerelease --latest=false --notes-file $notes --title "NSCL $env:RELEASE_TAG (Debug Test)"
+          gh release create $env:RELEASE_TAG $archive $executable target/test-release/SHA256SUMS --verify-tag --prerelease --latest=false --notes-file $notes --title "NSCL $env:RELEASE_TAG (Debug Test)"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

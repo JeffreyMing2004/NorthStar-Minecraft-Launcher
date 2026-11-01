@@ -50,7 +50,7 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 
 操作说明见[使用指南](docs/user-guide.md)、[实例备份](docs/instance-backups.md)和[故障排查](docs/troubleshooting.md)。
 
-首个公开测试版为 **v0.1.0-beta.1**（Windows x86_64 调试便携包），从 [GitHub Releases](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases/tag/v0.1.0-beta.1) 下载 ZIP，完整解压到可写目录后运行 `NSCL.exe`。包内附使用说明、许可证和诊断指南，发布页附 SHA-256 校验清单。
+首个公开测试版为 **v0.1.0-beta.1**（Windows x86_64 调试便携包），从 [GitHub Releases](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases/tag/v0.1.0-beta.1) 下载 ZIP，完整解压到可写目录后运行 `NSCL.exe`；也可直接下载独立 EXE，放入可写文件夹后运行。ZIP 内附使用说明、许可证和诊断指南，发布页附 ZIP 与 EXE 的 SHA-256 校验清单。
 
 测试范围、尚未完成功能与已知限制见[测试版说明](docs/releases/0.1.0-beta.1.md)。建议使用独立游戏目录测试，修改已有实例前先备份。
 

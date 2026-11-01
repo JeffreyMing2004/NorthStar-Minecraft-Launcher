@@ -1,4 +1,4 @@
-param([string]$Tag = '')
+param([string]$Tag = '', [string]$OutputDirectory = 'target/test-release')
 
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -19,7 +19,7 @@ try {
         throw 'Expected a Windows x86_64 executable.'
     }
 
-    $taskOutput = Join-Path $taskRoot 'target/test-release'
+    $taskOutput = [IO.Path]::GetFullPath((Join-Path $taskRoot $OutputDirectory))
     $taskStage = Join-Path $taskOutput ('portable-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path (Join-Path $taskStage 'docs') -Force | Out-Null
     Copy-Item -LiteralPath $taskBinary -Destination (Join-Path $taskStage 'NSCL.exe')
@@ -31,13 +31,19 @@ try {
     }
     $taskArchiveName = "nscl-v$taskVersion-windows-x86_64-debug.zip"
     $taskArchive = Join-Path $taskOutput $taskArchiveName
-    if (Test-Path -LiteralPath $taskArchive) { throw "Archive already exists: $taskArchive" }
+    $taskExeName = "nscl-v$taskVersion-windows-x86_64-debug.exe"
+    $taskExe = Join-Path $taskOutput $taskExeName
+    if ((Test-Path -LiteralPath $taskArchive) -or (Test-Path -LiteralPath $taskExe)) { throw 'A package with this version already exists in the output directory.' }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::CreateFromDirectory($taskStage, $taskArchive)
+    Copy-Item -LiteralPath $taskBinary -Destination $taskExe
     $taskHash = (Get-FileHash -LiteralPath $taskArchive -Algorithm SHA256).Hash.ToLowerInvariant()
-    [IO.File]::WriteAllText((Join-Path $taskOutput 'SHA256SUMS'), "$taskHash  $taskArchiveName`n", [Text.UTF8Encoding]::new($false))
+    $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLowerInvariant()
+    [IO.File]::WriteAllText((Join-Path $taskOutput 'SHA256SUMS'), "$taskHash  $taskArchiveName`n$taskExeHash  $taskExeName`n", [Text.UTF8Encoding]::new($false))
     Write-Output $taskArchive
     Write-Output "SHA256: $taskHash"
+    Write-Output $taskExe
+    Write-Output "SHA256: $taskExeHash"
 } finally {
     Pop-Location
 }

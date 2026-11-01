@@ -25,7 +25,8 @@
 当前仅发布调试测试包。`.github/workflows/release.yml` 在推送 `v*-*` 预发布标签时执行格式、Clippy 和自动测试，再调用 `scripts/Package-TestRelease.ps1` 构建 Windows x86_64 **Debug** 程序，通过 GitHub CLI 创建标记为预发布的 Release，附带：
 
 - `nscl-v<版本>-windows-x86_64-debug.zip`，内含 `NSCL.exe`、使用说明、测试说明、许可证和相关文档。
-- `SHA256SUMS`，UTF-8 格式的 SHA-256 清单。
+- `nscl-v<版本>-windows-x86_64-debug.exe`，与 ZIP 内的程序完全相同，可直接下载运行。
+- `SHA256SUMS`，UTF-8 格式的 ZIP 与 EXE SHA-256 清单。
 
 发布标签必须与 `Cargo.toml` 中的预发布版本完全一致，例如 `v0.1.0-beta.1` 对应 `version = "0.1.0-beta.1"`，并提供 `docs/releases/0.1.0-beta.1.md`。维护者先完成版本号及锁文件更新、检查和双仓库推送，再创建标签并推送到两个远程。工作流失败时不会创建 Release。手动运行工作流只上传构建产物，不发布版本。本地可执行 `./scripts/Package-TestRelease.ps1 -Tag v0.1.0-beta.1`；产物位于 `target/test-release/`，已有同名包会拒绝覆盖。
 
