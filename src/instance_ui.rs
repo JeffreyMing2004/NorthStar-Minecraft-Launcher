@@ -36,6 +36,7 @@ pub struct BrowserState {
     pub creating: bool,
     pub files: crate::instance_files::Browser,
     pub export: Option<crate::instance_export::ExportDialog>,
+    pub backup: Option<crate::instance_backup::Dialog>,
     root: Option<PathBuf>,
     archived: Option<Vec<(String, Instance)>>,
 }
@@ -439,6 +440,16 @@ fn launch_footer(
     selected: Option<(Option<&str>, &Instance)>,
     editable: bool,
 ) {
+    if app.service.game.is_some() {
+        ui.label("当前由 NSCL 启动的游戏正在运行");
+        ui.horizontal_wrapped(|ui| {
+            crate::log_ui::controls(ui, app);
+            if ui.button("查看日志").clicked() {
+                app.open_log();
+            }
+        });
+        return;
+    }
     let Some((archive, instance)) = selected else {
         ui.add_enabled_ui(false, |ui| {
             app::primary_button(ui, "启动游戏");
@@ -651,6 +662,11 @@ fn details(
         }
         if download_button(ui, "导出整合包", editable && installed.is_some()) {
             app.instance_browser.export = Some(crate::instance_export::ExportDialog::new(instance));
+        }
+        if download_button(ui, "备份与复制", editable) {
+            app.service.backup_instance.clear();
+            app.service.backup_snapshots.clear();
+            app.instance_browser.backup = Some(crate::instance_backup::Dialog::new(instance));
         }
     });
     if let Some(path) = &app.service.exported_pack {

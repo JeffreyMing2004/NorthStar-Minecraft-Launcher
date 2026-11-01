@@ -49,6 +49,7 @@ pub struct ContentState {
     pub updates: content::UpdateReport,
     pub updates_checked: bool,
     pub managed_selection: std::collections::BTreeSet<String>,
+    pub backup_before_change: bool,
 }
 
 impl ContentState {
@@ -401,6 +402,7 @@ impl GameService {
             self.error = Some("方案不属于当前页面或实例，请返回对应实例重新生成方案。".into());
             return;
         }
+        let backup_before_change = self.content.backup_before_change;
         self.begin(Task::Content);
         let (settings, ctx, sender, cancel) = (
             settings.clone(),
@@ -411,25 +413,50 @@ impl GameService {
         std::thread::spawn(move || {
             let root = store::game_directory(&settings);
             let result = Downloader::new(settings.source.clone(), cancel, reporter(&sender, &ctx))
-                .and_then(|d| match plan {
-                    ContentPlan::Mod(plan) => content::install_mods(&root, &plan, &d)
-                        .map(|i| (i, format!("{} 个模组及依赖安装完成。", plan.versions.len()))),
-                    ContentPlan::Remove(plan) => content::remove_mods(&root, &plan, &d).map(|i| {
-                        (
-                            i,
-                            format!(
-                                "已卸载 {} 个模组，文件保留在本地回收目录。",
-                                plan.entries.len()
-                            ),
-                        )
-                    }),
-                    ContentPlan::Pack(plan) => content::install_pack(&root, &plan, &settings, &d)
-                        .map(|i| {
-                            (
-                                i,
-                                format!("整合包 {} 安装完成，可在开始页启动。", plan.name),
-                            )
-                        }),
+                .and_then(|d| {
+                    if backup_before_change {
+                        let instance = match &plan {
+                            ContentPlan::Mod(p) => Some(&p.target.instance),
+                            ContentPlan::Remove(p) => Some(&p.target.instance),
+                            ContentPlan::Pack(_) => None,
+                        };
+                        if let Some(instance) = instance {
+                            crate::instances::backup::create(
+                                &root,
+                                instance,
+                                &crate::instances::backup::directory(&settings),
+                                crate::instances::backup::Scope::Instance,
+                                true,
+                                &d,
+                            )?;
+                        }
+                    }
+                    match plan {
+                        ContentPlan::Mod(plan) => {
+                            content::install_mods(&root, &plan, &d).map(|i| {
+                                (i, format!("{} 个模组及依赖安装完成。", plan.versions.len()))
+                            })
+                        }
+                        ContentPlan::Remove(plan) => {
+                            content::remove_mods(&root, &plan, &d).map(|i| {
+                                (
+                                    i,
+                                    format!(
+                                        "已卸载 {} 个模组，文件保留在本地回收目录。",
+                                        plan.entries.len()
+                                    ),
+                                )
+                            })
+                        }
+                        ContentPlan::Pack(plan) => {
+                            content::install_pack(&root, &plan, &settings, &d).map(|i| {
+                                (
+                                    i,
+                                    format!("整合包 {} 安装完成，可在开始页启动。", plan.name),
+                                )
+                            })
+                        }
+                    }
                 });
             send(
                 &sender,

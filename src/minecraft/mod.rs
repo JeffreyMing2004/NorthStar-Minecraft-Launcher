@@ -5,7 +5,10 @@ mod launch;
 mod loaders;
 mod logging;
 mod model;
+mod process;
+pub mod session;
 mod source;
+pub use process::GameControl;
 
 pub use download::validate_id;
 pub use download::validate_local_id;
@@ -14,7 +17,7 @@ pub(crate) use download::{Job, safe_join};
 pub use install::hidden_command;
 pub use install::{InstalledVersion, install, installed_versions, manifest};
 pub use launch::{
-    LaunchIdentity, LaunchPlan, launch, offline_uuid, prepare_instance_launch,
+    LaunchIdentity, LaunchPlan, launch, launch_controlled, offline_uuid, prepare_instance_launch,
     prepare_instance_launch_with_downloader, prepare_launch, validate_player_name,
 };
 pub use loaders::{LoaderKind, LoaderVersion, install_loader, loader_versions};

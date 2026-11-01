@@ -28,14 +28,20 @@ Windows 在 SMBIOS 固件中识别到 VMware 时默认使用 WARP CPU 软件渲�
 
 `first UI frame built` 表示 CPU 侧已构建界面，不代表虚拟显卡已经正确显示。窗口仍黑屏时，保留日志并使用另一个后端复测；记录客体 Windows、VMware、VMware Tools 版本及 3D 加速状态。图形初始化失败会显示系统错误窗口，而非只向隐藏控制台输出。
 
-VMware 测试应先安装 VMware Tools 并开启虚拟机的 3D 加速。启动器黑屏应先诊断启动器后端；游戏启动后的 OpenGL 错误使用实例的 `logs/nscl-launch.log` 和 `logs/latest.log` 排查，两者是不同的验证路径。
+VMware 测试应先安装 VMware Tools 并开启虚拟机的 3D 加速。启动器黑屏应先诊断启动器后端；游戏启动后的 OpenGL 错误使用「查看日志」中的本次游戏会话排查，两者是不同的验证路径。
 
 框架依据：[eframe 渲染配置](https://docs.rs/eframe/0.37.0/eframe/enum.Renderer.html)。VMware 的客体图形支持与宿主机图形后端并不等同，支持范围见 [VMware Workstation 官方介绍](https://www.vmware.com/products/desktop-hypervisor/workstation-and-fusion)。是否解决具体虚拟机的黑屏，需要在对应客体环境实测确认。
 
 ## 提交问题
 
-游戏运行过后，可在启动页点击「查看日志」，查看启动日志和同目录的 `latest.log` 末尾 64 KiB。诊断会列出匹配到的常见错误、对应原始日志行和处理建议；这些是可能原因，`latest.log` 也可能来自上一次运行。没有匹配时请继续查看原始日志。
+桌面启动游戏后，可在启动页或实例管理页点击「查看日志」。窗口在后台每约半秒读取日志，支持搜索、全部/警告与错误/仅错误过滤、来源选择、实时刷新及跟随末尾；取消「跟随末尾」可暂停自动滚动，每份日志最多读取末尾 64 KiB。
+
+每次桌面启动会在实际游戏目录的 `logs/nscl-sessions/session-<随机 ID>/` 保存独立的 `launch.log` 和会话信息。会话会区分启动前已有的日志和本次新增或改写的内容，关联 `latest.log`、加载器 `debug.log`、`crash-reports/crash-*.txt` 和 `hs_err_pid*.log`。最多收集 10 份附属日志，目录扫描有数量上限；没有证据时不推断具体原因。退出后冻结本次收集的日志，之后的游戏运行不会改写该会话。旧版日志仍可查看，但标记可能来自上次运行的 `latest.log` 不参与原因判断。
+
+异常退出会自动打开诊断窗口，列出常见错误、原始证据行和处理建议，包含内存、Java、依赖、图形、Mixin 和 JVM 本机库崩溃特征。结果是可能原因；未识别时继续查看原始日志。
+
+游戏运行时点击「停止游戏」请求正常关闭；Windows 向该游戏进程的窗口发送关闭请求，是否及时保存并退出取决于游戏响应。无响应时可点击「强制结束」，确认后只终止当前由 NSCL 持有的游戏子进程。强制结束可能丢失未保存进度。由其他启动器启动的游戏不受此控制。
 
 「导出脱敏诊断包」会创建新的 ZIP 文件，只包含固定的错误特征、来源和处理建议，不包含原始日志、账号或个人路径。为避免泄露未知格式的敏感数据，未识别的日志内容不会导出；如果需要分享完整日志，请先自行检查并脱敏。
 
-通过 [GitHub Issues](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues) 提交问题时，说明启动器版本、操作系统、游戏及加载器版本、复现步骤，并附相关日志。启动器窗口问题附 `nscl-startup.log`；游戏启动问题附游戏目录中的 `logs/nscl-launch.log` 和 `logs/latest.log`。分享前移除日志中的账号、令牌与个人路径等信息。
+通过 [GitHub Issues](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues) 提交问题时，说明启动器版本、操作系统、游戏及加载器版本、复现步骤，并附相关日志。启动器窗口问题附 `nscl-startup.log`；桌面游戏启动问题优先使用本次会话的诊断包。原始会话日志位于 `logs/nscl-sessions/`；CLI 与旧版启动日志仍使用 `logs/nscl-launch.log`。原始日志只在本地保存，分享前移除账号、令牌与个人路径等信息。

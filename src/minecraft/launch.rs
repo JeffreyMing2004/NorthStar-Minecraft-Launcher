@@ -239,6 +239,14 @@ pub fn absolute_root(root: &Path) -> Result<PathBuf> {
 }
 
 pub fn launch(plan: &LaunchPlan, on_started: impl FnOnce(u32, &Path)) -> Result<i32> {
+    launch_controlled(plan, on_started, &super::GameControl::default())
+}
+
+pub fn launch_controlled(
+    plan: &LaunchPlan,
+    on_started: impl FnOnce(u32, &Path),
+    control: &super::GameControl,
+) -> Result<i32> {
     let log = File::create(&plan.log_path).map_err(|e| format!("创建游戏日志失败：{e}"))?;
     let stderr = log.try_clone().map_err(|e| e.to_string())?;
     // Prefer the runtime's Windows GUI launcher for games, and retain the console
@@ -263,7 +271,7 @@ pub fn launch(plan: &LaunchPlan, on_started: impl FnOnce(u32, &Path)) -> Result<
         .spawn()
         .map_err(|e| format!("启动 Java 失败：{e}"))?;
     on_started(child.id(), &plan.log_path);
-    let status = child.wait().map_err(|e| e.to_string())?;
+    let status = super::process::wait(&mut child, control)?;
     let code = status.code().unwrap_or(-1);
     if code != 0
         && let Some(error) = fabric_remap_failure(&plan.log_path)

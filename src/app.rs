@@ -60,7 +60,8 @@ pub struct NsclApp {
     pub skin: crate::skin_ui::SkinView,
     pub capes: crate::cape_ui::CapeView,
     pub updates: crate::update_service::UpdateService,
-    pub log_view: Option<crate::diagnostics::Report>,
+    pub log_view: Option<crate::log_ui::Viewer>,
+    pub force_stop_confirm: bool,
     pub log_export_status: String,
     pub accounts: crate::account_service::AccountService,
     pub instance_browser: crate::instance_ui::BrowserState,
@@ -111,6 +112,7 @@ impl NsclApp {
             capes: crate::cape_ui::CapeView::new(),
             updates: crate::update_service::UpdateService::new(),
             log_view: None,
+            force_stop_confirm: false,
             log_export_status: String::new(),
             accounts,
             instance_browser: crate::instance_ui::BrowserState::default(),
@@ -144,7 +146,14 @@ impl eframe::App for NsclApp {
             self.screenshot_pending = true;
         }
         let previous_instance = self.service.selected.clone();
+        let previous_log = self.service.last_log.clone();
         self.service.poll(&self.settings);
+        if self.log_view.is_some() && previous_log != self.service.last_log {
+            self.open_log();
+        }
+        if std::mem::take(&mut self.service.show_diagnostics) {
+            self.open_log();
+        }
         if previous_instance != self.service.selected {
             self.remember_instance();
         }
@@ -182,64 +191,8 @@ impl eframe::App for NsclApp {
             self.service.error = Some(error);
         }
         pages::instance_windows(&ctx, self);
-        if let Some(report) = &self.log_view {
-            let mut open = true;
-            let mut refresh = false;
-            let mut export = false;
-            egui::Window::new("日志与故障诊断")
-                .open(&mut open)
-                .default_width(800.0)
-                .show(&ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui.button("刷新日志").clicked() {
-                            refresh = true;
-                        }
-                        if ui.button("导出脱敏诊断包").clicked() {
-                            export = true;
-                        }
-                    });
-                    ui.label("诊断仅供参考；导出包只含固定错误特征与建议，不含原始日志。");
-                    if !self.log_export_status.is_empty() {
-                        ui.label(&self.log_export_status);
-                    }
-                    egui::ScrollArea::both().max_height(450.0).show(ui, |ui| {
-                        for finding in &report.findings {
-                            ui.label(
-                                RichText::new(format!("可能原因：{}", finding.reason)).strong(),
-                            );
-                            ui.label(format!("处理建议：{}", finding.advice));
-                            ui.label(format!("{}：{}", finding.source, finding.line));
-                            ui.add_space(8.0);
-                        }
-                        if report.findings.is_empty() {
-                            ui.label("未识别出常见原因，请查看原始日志中的错误和崩溃信息。");
-                        }
-                        for log in &report.logs {
-                            egui::CollapsingHeader::new(log.name).show(ui, |ui| {
-                                ui.label(RichText::new(&log.text).monospace());
-                            });
-                        }
-                    });
-                });
-            if export {
-                match crate::file_picker::save_diagnostics() {
-                    Ok(Some(path)) => {
-                        if let Err(error) = report.export(&path) {
-                            self.service.error = Some(error);
-                        } else {
-                            self.log_export_status = "脱敏诊断包已导出。".into();
-                        }
-                    }
-                    Ok(None) => {}
-                    Err(error) => self.service.error = Some(error),
-                }
-            }
-            if !open {
-                self.log_view = None;
-            } else if refresh {
-                self.open_log();
-            }
-        }
+        crate::instance_backup::show(&ctx, self);
+        crate::log_ui::show(&ctx, self);
         crate::error_ui::show(&ctx, self);
         #[cfg(debug_assertions)]
         if self.screenshot_pending
@@ -447,10 +400,7 @@ impl NsclApp {
         let Some(path) = &self.service.last_log else {
             return;
         };
-        match crate::diagnostics::Report::load(path) {
-            Ok(report) => self.log_view = Some(report),
-            Err(error) => self.service.error = Some(format!("读取日志失败：{error}")),
-        }
+        self.log_view = Some(crate::log_ui::Viewer::new(path.clone()));
     }
 
     fn top_bar(&mut self, ui: &mut Ui, ctx: &Context) {

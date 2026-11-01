@@ -359,6 +359,10 @@ fn plan(ui: &mut Ui, app: &mut NsclApp, editable: bool) {
         app::hint(ui, "请先退出当前游戏，再修改资源。");
     }
     ui.add_enabled_ui(!busy && editable, |ui| {
+        ui.checkbox(
+            &mut app.service.content.backup_before_change,
+            "变更前创建实例恢复点",
+        );
         if app::primary_button(
             ui,
             if removal {

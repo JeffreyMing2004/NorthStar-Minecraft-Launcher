@@ -52,13 +52,13 @@ HTTP 请求使用系统 TLS 校验和系统代理设置；本地回环镜像直�
   assets/virtual/                 # 部分旧版需要
   instances/<instance-id>/       # 实例元数据；隔离模式也在这里保存游戏数据
   instances/<instance-id>/nscl-instance.json
-  instances/<instance-id>/logs/nscl-launch.log
+  instances/<instance-id>/logs/nscl-sessions/session-<id>/launch.log
   archived-instances/<archive-id>/ # 可恢复的完整实例归档
   saves/                         # 关闭隔离的实例共享这里的游戏数据
   mods/
   config/
   screenshots/
-  logs/nscl-launch.log            # 共享模式启动日志
+  logs/nscl-sessions/             # 共享模式桌面启动会话；CLI 使用 nscl-launch.log
 ```
 
 NSCL 安装仅在全部文件校验和准备工作成功后写入 `nscl-instance.json` 完成标记。未完成的 NSCL 安装使用 `.nscl-installing` 标识，不会被误认为其他启动器已有版本。

@@ -14,6 +14,9 @@ use std::{
     },
 };
 
+pub mod backup;
+#[cfg(test)]
+mod backup_tests;
 pub mod content;
 mod export;
 #[cfg(test)]
@@ -50,6 +53,7 @@ enum Event {
     Content(content::ContentEvent),
     PackExported(PathBuf),
     Local(resources::LocalEvent),
+    Backup(backup::BackupEvent),
 }
 
 pub struct GameService {
@@ -67,6 +71,10 @@ pub struct GameService {
     pub task: Task,
     pub game: Option<(u32, PathBuf)>,
     pub last_log: Option<PathBuf>,
+    pub game_control: minecraft::GameControl,
+    pub show_diagnostics: bool,
+    pub backup_snapshots: Vec<crate::instances::backup::Snapshot>,
+    pub backup_instance: String,
     pub instances: Vec<crate::instances::Instance>,
     pub renewed_session: Option<crate::accounts::Session>,
     pub java_runtimes: Vec<crate::java::JavaRuntime>,
@@ -109,6 +117,10 @@ impl GameService {
             task: Task::Idle,
             game: None,
             last_log: None,
+            game_control: minecraft::GameControl::default(),
+            show_diagnostics: false,
+            backup_snapshots: Vec::new(),
+            backup_instance: String::new(),
             instances,
             renewed_session: None,
             java_runtimes: Vec::new(),
@@ -134,6 +146,18 @@ impl GameService {
         self.cancel.store(true, Ordering::Relaxed);
     }
 
+    pub fn stop_game(&mut self, force: bool) {
+        if self.game.is_some() {
+            self.game_control.request_stop(force);
+            self.notice = if force {
+                "正在结束当前游戏进程……"
+            } else {
+                "正在请求游戏正常关闭……"
+            }
+            .into();
+        }
+    }
+
     pub fn refresh(&mut self, settings: &Settings) {
         self.installed = minecraft::installed_versions(&store::game_directory(settings));
         self.instances = crate::instances::list(&store::game_directory(settings));
@@ -156,6 +180,9 @@ impl GameService {
     }
 
     pub fn poll(&mut self, settings: &Settings) {
+        if let Some(notice) = self.game_control.take_notice() {
+            self.notice = notice;
+        }
         for _ in 0..1024 {
             let Ok(event) = self.receiver.try_recv() else {
                 break;
@@ -218,6 +245,11 @@ impl GameService {
                 }
                 Event::GameExited(result) => {
                     self.game = None;
+                    if self.game_control.stopped() {
+                        self.notice = "游戏已停止。".into();
+                        continue;
+                    }
+                    self.show_diagnostics = !matches!(result, Ok(0));
                     match result {
                         Ok(0) => self.notice = "游戏已退出。".into(),
                         Ok(code) => {
@@ -258,6 +290,7 @@ impl GameService {
                     self.exported_pack = Some(path);
                 }
                 Event::Local(event) => self.apply_local(event),
+                Event::Backup(event) => self.apply_backup(event, settings),
             }
         }
     }
@@ -482,6 +515,9 @@ impl GameService {
             return;
         };
         self.begin(Task::Launch);
+        self.game_control = minecraft::GameControl::default();
+        self.show_diagnostics = false;
+        let control = self.game_control.clone();
         self.progress.stage = "校验游戏文件、选择 Java 并准备启动".into();
         let root = store::game_directory(settings);
         let settings = settings.clone();
@@ -511,7 +547,7 @@ impl GameService {
                 }
                 None => offline_identity,
             };
-            let plan = match Downloader::new(
+            let mut plan = match Downloader::new(
                 settings.source.clone(),
                 cancel.clone(),
                 reporter(&sender, &context),
@@ -536,22 +572,43 @@ impl GameService {
                 return;
             }
             let mut started = false;
-            let result = minecraft::launch(&plan, |pid, path| {
-                started = true;
-                let mut instance = instance.clone();
-                instance.last_played = Some(crate::accounts::now());
-                if let Err(error) = crate::instances::save(&root, &instance) {
+            let session = match minecraft::session::LaunchSession::begin(&plan.game_directory) {
+                Ok(session) => session,
+                Err(error) => {
                     send(
                         &sender,
                         &context,
-                        Event::Progress(Progress {
-                            stage: format!("游戏已启动，实例记录保存失败：{error}"),
-                            ..Default::default()
-                        }),
+                        Event::Failed(format!("创建启动会话失败：{error}")),
                     );
+                    return;
                 }
-                send(&sender, &context, Event::GameStarted(pid, path.to_owned()));
-            });
+            };
+            plan.log_path = session.log_path();
+            let result = minecraft::launch_controlled(
+                &plan,
+                |pid, path| {
+                    started = true;
+                    let mut instance = instance.clone();
+                    instance.last_played = Some(crate::accounts::now());
+                    if let Err(error) = crate::instances::save(&root, &instance) {
+                        send(
+                            &sender,
+                            &context,
+                            Event::Progress(Progress {
+                                stage: format!("游戏已启动，实例记录保存失败：{error}"),
+                                ..Default::default()
+                            }),
+                        );
+                    }
+                    send(&sender, &context, Event::GameStarted(pid, path.to_owned()));
+                },
+                &control,
+            );
+            let result = match session.finish() {
+                Ok(()) => result,
+                Err(error) if started => Err(format!("游戏已退出，但会话日志归档失败：{error}")),
+                Err(_) => result,
+            };
             let event = if started {
                 Event::GameExited(result)
             } else {

@@ -30,6 +30,16 @@ struct Rule {
 
 const RULES: &[Rule] = &[
     Rule {
+        signature: "exception_access_violation",
+        reason: "JVM 或本机库崩溃",
+        advice: "查看本次 JVM 错误报告中的 Problematic frame，检查显卡驱动、Java 及相关本机库；保留原始报告用于排查。",
+    },
+    Rule {
+        signature: "mixin apply failed",
+        reason: "模组 Mixin 注入失败",
+        advice: "查看本次崩溃报告中的模组名称和首个 Caused by，核对模组、加载器及游戏版本后再更新或禁用相关模组。",
+    },
+    Rule {
         signature: "outofmemoryerror",
         reason: "Java 内存不足",
         advice: "关闭其他占用内存的程序，在实例或启动器设置中适当增加内存；不要超过机器可用内存。",
@@ -87,11 +97,24 @@ fn tail(path: &Path) -> std::io::Result<String> {
 
 impl Report {
     pub fn load(launch: &Path) -> std::io::Result<Self> {
-        let mut logs = vec![Log {
-            name: "启动日志",
-            text: tail(launch)?,
-        }];
-        if let Some(parent) = launch.parent()
+        let session =
+            nscl::minecraft::session::LaunchSession::logs(launch).map_err(std::io::Error::other)?;
+        let is_session = session.is_some();
+        let mut logs = if let Some(logs) = session {
+            logs.into_iter()
+                .map(|l| Log {
+                    name: l.kind.label(),
+                    text: l.text,
+                })
+                .collect()
+        } else {
+            vec![Log {
+                name: "启动日志",
+                text: tail(launch)?,
+            }]
+        };
+        if !is_session
+            && let Some(parent) = launch.parent()
             && let Ok(text) = tail(&parent.join("latest.log"))
         {
             logs.push(Log {
@@ -101,6 +124,10 @@ impl Report {
         }
         let mut findings = Vec::new();
         for log in &logs {
+            // A legacy latest.log is viewable, but cannot establish this run's cause.
+            if log.name.contains("可能来自上次运行") {
+                continue;
+            }
             for rule in RULES {
                 if let Some(line) = log
                     .text
@@ -131,7 +158,7 @@ impl Report {
             let mut zip = zip::ZipWriter::new(file);
             zip.start_file("report.txt", zip::write::SimpleFileOptions::default())
                 .map_err(|e| e.to_string())?;
-            writeln!(zip, "NSCL 脱敏诊断包\n仅包含固定错误特征和建议，不包含原始日志或用户信息。\n日志仅分析末尾 64 KiB；游戏日志可能来自上次运行。\n诊断仅供参考。\n")
+            writeln!(zip, "NSCL 脱敏诊断包\n仅包含固定错误特征和建议，不包含原始日志或用户信息。\n每份日志仅分析末尾 64 KiB；旧版日志中的上次运行内容不参与诊断。\n诊断仅供参考。\n")
                 .map_err(|e| e.to_string())?;
             if self.findings.is_empty() {
                 writeln!(zip, "未识别出常见错误特征。请在本地查看原始日志。")
@@ -178,7 +205,7 @@ mod tests {
         )
         .unwrap();
         let report = Report::load(&launch).unwrap();
-        assert_eq!(report.findings.len(), 2);
+        assert_eq!(report.findings.len(), 1);
         assert!(
             report
                 .findings
@@ -195,7 +222,7 @@ mod tests {
             .read_to_string(&mut exported)
             .unwrap();
         assert!(exported.contains("outofmemoryerror"));
-        assert!(exported.contains("unsupportedclassversionerror"));
+        assert!(!exported.contains("unsupportedclassversionerror"));
         for secret in ["PrivateName", "secret123", "secret456", "user@example.com"] {
             assert!(!exported.contains(secret));
         }
@@ -221,5 +248,36 @@ mod tests {
             .read_to_string(&mut text)
             .unwrap();
         assert!(text.contains("未识别"));
+    }
+
+    #[test]
+    fn current_session_includes_crash_and_jvm_evidence_but_excludes_stale_log() {
+        let root = fixture();
+        fs::create_dir_all(root.path().join("logs")).unwrap();
+        fs::write(
+            root.path().join("logs/latest.log"),
+            "Old OutOfMemoryError secret",
+        )
+        .unwrap();
+        let session = nscl::minecraft::session::LaunchSession::begin(root.path()).unwrap();
+        fs::write(session.log_path(), "new run").unwrap();
+        fs::create_dir_all(root.path().join("crash-reports")).unwrap();
+        fs::write(
+            root.path().join("crash-reports/crash-new.txt"),
+            "Mixin apply failed for private.mod",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("hs_err_pid1.log"),
+            "EXCEPTION_ACCESS_VIOLATION private-path",
+        )
+        .unwrap();
+        session.finish().unwrap();
+        let report = Report::load(&session.log_path()).unwrap();
+        assert_eq!(report.findings.len(), 2);
+        assert!(report.findings.iter().any(|f| f.source == "本次崩溃报告"));
+        assert!(report.findings.iter().any(|f| f.source == "JVM 错误日志"));
+        assert!(!report.findings.iter().any(|f| f.reason == "Java 内存不足"));
+        report.export(&root.path().join("safe.zip")).unwrap();
     }
 }

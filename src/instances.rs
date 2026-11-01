@@ -9,6 +9,7 @@ use std::{
 };
 
 const CONFIG: &str = "nscl-instance.json";
+pub mod backup;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

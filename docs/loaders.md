@@ -28,7 +28,7 @@ Forge / NeoForge 下载并校验官方 installer jar，读取 `install_profile.j
 
 加载器本身与不同 Minecraft 版本需要兼容的 Java。示例：Minecraft 1.20.1 使用 Java 17，1.21.1 使用 Java 21，26.3 使用其官方元数据要求的 Java。自动匹配不使用任意更高版本替代所需主版本；没有合适 Java 会显示安装或配置提示。Fabric 安装本身不执行 Java，启动时仍检查 Java。
 
-Forge / NeoForge 补丁输出保存在游戏文件目录的 `.nscl/installers/<实例版本 ID>.log`，下载缓存位于同目录的 `.jar`。每个 Java 处理步骤有超时与取消检查，取消时终止当前处理器。失败提示包含具体日志路径。游戏日志继续保存在 `instances/<实例 ID>/logs/nscl-launch.log`。
+Forge / NeoForge 补丁输出保存在游戏文件目录的 `.nscl/installers/<实例版本 ID>.log`，下载缓存位于同目录的 `.jar`。每个 Java 处理步骤有超时与取消检查，取消时终止当前处理器。失败提示包含具体日志路径。桌面游戏启动日志按会话保存在实际游戏目录的 `logs/nscl-sessions/`；CLI 与旧版使用 `logs/nscl-launch.log`。
 
 启动器代码与界面全部使用 Rust；执行加载器提供的 Java 补丁工具不依赖 WebView、JavaScript 或官方 Minecraft 启动器。
 

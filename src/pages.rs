@@ -139,18 +139,22 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         }
     } else {
         theme::toolbar(&mut actions, |ui| {
-            ui.add_enabled_ui(!app.service.busy() && app.service.game.is_none(), |ui| {
-                if app::primary_button(
-                    ui,
-                    if app.service.game.is_some() {
-                        "游戏运行中"
-                    } else {
-                        "启动游戏 →"
-                    },
-                ) {
-                    app.service.launch(&app.settings, &app.accounts, ui.ctx());
-                }
-            });
+            if app.service.game.is_some() {
+                crate::log_ui::controls(ui, app);
+            } else {
+                ui.add_enabled_ui(!app.service.busy(), |ui| {
+                    if app::primary_button(
+                        ui,
+                        if app.service.game.is_some() {
+                            "游戏运行中"
+                        } else {
+                            "启动游戏 →"
+                        },
+                    ) {
+                        app.service.launch(&app.settings, &app.accounts, ui.ctx());
+                    }
+                });
+            }
             if ui.button("管理实例").clicked() {
                 app.page = Page::Instances;
             }

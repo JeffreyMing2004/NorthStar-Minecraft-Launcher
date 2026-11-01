@@ -27,6 +27,7 @@ pub struct Settings {
     pub online_mode: bool,
     pub selected_instance: String,
     pub frpc_path: String,
+    pub backup_directory: String,
 }
 
 impl Default for Settings {
@@ -49,6 +50,7 @@ impl Default for Settings {
             online_mode: false,
             selected_instance: String::new(),
             frpc_path: String::new(),
+            backup_directory: String::new(),
         }
     }
 }
