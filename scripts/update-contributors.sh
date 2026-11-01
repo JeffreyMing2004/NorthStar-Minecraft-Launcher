@@ -1,10 +1,32 @@
 #!/usr/bin/env bash
 # 从 git 历史生成贡献者列表，并写入 README 的 contributors 区块与 CONTRIBUTORS.md。
-# 用法：bash scripts/update-contributors.sh
+# 用法：
+#   bash scripts/update-contributors.sh          生成并写回文件
+#   bash scripts/update-contributors.sh --check  只检查现有文件是否最新，过期时退出码 1
 set -euo pipefail
+
+check_only=false
+for arg in "$@"; do
+    case "$arg" in
+        --check) check_only=true ;;
+        -h|--help)
+             sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+        *)
+            echo "未知参数: $arg" >&2
+            exit 2
+            ;;
+    esac
+done
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
+
+# 统一换行与行尾空格，避免同一份名单因格式抖动被判为变更
+normalize() {
+    sed -e 's/[[:space:]]*$//' -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' || true
+}
 
 # 头像/个人页归属站点，默认 GitHub；CNB 镜像可设为 https://cnb.cool
 profile_base=${CONTRIBUTOR_PROFILE_BASE:-https://github.com}
@@ -64,20 +86,32 @@ ${list%$'\n'}
 该列表由 \`scripts/update-contributors.sh\` 从 git 历史生成，可按需重新运行。
 $end_marker"
 
-if grep -qF "$start_marker" README.md; then
+if $check_only; then
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    cp README.md "$work/README.md"
+    [ -f "$output_file" ] && cp "$output_file" "$work/$output_file"
+    readme=$work/README.md
+    out=$work/$output_file
+else
+    readme=README.md
+    out=$output_file
+fi
+
+if grep -qF "$start_marker" "$readme"; then
     awk -v start="$start_marker" -v end="$end_marker" -v block="$block" '
         index($0, start) == 1 { print block; skip = 1; next }
         skip && index($0, end) == 1 { skip = 0; next }
         !skip { print }
-    ' README.md > README.md.tmp
+    ' "$readme" > "$readme.tmp"
 else
     awk -v block="$block" '
         !done && /^## 参考与致谢/ { print "## 贡献者\n"; print block; print ""; done = 1 }
         { print }
         END { if (!done) { print ""; print "## 贡献者"; print ""; print block } }
-    ' README.md > README.md.tmp
+    ' "$readme" > "$readme.tmp"
 fi
-mv README.md.tmp README.md
+mv "$readme.tmp" "$readme"
 
 {
     echo '# 贡献者'
@@ -86,6 +120,16 @@ mv README.md.tmp README.md
     echo '本文件由 `scripts/update-contributors.sh` 从 git 历史生成，请勿手动编辑。'
     echo
     printf '%s' "$list"
-} > "$output_file"
+} > "$out"
+
+if $check_only; then
+    if diff -q <(normalize < README.md) <(normalize < "$readme") >/dev/null \
+        && [ -f "$output_file" ] && diff -q <(normalize < "$output_file") <(normalize < "$out") >/dev/null; then
+        echo "贡献者名单已是最新（$count 位贡献者）"
+        exit 0
+    fi
+    echo "贡献者名单已过期：运行 bash scripts/update-contributors.sh 重新生成" >&2
+    exit 1
+fi
 
 echo "已更新 README.md 与 $output_file（$count 位贡献者）"
