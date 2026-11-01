@@ -423,7 +423,6 @@ fn export_external_renamed_vanilla_resolves_minecraft_and_reads_version_director
 #[cfg(windows)]
 #[test]
 fn export_rejects_directory_junctions() {
-    use std::process::Command;
     let root = temporary();
     let target = target(root.path());
     let outside = temporary();
@@ -431,15 +430,20 @@ fn export_rejects_directory_junctions() {
     let directory = target.instance.game_directory(root.path()).unwrap();
     fs::create_dir_all(&directory).unwrap();
     let link = directory.join("config");
+    // Paths are values, rather than cmd.exe syntax. In particular Cargo's
+    // mixed separators and workspace names must not become mklink switches.
+    let created = crate::minecraft::hidden_command("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command",
+            "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:NSCL_TEST_JUNCTION -Value $env:NSCL_TEST_JUNCTION_TARGET | Out-Null"])
+        .env("NSCL_TEST_JUNCTION", &link)
+        .env("NSCL_TEST_JUNCTION_TARGET", outside.path().join("secret"))
+        .output()
+        .unwrap();
     assert!(
-        Command::new("cmd")
-            .args(["/C", "mklink", "/J"])
-            .arg(&link)
-            .arg(outside.path().join("secret"))
-            .output()
-            .unwrap()
-            .status
-            .success()
+        created.status.success(),
+        "cannot create test junction: {} {}",
+        String::from_utf8_lossy(&created.stdout),
+        String::from_utf8_lossy(&created.stderr)
     );
     let output = root.path().join("linked.mrpack");
     let result = export_pack(
