@@ -10,6 +10,7 @@
   <p>
     <a href="#功能特性">功能特性</a> ·
     <a href="#快速开始">快速开始</a> ·
+    <a href="#贡献者">贡献者</a> ·
     <a href="https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues">问题反馈</a> ·
     <a href="https://cnb.cool/JeffreyMing/NorthStar-Minecraft-Launcher">CNB 镜像</a>
   </p>
@@ -59,6 +60,18 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 4. 回到「开始」选择实例，点击「启动游戏」。
 
 已有游戏可以直接添加其 `.minecraft` 目录；本地 `.mrpack` 整合包可拖入启动器导入。
+
+## 贡献者
+
+<!-- contributors:start -->
+共 3 位贡献者：
+
+- CodeBuddy
+- [JeffreyMing](https://github.com/JeffreyMing2004)
+- [sanyisi](https://github.com/sanyisi)
+
+该列表由 `scripts/update-contributors.sh` 从 git 历史生成，可按需重新运行。
+<!-- contributors:end -->
 
 ## 参考与致谢
 
