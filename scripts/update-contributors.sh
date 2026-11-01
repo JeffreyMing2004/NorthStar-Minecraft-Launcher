@@ -6,8 +6,12 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 
-# 头像/个人页归属站点，默认 GitHub；CNB 镜像可设为 https://cnb.cool
+# 个人页站点，默认 GitHub
 profile_base=${CONTRIBUTOR_PROFILE_BASE:-https://github.com}
+# 头像地址：GitHub 上 <用户名>.png 会 302 到头像，比 avatars/u/<数字ID> 稳，不用查 ID
+avatar_base=${CONTRIBUTOR_AVATAR_BASE:-https://avatars.githubusercontent.com}
+# 每行头像数，6 个 112px 头像刚好铺满 1100px 阅读宽度
+avatar_columns=6
 output_file=CONTRIBUTORS.md
 start_marker='<!-- contributors:start -->'
 end_marker='<!-- contributors:end -->'
@@ -45,6 +49,37 @@ for entry in "${entries[@]}"; do
     fi
 done
 
+# 无公开账号时的占位头像：显示名首字符
+initial_of() {
+    local first=${1:0:1}
+    printf '%s' "${first^^}"
+}
+
+table='<table>'
+column=0
+for show in "${names[@]}"; do
+    login=${logins[$show]}
+    if [ $((column % avatar_columns)) -eq 0 ]; then
+        table+=$'\n  <tr>'
+    fi
+    table+=$'\n    <td align="center" width="180">'
+    if [ -n "$login" ]; then
+        table+="<a href=\"$profile_base/$login\"><img src=\"$avatar_base/$login.png?size=112\" width=\"112\" height=\"112\" alt=\"$show\" /></a><br /><sub><b>$show</b></sub></td>"
+    else
+        # 没有公开账号就不编头像，用首字母方块占位，免得把别人的脸挂错人
+        initial=$(initial_of "$show")
+        table+="<img src=\"https://placehold.co/112x112/555555/FFFFFF?text=$initial\" width=\"112\" height=\"112\" alt=\"$show\" /><br /><sub><b>$show</b></sub></td>"
+    fi
+    column=$((column + 1))
+    if [ $((column % avatar_columns)) -eq 0 ]; then
+        table+=$'\n  </tr>'
+    fi
+done
+if [ $((column % avatar_columns)) -ne 0 ]; then
+    table+=$'\n  </tr>'
+fi
+table+=$'\n</table>'
+
 list=''
 for show in "${names[@]}"; do
     login=${logins[$show]}
@@ -59,7 +94,7 @@ count=${#names[@]}
 block="$start_marker
 共 $count 位贡献者：
 
-${list%$'\n'}
+$table
 
 该列表由 \`scripts/update-contributors.sh\` 从 git 历史生成，可按需重新运行。
 $end_marker"
