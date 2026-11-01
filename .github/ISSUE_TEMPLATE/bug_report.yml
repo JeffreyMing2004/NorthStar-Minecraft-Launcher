@@ -1,0 +1,37 @@
+name: 测试版问题反馈
+description: 报告启动、安装、游戏或界面问题
+title: '[Bug] '
+body:
+  - type: input
+    id: launcher
+    attributes:
+      label: 启动器版本
+      placeholder: 0.1.0-beta.1 / Debug
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Windows 版本与架构
+      placeholder: Windows 11 24H2 / x86_64
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: 游戏、加载器与 Java 版本
+      placeholder: Minecraft 1.21.1 / Fabric / Java 21，界面问题可填不适用
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 请说明具体操作、预期行为和实际结果。
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 脱敏诊断包或截图
+      description: 可拖入诊断包或截图；请勿提交账号、令牌、密码或未检查的原始日志。

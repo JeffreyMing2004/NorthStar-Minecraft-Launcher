@@ -160,6 +160,19 @@ impl Report {
                 .map_err(|e| e.to_string())?;
             writeln!(zip, "NSCL 脱敏诊断包\n仅包含固定错误特征和建议，不包含原始日志或用户信息。\n每份日志仅分析末尾 64 KiB；旧版日志中的上次运行内容不参与诊断。\n诊断仅供参考。\n")
                 .map_err(|e| e.to_string())?;
+            writeln!(
+                zip,
+                "启动器：{}\n系统：{} / {}\n构建：{}\n",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+                if cfg!(debug_assertions) {
+                    "debug"
+                } else {
+                    "release"
+                },
+            )
+            .map_err(|e| e.to_string())?;
             if self.findings.is_empty() {
                 writeln!(zip, "未识别出常见错误特征。请在本地查看原始日志。")
                     .map_err(|e| e.to_string())?;

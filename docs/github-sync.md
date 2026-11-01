@@ -48,3 +48,17 @@ GitHub CLI 负责登录及 Git 凭据，提交由 `git commit` 完成；`gh` 没
 - **远程历史分叉**：保留本地提交，获取远程更新并确认差异后正常合并、推送。保留 `force: false`，不要通过强制推送覆盖另一仓库的提交。
 
 不要为排错把真实 token 写入项目文件、提交记录或分享的日志。
+
+## 贡献者名单自动更新
+
+README 的「贡献者」区块与 `CONTRIBUTORS.md` 由 `scripts/update-contributors.sh` 从 git 历史生成，不依赖 GitHub Contributors API，两个托管平台的名单保持一致。
+
+- **定时刷新**：`.cnb.yml` 里的 `crontab: 0 4 * * *` 每天 4 点（`Asia/Shanghai`）在 `master` 上重跑脚本，名单有变化才提交，随后由 `push` 流水线同步到 GitHub。
+- **手动刷新**：`master` 分支详情页「运行流水线」里的「更新贡献者」按钮，对应 `web_trigger_contributors`。
+- **校验**：`bash scripts/update-contributors.sh --check` 只比对不写文件，名单过期时退出码为 1。
+
+邮箱与显示名、GitHub 账号的对应关系写在脚本顶部的 `aliases` 表里。新人提交后若显示成邮箱前缀，在表里补一行再手动触发一次即可。
+
+::: tip 定时任务与负责人
+CNB 的定时任务以最后修改 `crontab` 配置并推送的用户身份执行，且 `.cnb.yml` 变更才会自动同步定时任务列表。若定时任务列表里看不到 `update-contributors`，到「云原生构建 → 定时任务」选择 `master` 点「同步」。
+:::

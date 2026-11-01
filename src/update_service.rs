@@ -28,7 +28,7 @@ impl UpdateService {
         let status = error
             .as_ref()
             .map(|e| format!("上次更新未完成：{e}"))
-            .unwrap_or_else(|| "从 GitHub Releases 获取正式版本。".into());
+            .unwrap_or_else(|| format!("从 GitHub Releases 获取{}。", updater::channel_label()));
         Self {
             started: error.is_some(),
             busy: false,
@@ -98,13 +98,14 @@ impl UpdateService {
                             {
                                 format!("发现新版本 {}", release.tag_name)
                             } else {
-                                "当前已是最新正式版本。".into()
+                                "当前通道没有更高版本。".into()
                             };
                             self.release = Some(release);
                         }
                         Ok(None) => {
                             self.release = None;
-                            self.status = "GitHub 暂无已发布的正式 Release。".into();
+                            self.status =
+                                format!("GitHub 暂无已发布的{}。", updater::channel_label());
                         }
                         Err(error) => self.status = error,
                     }

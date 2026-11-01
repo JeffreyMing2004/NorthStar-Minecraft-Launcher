@@ -16,6 +16,23 @@ pub const RELEASES_URL: &str =
     "https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases";
 const MAX_ASSET: u64 = 256 * 1024 * 1024;
 
+fn version(value: &str) -> Result<semver::Version> {
+    semver::Version::parse(value.trim().trim_start_matches('v'))
+        .map_err(|_| "发布版本号无效，请使用 v1.2.3 或 v1.2.3-beta.1 格式。".to_string())
+}
+
+pub fn is_prerelease_build() -> bool {
+    version(env!("CARGO_PKG_VERSION")).is_ok_and(|v| !v.pre.is_empty())
+}
+
+pub fn channel_label() -> &'static str {
+    if is_prerelease_build() {
+        "测试版与正式版"
+    } else {
+        "正式版"
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Asset {
     pub name: String,
@@ -35,12 +52,17 @@ pub struct Release {
 }
 impl Release {
     pub fn newer_than(&self, current: &str) -> Result<bool> {
-        let version = |v: &str| {
-            semver::Version::parse(v.trim().trim_start_matches('v'))
-                .map_err(|_| "发布版本号无效，请使用 v1.2.3 格式。".to_string())
-        };
         let latest = version(&self.tag_name)?;
-        Ok(!self.draft && !self.prerelease && latest.pre.is_empty() && latest > version(current)?)
+        let current = version(current)?;
+        Ok(self.allowed_on(&current, &latest) && latest.cmp_precedence(&current).is_gt())
+    }
+    fn allowed_on(&self, current: &semver::Version, latest: &semver::Version) -> bool {
+        !self.draft
+            && if latest.pre.is_empty() {
+                !self.prerelease
+            } else {
+                self.prerelease && !current.pre.is_empty()
+            }
     }
     pub fn asset(&self) -> Option<&Asset> {
         if !cfg!(windows) {
@@ -87,9 +109,14 @@ fn client() -> Result<Client> {
 }
 
 pub fn check() -> Result<Option<Release>> {
+    let endpoint = if is_prerelease_build() {
+        "releases?per_page=100"
+    } else {
+        "releases/latest"
+    };
     let response = client()?
         .get(format!(
-            "https://api.github.com/repos/{REPOSITORY}/releases/latest"
+            "https://api.github.com/repos/{REPOSITORY}/{endpoint}"
         ))
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2026-03-10")
@@ -105,23 +132,44 @@ pub fn check() -> Result<Option<Release>> {
             response.status().as_u16()
         ));
     }
-    let release: Release = serde_json::from_reader(response.take(2 * 1024 * 1024))
-        .map_err(|_| "GitHub 发布信息无效。")?;
-    validate_release(&release)?;
-    Ok(Some(release))
+    if is_prerelease_build() {
+        let releases: Vec<Release> = serde_json::from_reader(response.take(8 * 1024 * 1024))
+            .map_err(|_| "GitHub 发布信息无效。")?;
+        Ok(select_release(releases, env!("CARGO_PKG_VERSION")))
+    } else {
+        let release: Release = serde_json::from_reader(response.take(2 * 1024 * 1024))
+            .map_err(|_| "GitHub 发布信息无效。")?;
+        validate_release(&release)?;
+        Ok(Some(release))
+    }
 }
 
 fn validate_release(release: &Release) -> Result<()> {
+    validate_release_for(release, env!("CARGO_PKG_VERSION"))
+}
+
+fn validate_release_for(release: &Release, current: &str) -> Result<()> {
+    let current = version(current)?;
+    let latest = version(&release.tag_name)?;
     if !release
         .html_url
         .starts_with(&format!("{RELEASES_URL}/tag/"))
-        || release.draft
-        || release.prerelease
+        || !release.allowed_on(&current, &latest)
     {
         return Err("发布来源或发布通道无效。".into());
     }
-    release.newer_than(env!("CARGO_PKG_VERSION"))?;
     Ok(())
+}
+
+fn select_release(releases: Vec<Release>, current: &str) -> Option<Release> {
+    releases
+        .into_iter()
+        .filter(|release| validate_release_for(release, current).is_ok())
+        .max_by(|a, b| {
+            version(&a.tag_name)
+                .unwrap()
+                .cmp_precedence(&version(&b.tag_name).unwrap())
+        })
 }
 fn validate_asset(asset: &Asset) -> Result<()> {
     let url = reqwest::Url::parse(&asset.browser_download_url).map_err(|_| "更新下载地址无效。")?;
