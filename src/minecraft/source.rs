@@ -137,6 +137,7 @@ impl Source {
                 "/maven"
             }
             "meta.fabricmc.net" => "/fabric-meta",
+            "meta.quiltmc.org" if self.kind == SourceKind::Custom => "/quilt-meta",
             "resources.download.minecraft.net" => "/assets",
             _ => return Ok(vec![canonical.to_string()]),
         };

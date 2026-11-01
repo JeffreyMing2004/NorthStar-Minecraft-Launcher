@@ -7,6 +7,7 @@ pub const APP_IDENTIFIER: &str = "cool.cnb.jeffreyming.nscl";
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    pub appearance: Appearance,
     pub memory: u32,
     pub auto_memory: bool,
     pub java_path: String,
@@ -35,6 +36,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            appearance: Default::default(),
             memory: 4096,
             auto_memory: true,
             java_path: String::new(),
@@ -62,6 +64,29 @@ impl Default for Settings {
 impl Settings {
     pub fn configured_java(&self) -> &str {
         if self.auto_java { "" } else { &self.java_path }
+    }
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThemeChoice {
+    #[default]
+    Dark,
+    Light,
+    HighContrast,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Appearance {
+    pub theme: ThemeChoice,
+    pub scale: f32,
+    pub reduced_motion: bool,
+}
+impl Default for Appearance {
+    fn default() -> Self {
+        Self {
+            theme: ThemeChoice::Dark,
+            scale: 1.0,
+            reduced_motion: false,
+        }
     }
 }
 

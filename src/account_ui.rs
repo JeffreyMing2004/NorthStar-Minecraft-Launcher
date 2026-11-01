@@ -8,13 +8,20 @@ use egui::{RichText, Ui, Vec2};
 pub fn show(ui: &mut Ui, app: &mut NsclApp) {
     theme::toolbar(ui, |ui| {
         ui.spacing_mut().item_spacing.x = theme::TAB_GAP;
-        for (index, label) in ["账号管理", "皮肤与预览", "披风"].iter().enumerate() {
+        for (index, label) in ["账号管理", "皮肤与预览", "披风", "外置认证"]
+            .iter()
+            .enumerate()
+        {
             if app::tab_button(ui, label, app.account_tab == index as u8) {
                 app.account_tab = index as u8;
             }
         }
     });
     ui.add_space(20.0);
+    if app.account_tab == 3 {
+        panel(ui, |ui| crate::external_auth_ui::show(ui, app));
+        return;
+    }
     if app.account_tab == 1 {
         panel(ui, |ui| crate::skin_ui::controls(ui, app));
         return;
@@ -52,15 +59,19 @@ fn saved_accounts(ui: &mut Ui, app: &mut NsclApp) {
         ui.add_space(28.0);
         ui.vertical_centered(|ui| {
             let (rect, _) = ui.allocate_exact_size(Vec2::splat(64.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 20.0, theme::SECONDARY_BG);
+            ui.painter().rect_filled(rect, 20.0, theme::secondary_bg());
             theme::icon(
                 ui.painter(),
                 rect.shrink(17.0),
                 theme::Icon::User,
-                theme::MUTED,
+                theme::muted(),
             );
             ui.add_space(18.0);
-            ui.label(RichText::new("还没有账号").size(16.0).color(theme::HEADING));
+            ui.label(
+                RichText::new("还没有账号")
+                    .size(16.0)
+                    .color(theme::heading()),
+            );
             ui.add_space(8.0);
             app::hint(ui, "添加账号后，在这里切换你的游戏身份。");
         });
@@ -71,7 +82,7 @@ fn saved_accounts(ui: &mut Ui, app: &mut NsclApp) {
     let mut remove = None;
     for account in app.accounts.list.accounts.clone() {
         egui::Frame::NONE
-            .fill(theme::INPUT_BG)
+            .fill(theme::input_bg())
             .corner_radius(12.0)
             .inner_margin(18)
             .show(ui, |ui| {
@@ -96,6 +107,8 @@ fn saved_accounts(ui: &mut Ui, app: &mut NsclApp) {
                     ui,
                     if account.is_online() {
                         "Microsoft 正版账号"
+                    } else if account.kind == nscl::accounts::AccountKind::External {
+                        "外置认证账号（Yggdrasil）"
                     } else {
                         "离线账号"
                     },
@@ -113,10 +126,19 @@ fn saved_accounts(ui: &mut Ui, app: &mut NsclApp) {
                 egui::CollapsingHeader::new("账号信息")
                     .id_salt(&account.id)
                     .show(ui, |ui| {
-                        app::hint(ui, &format!("UUID：{}", account.id));
+                        let label = if account.external.is_some() {
+                            "本地账号标识"
+                        } else {
+                            "UUID"
+                        };
+                        app::hint(ui, &format!("{label}：{}", account.id));
+                        if let Some(reference) = &account.external {
+                            ui.label(format!("角色 UUID：{}", reference.profile));
+                            ui.label(format!("认证 API：{}", reference.root));
+                        }
                         app::hint(
                             ui,
-                            if account.is_online() {
+                            if account.uses_auth() {
                                 "启动时在线验证身份。"
                             } else {
                                 "使用此玩家名和固定离线 UUID 启动。"
@@ -142,7 +164,7 @@ fn saved_accounts(ui: &mut Ui, app: &mut NsclApp) {
 
 fn login(ui: &mut Ui, app: &mut NsclApp) {
     theme::section_heading(ui, "添加账号", theme::Icon::User);
-    app::body(ui, "登录 Microsoft 正版账号，或创建独立的离线账号。");
+    app::body(ui, "登录 Microsoft 或外置认证账号，或创建独立的离线账号。");
     ui.add_space(24.0);
     let editable = !app.accounts.pending && !app.service.busy() && app.service.game.is_none();
     ui.add_enabled_ui(editable, |ui| {
@@ -195,7 +217,7 @@ fn login(ui: &mut Ui, app: &mut NsclApp) {
         ui.add_space(20.0);
         if let Some(prompt) = app.accounts.browser_prompt.clone() {
             egui::Frame::NONE
-                .fill(theme::TOPBAR_BG)
+                .fill(theme::topbar_bg())
                 .corner_radius(10.0)
                 .inner_margin(20)
                 .show(ui, |ui| {
@@ -239,7 +261,7 @@ fn login(ui: &mut Ui, app: &mut NsclApp) {
         }
         if let Some(prompt) = app.accounts.prompt.clone() {
             egui::Frame::NONE
-                .fill(theme::TOPBAR_BG)
+                .fill(theme::topbar_bg())
                 .corner_radius(10.0)
                 .inner_margin(20)
                 .show(ui, |ui| {
@@ -249,7 +271,7 @@ fn login(ui: &mut Ui, app: &mut NsclApp) {
                         RichText::new(&prompt.code)
                             .size(28.0)
                             .monospace()
-                            .color(theme::ACCENT),
+                            .color(theme::accent()),
                     );
                     ui.add_space(10.0);
                     theme::toolbar(ui, |ui| {

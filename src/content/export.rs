@@ -164,6 +164,7 @@ pub fn export_pack(
                 LoaderKind::Fabric => "fabric-loader",
                 LoaderKind::Forge => "forge",
                 LoaderKind::NeoForge => "neoforge",
+                LoaderKind::Quilt => "quilt-loader",
             },
             version,
         );

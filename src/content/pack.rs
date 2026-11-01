@@ -222,9 +222,10 @@ fn inspect_modrinth(root: &Path, path: &Path, allow_manual: bool) -> Result<Pack
             "forge" => LoaderKind::Forge,
             "fabric-loader" => LoaderKind::Fabric,
             "neoforge" => LoaderKind::NeoForge,
+            "quilt-loader" => LoaderKind::Quilt,
             _ => {
                 return Err(format!(
-                    "整合包要求尚不支持的组件：{key}。目前支持原版、Forge、Fabric 和 NeoForge。"
+                    "整合包要求尚不支持的组件：{key}。目前支持原版、Forge、Fabric、NeoForge 和 Quilt。"
                 ));
             }
         };

@@ -86,6 +86,7 @@ pub(in crate::content) fn inspect_with_client(
             ("neoforge-", "neoforge"),
             ("fabric-loader-", "fabric-loader"),
             ("fabric-", "fabric-loader"),
+            ("quilt-", "quilt-loader"),
         ]
         .iter()
         .find_map(|(prefix, key)| c.id.strip_prefix(prefix).map(|v| (*key, v)));

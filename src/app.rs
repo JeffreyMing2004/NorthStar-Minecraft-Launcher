@@ -46,10 +46,14 @@ impl Page {
 }
 
 pub struct NsclApp {
+    pub migration: crate::migration_ui::Dialog,
     pub curseforge_key: String,
     pub manual_path: String,
     pub tasks_open: bool,
     pub queue_version: String,
+    pub shortcuts_help: bool,
+    pub quick_start: Option<String>,
+    pub external_login: crate::external_auth_ui::View,
     pub page: Page,
     pub category: usize,
     pub account_tab: u8,
@@ -93,14 +97,22 @@ impl NsclApp {
             settings
         };
         let mut settings = settings;
+        let startup = nscl::shortcuts::parse(std::env::args_os().skip(1)).unwrap_or_default();
+        if let Some(root) = startup.root {
+            settings.game_directory = root.to_string_lossy().into_owned();
+        }
         let accounts = crate::account_service::AccountService::new();
-        settings.online_mode = accounts.list.current().is_some_and(|a| a.is_online());
+        settings.online_mode = accounts.list.current().is_some_and(|a| a.uses_auth());
         let service = crate::service::GameService::new(&settings);
         Self {
+            migration: Default::default(),
             curseforge_key: String::new(),
             manual_path: String::new(),
             tasks_open: false,
             queue_version: String::new(),
+            shortcuts_help: false,
+            quick_start: startup.instance,
+            external_login: Default::default(),
             page: initial_page(),
             category: 0,
             account_tab: 0,
@@ -138,9 +150,39 @@ impl NsclApp {
     }
 }
 
+impl NsclApp {
+    pub(crate) fn accessibility(&mut self, ctx: &egui::Context) {
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F1)) {
+            self.shortcuts_help = !self.shortcuts_help;
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Num0)) {
+            self.settings.appearance.scale = 1.0;
+        }
+        for (key, page) in [
+            (egui::Key::Num1, Page::Home),
+            (egui::Key::Num2, Page::Instances),
+            (egui::Key::Num3, Page::Account),
+            (egui::Key::Num4, Page::Downloads),
+            (egui::Key::Num5, Page::Multiplayer),
+            (egui::Key::Num6, Page::Settings),
+        ] {
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, key)) {
+                self.page = page;
+            }
+        }
+        theme::apply_appearance(ctx, &self.settings.appearance);
+        if self.shortcuts_help {
+            egui::Window::new("键盘操作").open(&mut self.shortcuts_help).show(ctx,|ui|{
+            ui.label("Ctrl+1 开始 · Ctrl+2 实例 · Ctrl+3 账号 · Ctrl+4 下载 · Ctrl+5 联机 · Ctrl+6 设置");
+            ui.label("Tab / Shift+Tab 移动焦点；Enter / 空格激活控件；Ctrl+0 恢复 100% 缩放；F1 显示/隐藏本窗口。");
+        });
+        }
+    }
+}
 impl eframe::App for NsclApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.accessibility(&ctx);
         self.updates.poll();
         if self.settings.check_updates && !self.updates.started {
             self.updates.check(&ctx);
@@ -156,7 +198,12 @@ impl eframe::App for NsclApp {
         let previous_instance = self.service.selected.clone();
         let previous_log = self.service.last_log.clone();
         self.service.poll(&self.settings);
+        if let Some(id) = self.quick_start.take() {
+            self.service.selected = id;
+            self.service.launch(&self.settings, &self.accounts, &ctx);
+        }
         self.service.run_queue(&self.settings, &ctx);
+        crate::migration_ui::show(&ctx, self);
         if self.log_view.is_some() && previous_log != self.service.last_log {
             self.open_log();
         }
@@ -167,6 +214,7 @@ impl eframe::App for NsclApp {
             self.remember_instance();
         }
         self.accounts.poll(&mut self.settings, &ctx);
+        crate::external_auth_ui::poll(self);
         self.multiplayer.poll(self.accounts.list.current());
         self.multiplayer.detect_program(
             &self.settings.frpc_path,
@@ -196,6 +244,9 @@ impl eframe::App for NsclApp {
         if let Some(session) = self.service.renewed_session.take() {
             self.accounts.accept(session);
         }
+        if let Some(session) = self.service.renewed_external.take() {
+            self.accounts.accept_external(session);
+        }
         if let Some(error) = self.accounts.error.take() {
             self.service.error = Some(error);
         }
@@ -205,6 +256,7 @@ impl eframe::App for NsclApp {
         crate::task_ui::show(&ctx, self);
         crate::manual_ui::show(&ctx, self);
         crate::pack_update_ui::show(&ctx, self);
+        crate::optifine_ui::show(&ctx, self);
         crate::mod_tools_ui::show(&ctx, self);
         crate::log_ui::show(&ctx, self);
         crate::error_ui::show(&ctx, self);
@@ -224,8 +276,8 @@ impl eframe::App for NsclApp {
             .show_separator_line(false)
             .frame(
                 egui::Frame::default()
-                    .fill(theme::WINDOW_BG)
-                    .stroke(egui::Stroke::new(1.0, theme::CARD_BORDER)),
+                    .fill(theme::window_bg())
+                    .stroke(egui::Stroke::new(1.0, theme::card_border())),
             )
             .show(ui, |ui| {
                 ui.allocate_ui_with_layout(
@@ -233,7 +285,7 @@ impl eframe::App for NsclApp {
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
                         ui.add_space(28.0);
-                        ui.label(RichText::new("●").size(6.0).color(theme::ACCENT));
+                        ui.label(RichText::new("●").size(6.0).color(theme::accent()));
                         let activity = if self.service.busy() {
                             self.service.progress.stage.as_str()
                         } else if self.service.game.is_some() {
@@ -246,18 +298,18 @@ impl eframe::App for NsclApp {
                         ui.label(
                             RichText::new(format!("{activity}  ·  {}", self.multiplayer.status()))
                                 .size(11.0)
-                                .color(theme::FOOTER_TEXT),
+                                .color(theme::footer_text()),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(20.0);
-                            ui.label(RichText::new("NSCL").size(10.0).color(theme::FOOTER_TEXT));
+                            ui.label(RichText::new("NSCL").size(10.0).color(theme::footer_text()));
                             let (rect, _) =
                                 ui.allocate_exact_size(Vec2::new(16.0, 12.0), egui::Sense::hover());
-                            theme::star4(ui.painter(), rect.center(), 5.0, theme::FOOTER_TEXT);
+                            theme::star4(ui.painter(), rect.center(), 5.0, theme::footer_text());
                             ui.label(
                                 RichText::new("JAVA EDITION")
                                     .size(10.0)
-                                    .color(theme::FOOTER_TEXT),
+                                    .color(theme::footer_text()),
                             );
                         });
                     },
@@ -267,7 +319,7 @@ impl eframe::App for NsclApp {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::default()
-                    .fill(theme::WINDOW_BG)
+                    .fill(theme::window_bg())
                     .inner_margin(egui::Margin {
                         left: 32,
                         right: 32,
@@ -423,8 +475,8 @@ impl NsclApp {
             .show_separator_line(false)
             .frame(
                 egui::Frame::default()
-                    .fill(theme::TOPBAR_BG)
-                    .stroke(egui::Stroke::new(1.0, theme::CARD_BORDER)),
+                    .fill(theme::topbar_bg())
+                    .stroke(egui::Stroke::new(1.0, theme::card_border())),
             )
             .show(ui, |ui| {
                 let rect = ui.available_rect_before_wrap();
@@ -456,37 +508,37 @@ impl NsclApp {
                             ui.allocate_exact_size(Vec2::new(36.0, 36.0), egui::Sense::hover());
                         ui.painter()
                             .rect_filled(star_rect, 11.0, theme::nav_active_bg());
-                        theme::star4(ui.painter(), star_rect.center(), 12.0, theme::ACCENT);
+                        theme::star4(ui.painter(), star_rect.center(), 12.0, theme::accent());
                         if use_short_name {
                             ui.label(
                                 RichText::new("NSCL")
                                     .size(16.0)
-                                    .color(theme::BODY_TEXT)
+                                    .color(theme::body_text())
                                     .family(theme::bold_family()),
                             );
                         } else {
                             ui.label(
                                 RichText::new("NorthStar Minecraft Launcher")
                                     .size(13.0)
-                                    .color(theme::BODY_TEXT)
+                                    .color(theme::body_text())
                                     .family(theme::bold_family()),
                             );
                         }
                         ui.label(
                             RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
                                 .size(11.0)
-                                .color(theme::MUTED),
+                                .color(theme::muted()),
                         );
                     },
                 );
 
                 let navigation_rect = egui::Rect::from_center_size(center, Vec2::new(569.0, 50.0));
                 ui.painter()
-                    .rect_filled(navigation_rect, 15.0, theme::INPUT_BG);
+                    .rect_filled(navigation_rect, 15.0, theme::input_bg());
                 ui.painter().rect_stroke(
                     navigation_rect,
                     15.0,
-                    egui::Stroke::new(1.0, theme::CARD_BORDER),
+                    egui::Stroke::new(1.0, theme::card_border()),
                     egui::StrokeKind::Inside,
                 );
                 let mut nav = ui.new_child(
@@ -526,10 +578,10 @@ impl NsclApp {
                             ctx.send_viewport_cmd(ViewportCommand::Close)
                         });
                         let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-                        window_button(ui, "▢", theme::HOVER, || {
+                        window_button(ui, "▢", theme::hover(), || {
                             ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized))
                         });
-                        window_button(ui, "—", theme::HOVER, || {
+                        window_button(ui, "—", theme::hover(), || {
                             ctx.send_viewport_cmd(ViewportCommand::Minimized(true))
                         });
                     },
@@ -544,14 +596,14 @@ fn navigation_button(ui: &mut Ui, page: Page, selected: bool) -> egui::Response 
     let fill = if selected {
         theme::nav_active_bg()
     } else if response.hovered() {
-        theme::SECONDARY_BG
+        theme::secondary_bg()
     } else {
         Color32::TRANSPARENT
     };
     let color = if selected {
-        theme::NAV_ACTIVE
+        theme::nav_active()
     } else {
-        theme::NAV_TEXT
+        theme::nav_text()
     };
     ui.painter().rect_filled(rect, 10.0, fill);
     theme::icon(
@@ -571,7 +623,7 @@ fn navigation_button(ui: &mut Ui, page: Page, selected: bool) -> egui::Response 
         ui.painter().rect_stroke(
             rect,
             10.0,
-            egui::Stroke::new(1.5, theme::ACCENT),
+            egui::Stroke::new(1.5, theme::accent()),
             egui::StrokeKind::Inside,
         );
     }
@@ -581,7 +633,7 @@ fn navigation_button(ui: &mut Ui, page: Page, selected: bool) -> egui::Response 
 fn window_button(ui: &mut Ui, label: &str, hover: Color32, action: impl FnOnce()) {
     let response = styled_button(
         ui,
-        RichText::new(label).size(14.0).color(theme::BODY_TEXT),
+        RichText::new(label).size(14.0).color(theme::body_text()),
         &ButtonStyle {
             hover,
             active: hover,
@@ -610,8 +662,8 @@ impl Default for ButtonStyle {
     fn default() -> Self {
         Self {
             fill: Color32::TRANSPARENT,
-            hover: theme::HOVER,
-            active: theme::HOVER,
+            hover: theme::hover(),
+            active: theme::hover(),
             radius: 10.0,
             min_size: Vec2::ZERO,
             padding: Vec2::new(16.0, 10.0),
@@ -655,14 +707,14 @@ pub fn styled_button(ui: &mut Ui, text: RichText, style: &ButtonStyle) -> egui::
         painter.rect_stroke(
             rect.expand(3.0),
             style.radius,
-            egui::Stroke::new(2.0, theme::ACCENT),
+            egui::Stroke::new(2.0, theme::accent()),
             egui::StrokeKind::Outside,
         );
     }
     painter.galley(
         rect.center() - galley.size() * 0.5,
         galley,
-        theme::BODY_TEXT,
+        theme::body_text(),
     );
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -675,7 +727,7 @@ fn badge_widget(ui: &mut Ui, text: &str, muted: bool) {
     let galley = ui.painter().layout_no_wrap(
         text.to_owned(),
         egui::FontId::proportional(11.0),
-        theme::BODY_TEXT,
+        theme::body_text(),
     );
     let (rect, _) = ui.allocate_exact_size(Vec2::new(galley.size().x + 22.0, 26.0), Sense::hover());
     paint_badge(ui.painter(), rect, text, muted);
@@ -686,7 +738,7 @@ fn paint_badge(painter: &egui::Painter, rect: egui::Rect, text: &str, muted: boo
         rect,
         8.0,
         if muted {
-            theme::SECONDARY_BG
+            theme::secondary_bg()
         } else {
             theme::nav_active_bg()
         },
@@ -699,7 +751,7 @@ fn paint_badge(painter: &egui::Painter, rect: egui::Rect, text: &str, muted: boo
             if muted {
                 Color32::TRANSPARENT
             } else {
-                theme::BADGE_BORDER
+                theme::badge_border()
             },
         ),
         egui::StrokeKind::Inside,
@@ -710,9 +762,9 @@ fn paint_badge(painter: &egui::Painter, rect: egui::Rect, text: &str, muted: boo
         text,
         egui::FontId::proportional(11.0),
         if muted {
-            theme::MUTED
+            theme::muted()
         } else {
-            theme::BADGE_TEXT
+            theme::badge_text()
         },
     );
 }
@@ -723,11 +775,11 @@ pub fn primary_button(ui: &mut Ui, label: &str) -> bool {
         RichText::new(label)
             .size(14.0)
             .family(theme::bold_family())
-            .color(theme::ON_ACCENT),
+            .color(theme::on_accent()),
         &ButtonStyle {
-            fill: theme::ACCENT,
-            hover: theme::ACCENT_HOVER,
-            active: theme::ACCENT_HOVER,
+            fill: theme::accent(),
+            hover: theme::accent_hover(),
+            active: theme::accent_hover(),
             min_size: Vec2::new(
                 if label == "保存设置" {
                     100.0
@@ -746,9 +798,9 @@ pub fn tab_button(ui: &mut Ui, label: &str, selected: bool) -> bool {
     styled_button(
         ui,
         RichText::new(label).size(14.0).color(if selected {
-            theme::ACCENT
+            theme::accent()
         } else {
-            theme::MUTED
+            theme::muted()
         }),
         &ButtonStyle {
             fill: if selected {
@@ -756,10 +808,10 @@ pub fn tab_button(ui: &mut Ui, label: &str, selected: bool) -> bool {
             } else {
                 Color32::TRANSPARENT
             },
-            hover: theme::HOVER,
-            active: theme::HOVER,
+            hover: theme::hover(),
+            active: theme::hover(),
             min_size: Vec2::new(104.0, theme::CONTROL_HEIGHT),
-            stroke: selected.then_some(egui::Stroke::new(1.0, theme::BADGE_BORDER)),
+            stroke: selected.then_some(egui::Stroke::new(1.0, theme::badge_border())),
             ..Default::default()
         },
     )
@@ -771,16 +823,16 @@ pub fn heading(ui: &mut Ui, text: &str) {
         RichText::new(text)
             .size(20.0)
             .family(theme::bold_family())
-            .color(theme::HEADING),
+            .color(theme::heading()),
     );
 }
 
 pub fn body(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(14.0).color(theme::MUTED));
+    ui.label(RichText::new(text).size(14.0).color(theme::muted()));
 }
 
 pub fn hint(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text).size(12.0).color(theme::HINT));
+    ui.label(RichText::new(text).size(12.0).color(theme::hint()));
 }
 
 fn initial_page() -> Page {

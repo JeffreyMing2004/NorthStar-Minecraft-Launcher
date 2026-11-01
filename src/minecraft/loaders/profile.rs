@@ -66,10 +66,10 @@ pub(super) fn normalize_libraries(
             validate_hash(&artifact.sha1)?;
             continue;
         }
-        let default_repo = if kind == LoaderKind::Fabric {
-            "https://maven.fabricmc.net/"
-        } else {
-            "https://maven.minecraftforge.net/"
+        let default_repo = match kind {
+            LoaderKind::Fabric => "https://maven.fabricmc.net/",
+            LoaderKind::Quilt => "https://maven.quiltmc.org/repository/release/",
+            _ => "https://maven.minecraftforge.net/",
         };
         let mut repository = library["url"]
             .as_str()

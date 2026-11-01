@@ -176,6 +176,20 @@ fn run() -> Result<(), String> {
                     &AtomicBool::new(false),
                 )?;
                 minecraft::LaunchIdentity::microsoft(&session)
+            } else if account.kind == nscl::accounts::AccountKind::External {
+                let cancel = Arc::new(AtomicBool::new(false));
+                let session = nscl::external_auth::Client::new()?.resume(
+                    account,
+                    None,
+                    &nscl::external_auth::SystemVault,
+                    &cancel,
+                )?;
+                let d = Downloader::new(settings.source.clone(), cancel, Arc::new(|_| {}))?;
+                let agent = nscl::external_auth::install_agent(
+                    &store::settings_path().with_file_name("tools"),
+                    &d,
+                )?;
+                minecraft::LaunchIdentity::external(&session, &agent)?
             } else {
                 minecraft::LaunchIdentity::offline(&account.name)
             }
@@ -233,7 +247,7 @@ fn run() -> Result<(), String> {
     )?;
     if command == "loaders" {
         let minecraft = id.as_deref().ok_or("请指定 Minecraft 版本")?;
-        let kind = loader.ok_or("请通过 --loader forge|fabric|neoforge 指定加载器")?;
+        let kind = loader.ok_or("请通过 --loader forge|fabric|quilt|neoforge 指定加载器")?;
         for version in minecraft::loader_versions(minecraft, kind, &downloader)?
             .into_iter()
             .take(limit)
@@ -308,6 +322,6 @@ fn run() -> Result<(), String> {
 
 fn help() {
     println!(
-        "NSCL 客户端工具\n命令：list [搜索词]、loaders <MC版本> --loader forge|fabric|neoforge、install <版本> [--loader forge|fabric|neoforge] [--loader-version 版本]、installed、instances、java、login（浏览器）、login-device（设备代码）、inspect <实例或版本>、launch <实例或版本>\n参数：--source official|bmclapi|minguncle|custom、--mirror URL、--no-fallback、--game-dir PATH、--java PATH、--offline、--username NAME、--demo、--limit N\nCLI 使用已选择的身份，--offline / --username 明确切换为离线测试。inspect 会隐藏正版令牌。"
+        "NSCL 客户端工具\n命令：list [搜索词]、loaders <MC版本> --loader forge|fabric|quilt|neoforge、install <版本> [--loader forge|fabric|quilt|neoforge] [--loader-version 版本]、installed、instances、java、login（浏览器）、login-device（设备代码）、inspect <实例或版本>、launch <实例或版本>\n参数：--source official|bmclapi|minguncle|custom、--mirror URL、--no-fallback、--game-dir PATH、--java PATH、--offline、--username NAME、--demo、--limit N\nCLI 使用已选择的身份，--offline / --username 明确切换为离线测试。inspect 会隐藏正版令牌。"
     );
 }

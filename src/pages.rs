@@ -50,7 +50,7 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             ui.label(
                 RichText::new(format!("{} 个已安装", app.service.instances.len()))
                     .size(12.0)
-                    .color(theme::HINT),
+                    .color(theme::hint()),
             );
         });
     });
@@ -58,11 +58,11 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
     let (instance, _) =
         launch.allocate_exact_size(Vec2::new(content.width(), 76.0), Sense::hover());
     let p = launch.painter();
-    p.rect_filled(instance, 12.0, theme::INPUT_BG);
+    p.rect_filled(instance, 12.0, theme::input_bg());
     p.rect_stroke(
         instance,
         12.0,
-        Stroke::new(1.0, theme::CARD_BORDER),
+        Stroke::new(1.0, theme::card_border()),
         egui::StrokeKind::Inside,
     );
     let icon = Rect::from_center_size(
@@ -70,21 +70,21 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         Vec2::splat(34.0),
     );
     p.rect_filled(icon, 10.0, theme::nav_active_bg());
-    theme::icon(p, icon.shrink(8.0), theme::Icon::Folder, theme::ACCENT);
+    theme::icon(p, icon.shrink(8.0), theme::Icon::Folder, theme::accent());
     if app.service.instances.is_empty() {
         p.text(
             instance.min + Vec2::new(64.0, 27.0),
             egui::Align2::LEFT_CENTER,
             "暂无游戏实例",
             FontId::new(14.0, theme::bold_family()),
-            theme::HEADING,
+            theme::heading(),
         );
         p.text(
             instance.min + Vec2::new(64.0, 51.0),
             egui::Align2::LEFT_CENTER,
             "原版 · Forge · Fabric · NeoForge",
             FontId::proportional(12.0),
-            theme::MUTED,
+            theme::muted(),
         );
     } else {
         let mut selection = launch.new_child(UiBuilder::new().max_rect(Rect::from_min_max(
@@ -170,8 +170,9 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         } else {
             &app.service.notice
         };
-        launch
-            .add(egui::Label::new(RichText::new(status).size(12.0).color(theme::HINT)).truncate());
+        launch.add(
+            egui::Label::new(RichText::new(status).size(12.0).color(theme::hint())).truncate(),
+        );
     }
 
     let content = aside_rect.shrink(24.0);
@@ -186,12 +187,20 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
             RichText::new("我的角色")
                 .size(16.0)
                 .family(theme::bold_family())
-                .color(theme::HEADING),
+                .color(theme::heading()),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             app::badge_muted(
                 ui,
-                if app.settings.online_mode && app.accounts.list.current().is_some() {
+                if app.settings.online_mode
+                    && app
+                        .accounts
+                        .list
+                        .current()
+                        .is_some_and(|a| a.kind == nscl::accounts::AccountKind::External)
+                {
+                    "外置认证"
+                } else if app.settings.online_mode && app.accounts.list.current().is_some() {
                     "正版账号"
                 } else if app.settings.online_mode {
                     "未登录"
@@ -235,13 +244,13 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
         )
         .size(16.0)
         .family(theme::bold_family())
-        .color(theme::HEADING),
+        .color(theme::heading()),
     );
     account.add_space(10.0);
     account.label(
         RichText::new("管理账号，为角色换上新的模样。")
             .size(12.0)
-            .color(theme::MUTED),
+            .color(theme::muted()),
     );
     account.add_space(20.0);
     account.horizontal(|ui| {
@@ -251,8 +260,8 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
                 ui,
                 RichText::new(label).size(13.0),
                 &app::ButtonStyle {
-                    fill: theme::SECONDARY_BG,
-                    stroke: Some(Stroke::new(1.0, theme::SECONDARY_BORDER)),
+                    fill: theme::secondary_bg(),
+                    stroke: Some(Stroke::new(1.0, theme::secondary_border())),
                     min_size: Vec2::new((footer.width() - 12.0) * 0.5, 42.0),
                     ..Default::default()
                 },
@@ -267,11 +276,11 @@ pub fn home(ui: &mut Ui, app: &mut NsclApp) {
 }
 
 fn draw_card(ui: &Ui, rect: Rect) {
-    ui.painter().rect_filled(rect, 18.0, theme::CARD_BG);
+    ui.painter().rect_filled(rect, 18.0, theme::card_bg());
     ui.painter().rect_stroke(
         rect,
         18.0,
-        Stroke::new(1.0, theme::CARD_BORDER),
+        Stroke::new(1.0, theme::card_border()),
         egui::StrokeKind::Inside,
     );
 }
@@ -329,10 +338,10 @@ fn landscape(p: &egui::Painter, rect: Rect) {
         0.16,
     );
     let moon = rect.min + Vec2::new(rect.width() * 0.82, 57.0);
-    glow(p, rect, moon, Vec2::splat(68.0), theme::STAR, 0.13);
-    p.circle_filled(moon, 18.0, theme::STAR);
-    mountain(p, rect, theme::MOUNTAIN_BACK, 1.2, 0.0, 19.0);
-    mountain(p, rect, theme::MOUNTAIN_FRONT, 1.3, -0.12, 81.0);
+    glow(p, rect, moon, Vec2::splat(68.0), theme::star(), 0.13);
+    p.circle_filled(moon, 18.0, theme::star());
+    mountain(p, rect, theme::mountain_back(), 1.2, 0.0, 19.0);
+    mountain(p, rect, theme::mountain_front(), 1.3, -0.12, 81.0);
     let art = p.with_clip_rect(rect);
     for (x, height) in [
         (0.61, 44.0),
@@ -360,7 +369,7 @@ fn landscape(p: &egui::Painter, rect: Rect) {
             p,
             rect.min + Vec2::new(rect.width() * x, y),
             radius,
-            theme::STAR.gamma_multiply(0.7),
+            theme::star().gamma_multiply(0.7),
         );
     }
     theme::spaced_text(
@@ -376,7 +385,7 @@ fn landscape(p: &egui::Painter, rect: Rect) {
         egui::Align2::LEFT_TOP,
         "下一站，你的世界。",
         FontId::new(28.0, theme::bold_family()),
-        theme::HEADING,
+        theme::heading(),
     );
     p.text(
         rect.min + Vec2::new(28.0, 105.0),
@@ -511,6 +520,11 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                             ));
                             ui.label("实例名称");
                             ui.text_edit_singleline(&mut instance.name);
+                            ui.horizontal(|ui| {
+                                ui.label("分组");
+                                ui.add(egui::TextEdit::singleline(&mut instance.group).hint_text("可选，例如生存、整合包"));
+                                ui.checkbox(&mut instance.pinned, "固定到顶部");
+                            });
                             ui.label("版本隔离");
                             ui.add_enabled_ui(!instance.requires_isolation(), |ui| {
                                 egui::ComboBox::from_id_salt("instance-isolation")
@@ -596,6 +610,7 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                                 );
                             }
                             instance.name = instance.name.trim().to_owned();
+                            instance.group = instance.group.trim().to_owned();
                             if let Some(path) = &mut instance.java_path {
                                 *path = path.trim().to_owned();
                             }
@@ -766,15 +781,15 @@ fn installation_choice(ui: &mut Ui, label: &str, selected: bool) -> bool {
     app::styled_button(
         ui,
         RichText::new(label).size(14.0).color(if selected {
-            theme::ON_ACCENT
+            theme::on_accent()
         } else {
-            theme::BODY_TEXT
+            theme::body_text()
         }),
         &app::ButtonStyle {
             fill: if selected {
-                theme::ACCENT
+                theme::accent()
             } else {
-                theme::SECONDARY_BG
+                theme::secondary_bg()
             },
             min_size: Vec2::new(108.0, 38.0),
             ..Default::default()
@@ -889,7 +904,8 @@ fn installation_footer(ui: &mut Ui, app: &mut NsclApp) {
         let summary_width = (ui.available_width() - 220.0).max(0.0);
         ui.add_sized(
             Vec2::new(summary_width, 46.0),
-            egui::Label::new(RichText::new(summary).size(14.0).color(theme::BODY_TEXT)).truncate(),
+            egui::Label::new(RichText::new(summary).size(14.0).color(theme::body_text()))
+                .truncate(),
         );
         ui.add_enabled_ui(
             target.is_some() && !app.service.busy() && app.service.game.is_none(),
@@ -1046,9 +1062,9 @@ fn version_row(
         rect,
         10.0,
         if ui.rect_contains_pointer(rect) {
-            theme::SECONDARY_BG
+            theme::secondary_bg()
         } else {
-            theme::TOPBAR_BG
+            theme::topbar_bg()
         },
     );
     ui.painter().rect_stroke(
@@ -1057,9 +1073,9 @@ fn version_row(
         Stroke::new(
             1.0,
             if selected {
-                theme::ACCENT
+                theme::accent()
             } else {
-                theme::CARD_BORDER
+                theme::card_border()
             },
         ),
         egui::StrokeKind::Inside,
@@ -1077,7 +1093,7 @@ fn version_row(
                 RichText::new(&version.id)
                     .size(16.0)
                     .family(theme::bold_family())
-                    .color(theme::HEADING),
+                    .color(theme::heading()),
             )
             .truncate(),
         );
@@ -1088,9 +1104,9 @@ fn version_row(
             "old_alpha" => "历史 Alpha",
             other => other,
         };
-        ui.label(RichText::new(kind).size(11.0).color(theme::MUTED));
+        ui.label(RichText::new(kind).size(11.0).color(theme::muted()));
         if installed {
-            ui.label(RichText::new("已安装").size(11.0).color(theme::ACCENT));
+            ui.label(RichText::new("已安装").size(11.0).color(theme::accent()));
         }
     });
     info.label(
@@ -1100,7 +1116,7 @@ fn version_row(
             version.release_time.get(..10).unwrap_or("")
         })
         .size(12.0)
-        .color(theme::MUTED),
+        .color(theme::muted()),
     );
     let mut action = ui.new_child(
         UiBuilder::new()
@@ -1120,11 +1136,11 @@ pub(crate) fn download_button(ui: &mut Ui, label: &str, enabled: bool) -> bool {
     ui.add_enabled_ui(enabled, |ui| {
         app::styled_button(
             ui,
-            RichText::new(label).size(13.0).color(theme::BODY_TEXT),
+            RichText::new(label).size(13.0).color(theme::body_text()),
             &app::ButtonStyle {
-                fill: theme::SECONDARY_BG,
-                hover: theme::HOVER,
-                stroke: Some(Stroke::new(1.0, theme::SECONDARY_BORDER)),
+                fill: theme::secondary_bg(),
+                hover: theme::hover(),
+                stroke: Some(Stroke::new(1.0, theme::secondary_border())),
                 min_size: Vec2::new(96.0, theme::CONTROL_HEIGHT),
                 ..Default::default()
             },
@@ -1167,7 +1183,7 @@ pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
                         egui::Label::new(
                             RichText::new(&progress.stage)
                                 .size(13.0)
-                                .color(theme::BODY_TEXT),
+                                .color(theme::body_text()),
                         )
                         .truncate(),
                     );
@@ -1213,7 +1229,7 @@ pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
             egui::Label::new(
                 RichText::new(&app.service.notice)
                     .size(13.0)
-                    .color(theme::ACCENT),
+                    .color(theme::accent()),
             )
             .truncate(),
         );
@@ -1222,8 +1238,8 @@ pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
 
 pub(crate) fn input_frame() -> egui::Frame {
     egui::Frame::NONE
-        .fill(theme::INPUT_BG)
-        .stroke(Stroke::new(1.0, theme::CARD_BORDER))
+        .fill(theme::input_bg())
+        .stroke(Stroke::new(1.0, theme::card_border()))
         .corner_radius(10.0)
         .inner_margin(egui::Margin::symmetric(14, 12))
 }
@@ -1233,7 +1249,7 @@ pub(crate) fn input_focus(ui: &Ui, response: &egui::Response) {
         ui.painter().rect_stroke(
             response.rect.expand(2.0),
             8.0,
-            Stroke::new(2.0, theme::ACCENT),
+            Stroke::new(2.0, theme::accent()),
             egui::StrokeKind::Outside,
         );
     }
@@ -1244,7 +1260,7 @@ pub fn about(ui: &mut Ui, app: &mut NsclApp) {
         ui.horizontal(|ui| {
             let (rect, _) = ui.allocate_exact_size(Vec2::splat(56.0), Sense::hover());
             ui.painter().rect_filled(rect, 16.0, theme::nav_active_bg());
-            theme::star4(ui.painter(), rect.center(), 20.0, theme::ACCENT);
+            theme::star4(ui.painter(), rect.center(), 20.0, theme::accent());
             ui.add_space(8.0);
             ui.vertical(|ui| {
                 app::heading(ui, "NorthStar Minecraft Launcher");

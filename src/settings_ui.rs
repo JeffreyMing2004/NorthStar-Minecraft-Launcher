@@ -24,7 +24,7 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
                     egui::Label::new(
                         RichText::new("修改后保存，应用到下一次启动。")
                             .size(13.0)
-                            .color(theme::MUTED),
+                            .color(theme::muted()),
                     )
                     .truncate(),
                 );
@@ -66,7 +66,18 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
             egui::CollapsingHeader::new("全局高级启动设置").show(ui, |ui| {
                 crate::launch_options_ui::show(ui, &mut app.settings.launch)
             });
+            egui::CollapsingHeader::new("外观与辅助功能").show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for (value,label) in [(crate::store::ThemeChoice::Dark,"深色"),(crate::store::ThemeChoice::Light,"浅色"),(crate::store::ThemeChoice::HighContrast,"高对比度")] {
+                        ui.selectable_value(&mut app.settings.appearance.theme,value,label);
+                    }
+                });
+                ui.add(egui::Slider::new(&mut app.settings.appearance.scale,0.75..=1.75).text("界面与字体缩放"));
+                ui.checkbox(&mut app.settings.appearance.reduced_motion,"减少界面动画");
+                ui.label("Tab / Shift+Tab 在控件间移动，Enter / 空格激活；F1 查看快捷键，Ctrl+0 恢复 100% 缩放。");
+            });
             egui::CollapsingHeader::new("CurseForge 内容来源").show(ui, |ui| {
+                ui.hyperlink_to("申请 CurseForge API Key（第三方启动器）", "https://support.curseforge.com/support/solutions/articles/9000208346-about-the-curseforge-api-and-how-to-apply-for-a-key");
                 ui.label("API Key 保存到系统凭据库，不写入设置、整合包或任务记录。");
                 ui.add(
                     egui::TextEdit::singleline(&mut app.curseforge_key)
@@ -244,7 +255,7 @@ fn memory(ui: &mut Ui, app: &mut NsclApp) {
                         RichText::new(format!("{memory} MiB"))
                             .size(26.0)
                             .family(theme::bold_family())
-                            .color(theme::ACCENT),
+                            .color(theme::accent()),
                     );
                     ui.add_space(10.0);
                     app::hint(ui, "启动时按可用物理内存重新计算，并为系统保留空间。");

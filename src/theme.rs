@@ -1,31 +1,178 @@
+use crate::store::{Appearance, ThemeChoice};
 use egui::{Color32, Context, Frame, Stroke};
-
-pub const WINDOW_BG: Color32 = Color32::from_rgb(0x10, 0x16, 0x18);
-pub const TOPBAR_BG: Color32 = Color32::from_rgb(0x14, 0x1b, 0x1d);
-pub const CARD_BG: Color32 = Color32::from_rgb(0x1a, 0x22, 0x25);
-pub const CARD_BORDER: Color32 = Color32::from_rgb(0x2c, 0x38, 0x39);
-pub const BODY_TEXT: Color32 = Color32::from_rgb(0xe4, 0xed, 0xe8);
-pub const HEADING: Color32 = Color32::from_rgb(0xf0, 0xf5, 0xf1);
-pub const MUTED: Color32 = Color32::from_rgb(0xa0, 0xb1, 0xab);
-pub const HINT: Color32 = Color32::from_rgb(0x87, 0x9b, 0x93);
-pub const ACCENT: Color32 = Color32::from_rgb(0xb1, 0xed, 0xc7);
-pub const ACCENT_HOVER: Color32 = Color32::from_rgb(0xc7, 0xf7, 0xd8);
-pub const ON_ACCENT: Color32 = Color32::from_rgb(0x16, 0x34, 0x25);
-pub const NAV_TEXT: Color32 = Color32::from_rgb(0x9b, 0xac, 0xa5);
-pub const NAV_ACTIVE: Color32 = ACCENT;
-pub fn nav_active_bg() -> Color32 {
-    Color32::from_rgb(0x2c, 0x40, 0x36)
+thread_local! { static CURRENT: std::cell::Cell<ThemeChoice> = const { std::cell::Cell::new(ThemeChoice::Dark) }; }
+fn choose(dark: Color32, light: Color32, contrast: Color32) -> Color32 {
+    CURRENT.with(|t| match t.get() {
+        ThemeChoice::Dark => dark,
+        ThemeChoice::Light => light,
+        ThemeChoice::HighContrast => contrast,
+    })
 }
-pub const HOVER: Color32 = Color32::from_rgb(0x30, 0x40, 0x3b);
-pub const SECONDARY_BG: Color32 = Color32::from_rgb(0x24, 0x30, 0x2e);
-pub const SECONDARY_BORDER: Color32 = Color32::from_rgb(0x3a, 0x4a, 0x44);
-pub const INPUT_BG: Color32 = Color32::from_rgb(0x13, 0x1b, 0x1c);
-pub const BADGE_TEXT: Color32 = Color32::from_rgb(0xb0, 0xd9, 0xc0);
-pub const BADGE_BORDER: Color32 = Color32::from_rgb(0x3d, 0x5a, 0x4b);
-pub const FOOTER_TEXT: Color32 = Color32::from_rgb(0x7d, 0x92, 0x87);
-pub const MOUNTAIN_BACK: Color32 = Color32::from_rgb(0x39, 0x60, 0x50);
-pub const MOUNTAIN_FRONT: Color32 = Color32::from_rgb(0x1f, 0x40, 0x36);
-pub const STAR: Color32 = Color32::from_rgb(0xe1, 0xef, 0xc6);
+
+pub fn window_bg() -> Color32 {
+    choose(
+        Color32::from_rgb(0x10, 0x16, 0x18),
+        Color32::from_rgb(0xed, 0xf3, 0xef),
+        Color32::BLACK,
+    )
+}
+pub fn topbar_bg() -> Color32 {
+    choose(
+        Color32::from_rgb(0x14, 0x1b, 0x1d),
+        Color32::from_rgb(0xff, 0xff, 0xff),
+        Color32::BLACK,
+    )
+}
+pub fn card_bg() -> Color32 {
+    choose(
+        Color32::from_rgb(0x1a, 0x22, 0x25),
+        Color32::from_rgb(0xff, 0xff, 0xff),
+        Color32::BLACK,
+    )
+}
+pub fn card_border() -> Color32 {
+    choose(
+        Color32::from_rgb(0x2c, 0x38, 0x39),
+        Color32::from_rgb(0xb6, 0xc5, 0xbc),
+        Color32::WHITE,
+    )
+}
+pub fn body_text() -> Color32 {
+    choose(
+        Color32::from_rgb(0xe4, 0xed, 0xe8),
+        Color32::from_rgb(0x1c, 0x30, 0x24),
+        Color32::WHITE,
+    )
+}
+pub fn heading() -> Color32 {
+    choose(
+        Color32::from_rgb(0xf0, 0xf5, 0xf1),
+        Color32::from_rgb(0x10, 0x27, 0x18),
+        Color32::WHITE,
+    )
+}
+pub fn muted() -> Color32 {
+    choose(
+        Color32::from_rgb(0xa0, 0xb1, 0xab),
+        Color32::from_rgb(0x47, 0x5e, 0x50),
+        Color32::WHITE,
+    )
+}
+pub fn hint() -> Color32 {
+    choose(
+        Color32::from_rgb(0x87, 0x9b, 0x93),
+        Color32::from_rgb(0x52, 0x67, 0x5b),
+        Color32::WHITE,
+    )
+}
+pub fn accent() -> Color32 {
+    choose(
+        Color32::from_rgb(0xb1, 0xed, 0xc7),
+        Color32::from_rgb(0x17, 0x6a, 0x3e),
+        Color32::from_rgb(0xff, 0xff, 0x00),
+    )
+}
+pub fn accent_hover() -> Color32 {
+    choose(
+        Color32::from_rgb(0xc7, 0xf7, 0xd8),
+        Color32::from_rgb(0x12, 0x53, 0x31),
+        Color32::from_rgb(0xff, 0xff, 0x00),
+    )
+}
+pub fn on_accent() -> Color32 {
+    choose(
+        Color32::from_rgb(0x16, 0x34, 0x25),
+        Color32::from_rgb(0xff, 0xff, 0xff),
+        Color32::BLACK,
+    )
+}
+pub fn nav_text() -> Color32 {
+    choose(
+        Color32::from_rgb(0x9b, 0xac, 0xa5),
+        Color32::from_rgb(0x3b, 0x55, 0x46),
+        Color32::WHITE,
+    )
+}
+pub fn nav_active() -> Color32 {
+    accent()
+}
+pub fn nav_active_bg() -> Color32 {
+    choose(
+        Color32::from_rgb(0x2c, 0x40, 0x36),
+        Color32::from_rgb(0xdb, 0xee, 0xe1),
+        Color32::from_rgb(0x2a, 0x2a, 0x00),
+    )
+}
+pub fn hover() -> Color32 {
+    choose(
+        Color32::from_rgb(0x30, 0x40, 0x3b),
+        Color32::from_rgb(0xd9, 0xea, 0xdd),
+        Color32::from_rgb(0x30, 0x40, 0x3b),
+    )
+}
+pub fn secondary_bg() -> Color32 {
+    choose(
+        Color32::from_rgb(0x24, 0x30, 0x2e),
+        Color32::from_rgb(0xe4, 0xee, 0xe7),
+        Color32::BLACK,
+    )
+}
+pub fn secondary_border() -> Color32 {
+    choose(
+        Color32::from_rgb(0x3a, 0x4a, 0x44),
+        Color32::from_rgb(0xa0, 0xb8, 0xa8),
+        Color32::WHITE,
+    )
+}
+pub fn input_bg() -> Color32 {
+    choose(
+        Color32::from_rgb(0x13, 0x1b, 0x1c),
+        Color32::from_rgb(0xf6, 0xfa, 0xf7),
+        Color32::BLACK,
+    )
+}
+pub fn badge_text() -> Color32 {
+    choose(
+        Color32::from_rgb(0xb0, 0xd9, 0xc0),
+        Color32::from_rgb(0x24, 0x5c, 0x38),
+        Color32::WHITE,
+    )
+}
+pub fn badge_border() -> Color32 {
+    choose(
+        Color32::from_rgb(0x3d, 0x5a, 0x4b),
+        Color32::from_rgb(0x6b, 0x92, 0x78),
+        Color32::WHITE,
+    )
+}
+pub fn footer_text() -> Color32 {
+    choose(
+        Color32::from_rgb(0x7d, 0x92, 0x87),
+        Color32::from_rgb(0x52, 0x67, 0x5b),
+        Color32::WHITE,
+    )
+}
+pub fn mountain_back() -> Color32 {
+    choose(
+        Color32::from_rgb(0x39, 0x60, 0x50),
+        Color32::from_rgb(0x39, 0x60, 0x50),
+        Color32::from_rgb(0x39, 0x60, 0x50),
+    )
+}
+pub fn mountain_front() -> Color32 {
+    choose(
+        Color32::from_rgb(0x1f, 0x40, 0x36),
+        Color32::from_rgb(0x1f, 0x40, 0x36),
+        Color32::from_rgb(0x1f, 0x40, 0x36),
+    )
+}
+pub fn star() -> Color32 {
+    choose(
+        Color32::from_rgb(0xe1, 0xef, 0xc6),
+        Color32::from_rgb(0xe1, 0xef, 0xc6),
+        Color32::from_rgb(0xff, 0xff, 0x00),
+    )
+}
 pub const CONTROL_HEIGHT: f32 = 40.0;
 pub const CONTROL_GAP: f32 = 12.0;
 pub const TAB_GAP: f32 = 8.0;
@@ -42,8 +189,8 @@ pub fn toolbar<R>(
 
 pub fn card(padding: i8) -> Frame {
     Frame::default()
-        .fill(CARD_BG)
-        .stroke(Stroke::new(1.0, CARD_BORDER))
+        .fill(card_bg())
+        .stroke(Stroke::new(1.0, card_border()))
         .corner_radius(18.0)
         .inner_margin(egui::Margin::same(padding))
 }
@@ -205,45 +352,71 @@ pub fn section_heading(ui: &mut egui::Ui, title: &str, symbol: Icon) {
     ui.horizontal(|ui| {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(34.0, 34.0), egui::Sense::hover());
         ui.painter().rect_filled(rect, 10.0, nav_active_bg());
-        icon(ui.painter(), rect.shrink(8.0), symbol, ACCENT);
+        icon(ui.painter(), rect.shrink(8.0), symbol, accent());
         ui.label(
             egui::RichText::new(title)
                 .size(17.0)
                 .family(bold_family())
-                .color(HEADING),
+                .color(heading()),
         );
     });
     ui.add_space(18.0);
 }
 
 pub fn apply(ctx: &Context) {
+    CURRENT.with(|t| t.set(ThemeChoice::Dark));
+    apply_palette(ctx);
+}
+pub fn apply_appearance(ctx: &Context, options: &Appearance) {
+    CURRENT.with(|t| t.set(options.theme));
+    let scale = if options.scale.is_finite() {
+        options.scale.clamp(0.75, 1.75)
+    } else {
+        1.0
+    };
+    let value = (options.theme, scale.to_bits(), options.reduced_motion);
+    let id = egui::Id::unique("launcher-appearance");
+    if ctx.data(|d| d.get_temp::<(ThemeChoice, u32, bool)>(id)) != Some(value) {
+        apply_palette(ctx);
+        ctx.all_styles_mut(|s| s.animation_time = if options.reduced_motion { 0.0 } else { 0.12 });
+        ctx.set_zoom_factor(scale);
+        ctx.data_mut(|d| d.insert_temp(id, value));
+    }
+}
+fn apply_palette(ctx: &Context) {
     ctx.all_styles_mut(|style| {
-        style.visuals = egui::Visuals::dark();
-        style.visuals.panel_fill = WINDOW_BG;
-        style.visuals.window_fill = CARD_BG;
-        style.visuals.faint_bg_color = TOPBAR_BG;
-        style.visuals.hyperlink_color = ACCENT;
+        style.visuals = CURRENT.with(|t| {
+            if t.get() == ThemeChoice::Light {
+                egui::Visuals::light()
+            } else {
+                egui::Visuals::dark()
+            }
+        });
+        style.visuals.panel_fill = window_bg();
+        style.visuals.window_fill = card_bg();
+        style.visuals.faint_bg_color = topbar_bg();
+        style.visuals.hyperlink_color = accent();
         style.visuals.selection.bg_fill = nav_active_bg();
-        style.visuals.selection.stroke = Stroke::new(1.0, ACCENT);
+        style.visuals.selection.stroke = Stroke::new(1.0, accent());
         style.visuals.window_corner_radius = egui::CornerRadius::same(16);
-        style.visuals.window_stroke = Stroke::new(1.0, CARD_BORDER);
-        style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, CARD_BORDER);
+        style.visuals.window_stroke = Stroke::new(1.0, card_border());
+        style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, card_border());
         for visuals in [
             &mut style.visuals.widgets.inactive,
             &mut style.visuals.widgets.hovered,
             &mut style.visuals.widgets.active,
         ] {
             visuals.corner_radius = egui::CornerRadius::same(10);
-            visuals.bg_stroke = Stroke::new(1.0, SECONDARY_BORDER);
-            visuals.fg_stroke = Stroke::new(1.0, BODY_TEXT);
+            visuals.bg_stroke = Stroke::new(1.0, secondary_border());
+            visuals.fg_stroke = Stroke::new(1.0, body_text());
         }
-        style.visuals.widgets.inactive.bg_fill = SECONDARY_BG;
-        style.visuals.widgets.inactive.weak_bg_fill = SECONDARY_BG;
-        style.visuals.widgets.hovered.bg_fill = HOVER;
-        style.visuals.widgets.hovered.weak_bg_fill = HOVER;
-        style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT.gamma_multiply(0.65));
-        style.visuals.widgets.active.bg_fill = HOVER;
-        style.visuals.widgets.active.weak_bg_fill = HOVER;
+        style.visuals.widgets.inactive.bg_fill = secondary_bg();
+        style.visuals.widgets.inactive.weak_bg_fill = secondary_bg();
+        style.visuals.widgets.hovered.bg_fill = hover();
+        style.visuals.widgets.hovered.weak_bg_fill = hover();
+        style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, accent().gamma_multiply(0.65));
+        style.visuals.widgets.active.bg_fill = hover();
+        style.visuals.widgets.active.weak_bg_fill = hover();
         style.spacing.item_spacing = egui::vec2(CONTROL_GAP, CONTROL_GAP);
         style.spacing.button_padding = egui::vec2(16.0, 10.0);
         style.spacing.interact_size.y = CONTROL_HEIGHT;
@@ -259,8 +432,8 @@ pub fn apply(ctx: &Context) {
             .text_styles
             .insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
         style.spacing.slider_rail_height = 3.0;
-        style.visuals.override_text_color = Some(BODY_TEXT);
-        style.visuals.extreme_bg_color = INPUT_BG;
+        style.visuals.override_text_color = Some(body_text());
+        style.visuals.extreme_bg_color = input_bg();
     });
 }
 

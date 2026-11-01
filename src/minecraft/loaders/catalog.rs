@@ -21,6 +21,7 @@ struct FabricEntry {
 #[derive(Deserialize)]
 struct FabricLoader {
     version: String,
+    #[serde(default)]
     stable: bool,
 }
 
@@ -34,17 +35,22 @@ pub fn loader_versions(
         &format!("获取 Minecraft {minecraft} 的 {} 版本", kind.label()),
         0,
     );
-    let mut versions = if kind == LoaderKind::Fabric {
-        let entries: Vec<FabricEntry> = downloader.json(&format!(
-            "https://meta.fabricmc.net/v2/versions/loader/{minecraft}"
-        ))?;
+    let mut versions = if matches!(kind, LoaderKind::Fabric | LoaderKind::Quilt) {
+        let base = if kind == LoaderKind::Quilt {
+            "https://meta.quiltmc.org/v3"
+        } else {
+            "https://meta.fabricmc.net/v2"
+        };
+        let entries: Vec<FabricEntry> =
+            downloader.json(&format!("{base}/versions/loader/{minecraft}"))?;
         entries
             .into_iter()
             .map(|entry| LoaderVersion {
                 kind,
                 minecraft: minecraft.into(),
-                version: entry.loader.version,
-                stable: entry.loader.stable,
+                version: entry.loader.version.clone(),
+                stable: entry.loader.stable
+                    || kind == LoaderKind::Quilt && !entry.loader.version.contains('-'),
             })
             .collect()
     } else {

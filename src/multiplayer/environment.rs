@@ -22,7 +22,7 @@ impl Environment {
             || self
                 .loader
                 .as_ref()
-                .is_some_and(|s| !matches!(s.as_str(), "forge" | "fabric" | "neoforge"))
+                .is_some_and(|s| !matches!(s.as_str(), "forge" | "fabric" | "neoforge" | "quilt"))
             || self
                 .loader_version
                 .as_ref()

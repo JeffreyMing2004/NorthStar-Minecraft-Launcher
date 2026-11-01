@@ -15,6 +15,7 @@ const MAX_ENTRIES: usize = 128;
 pub enum Kind {
     Vanilla,
     Fabric,
+    Quilt,
     Forge,
     NeoForge,
     Pack,
@@ -268,7 +269,7 @@ impl Icon {
                 if matches!(self.kind, Kind::Pack) {
                     p.line_segment(
                         [point(0.5, 0.1), point(0.5, 0.91)],
-                        Stroke::new(rect.width() * 0.1, theme::ACCENT),
+                        Stroke::new(rect.width() * 0.1, theme::accent()),
                     );
                 }
             }
@@ -283,6 +284,26 @@ impl Icon {
                         [point(0.3, y), point(0.7, y - 0.13)],
                         Stroke::new(1.2, Color32::from_rgb(132, 115, 85)),
                     );
+                }
+            }
+            Kind::Quilt => {
+                let colors = [
+                    Color32::from_rgb(185, 86, 186),
+                    Color32::from_rgb(121, 87, 176),
+                    Color32::from_rgb(80, 170, 170),
+                    Color32::from_rgb(231, 154, 84),
+                ];
+                for row in 0..3 {
+                    for column in 0..3 {
+                        p.rect_filled(
+                            Rect::from_min_max(
+                                point(0.12 + column as f32 * 0.26, 0.12 + row as f32 * 0.26),
+                                point(0.34 + column as f32 * 0.26, 0.34 + row as f32 * 0.26),
+                            ),
+                            1.0,
+                            colors[(row + column) % colors.len()],
+                        );
+                    }
                 }
             }
             Kind::Forge => {

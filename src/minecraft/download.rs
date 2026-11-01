@@ -167,7 +167,7 @@ impl Downloader {
         })
     }
 
-    pub(super) fn fetch<T>(&self, url: &str, parse: impl Fn(&[u8]) -> Result<T>) -> Result<T> {
+    pub(crate) fn fetch<T>(&self, url: &str, parse: impl Fn(&[u8]) -> Result<T>) -> Result<T> {
         let mut errors = Vec::new();
         for candidate in self.source.candidates(url)? {
             self.check_cancelled()?;

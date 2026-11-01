@@ -26,7 +26,7 @@ enum Event {
         result: Result<(), String>,
     },
     Status(String),
-    Finished(Result<(Session, Option<String>), String>),
+    Finished(Box<Result<(Session, Option<String>), String>>),
 }
 
 pub struct AccountService {
@@ -38,6 +38,7 @@ pub struct AccountService {
     pub status: String,
     pub error: Option<String>,
     sessions: BTreeMap<String, Session>,
+    external_sessions: BTreeMap<String, nscl::external_auth::Session>,
     cancel: Arc<AtomicBool>,
     sender: Sender<Event>,
     receiver: Receiver<Event>,
@@ -58,6 +59,7 @@ impl AccountService {
             status: String::new(),
             error,
             sessions: BTreeMap::new(),
+            external_sessions: BTreeMap::new(),
             cancel: Arc::new(AtomicBool::new(false)),
             sender,
             receiver,
@@ -77,6 +79,41 @@ impl AccountService {
         }
         self.list = list;
         self.sessions.insert(session.account.id.clone(), session);
+    }
+    pub fn begin_external(&mut self) -> Option<Arc<AtomicBool>> {
+        if self.pending {
+            return None;
+        }
+        self.cancel = Arc::new(AtomicBool::new(false));
+        self.pending = true;
+        self.prompt = None;
+        self.browser_prompt = None;
+        self.error = None;
+        Some(self.cancel.clone())
+    }
+    pub fn external_for_launch(&self) -> Option<(Account, Option<nscl::external_auth::Session>)> {
+        self.list
+            .current()
+            .filter(|a| a.kind == accounts::AccountKind::External)
+            .map(|a| (a.clone(), self.external_sessions.get(&a.id).cloned()))
+    }
+    pub fn accept_external(&mut self, session: nscl::external_auth::Session) {
+        use nscl::external_auth::Vault;
+        if let Err(e) =
+            nscl::external_auth::SystemVault.write(&session.account.id, &session.credential)
+        {
+            self.status = e;
+        } else {
+            self.status = "外置认证登录成功。".into();
+        }
+        let mut list = self.list.clone();
+        list.upsert(session.account.clone());
+        if let Err(e) = list.save() {
+            self.error = Some(e);
+        }
+        self.list = list;
+        self.external_sessions
+            .insert(session.account.id.clone(), session);
     }
     pub fn login(&mut self, client_id: &str, redirect_uri: &str, ctx: &egui::Context) {
         if let Err(error) = accounts::validate_redirect_uri(redirect_uri.trim()) {
@@ -158,7 +195,7 @@ impl AccountService {
                         .err();
                     Ok((session, warning))
                 });
-            let _ = sender.send(Event::Finished(result));
+            let _ = sender.send(Event::Finished(Box::new(result)));
             ctx.request_repaint();
         });
     }
@@ -241,7 +278,7 @@ impl AccountService {
                     self.prompt = None;
                     self.browser_prompt = None;
                     self.browser_opening = false;
-                    match result {
+                    match *result {
                         Ok((session, warning)) => {
                             self.status = format!(
                                 "{} 已通过 Minecraft Java 正版验证。{}",
@@ -274,7 +311,7 @@ impl AccountService {
             .iter()
             .find(|a| a.id == id)
             .ok_or("账号不存在。")?
-            .is_online();
+            .uses_auth();
         let mut list = self.list.clone();
         list.selected = Some(id.into());
         list.save()?;
@@ -309,6 +346,15 @@ impl AccountService {
         if online {
             SystemVault.remove(id)?;
         }
+        if self
+            .list
+            .accounts
+            .iter()
+            .any(|a| a.id == id && a.kind == accounts::AccountKind::External)
+        {
+            use nscl::external_auth::Vault;
+            nscl::external_auth::SystemVault.remove(id)?;
+        }
         let mut list = self.list.clone();
         list.accounts.retain(|a| a.id != id);
         if list.selected.as_deref() == Some(id) {
@@ -317,14 +363,10 @@ impl AccountService {
         list.save()?;
         self.list = list;
         self.sessions.remove(id);
-        settings.online_mode = self.list.current().is_some_and(|a| a.is_online());
+        self.external_sessions.remove(id);
+        settings.online_mode = self.list.current().is_some_and(|a| a.uses_auth());
         self.save_mode(settings)?;
-        self.status = if online {
-            "已移除该账号及本机保存的刷新令牌。"
-        } else {
-            "已移除离线账号。"
-        }
-        .into();
+        self.status = "已移除该账号。".into();
         Ok(())
     }
     pub fn save_mode(&self, settings: &Settings) -> Result<(), String> {
@@ -359,6 +401,7 @@ mod tests {
             status: "正在打开系统默认浏览器……".into(),
             error: None,
             sessions: BTreeMap::new(),
+            external_sessions: BTreeMap::new(),
             cancel: Arc::new(AtomicBool::new(false)),
             sender,
             receiver,

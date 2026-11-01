@@ -12,7 +12,7 @@ pub struct PackState {
 pub(super) enum PackEvent {
     Loaded(Box<PackState>),
     Preview(Box<PackUpdatePlan>),
-    Updated(Instance),
+    Updated(Box<Instance>),
 }
 #[derive(Clone)]
 pub enum Input {
@@ -131,7 +131,7 @@ impl GameService {
                 &sender,
                 &ctx,
                 match result {
-                    Ok(i) => Event::Pack(PackEvent::Updated(i)),
+                    Ok(i) => Event::Pack(PackEvent::Updated(Box::new(i))),
                     Err(e) => Event::Failed(e),
                 },
             );

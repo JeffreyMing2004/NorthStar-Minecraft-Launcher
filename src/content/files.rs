@@ -232,7 +232,7 @@ pub(super) fn fetch(
     Err(format!("资源下载失败：{}", errors.join("\n")))
 }
 
-pub(super) struct Stage {
+pub(crate) struct Stage {
     pub path: PathBuf,
     keep: bool,
 }

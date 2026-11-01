@@ -27,7 +27,9 @@ mod java_tests;
 #[cfg(test)]
 mod managed_tests;
 mod manual;
+mod migration;
 pub mod mod_tools;
+mod optifine;
 pub mod pack_updates;
 mod resources;
 pub use content::{ContentPlan, ContentState};
@@ -53,6 +55,8 @@ pub enum LaunchPrompt {
 }
 
 enum Event {
+    ExternalSession(Box<nscl::external_auth::Session>),
+    Migrated(crate::instances::Instance),
     ModTools(mod_tools::ModEvent),
     Pack(pack_updates::PackEvent),
     LaunchPrompt(LaunchPrompt),
@@ -103,6 +107,7 @@ pub struct GameService {
     pub backup_instance: String,
     pub instances: Vec<crate::instances::Instance>,
     pub renewed_session: Option<crate::accounts::Session>,
+    pub renewed_external: Option<nscl::external_auth::Session>,
     pub java_runtimes: Vec<crate::java::JavaRuntime>,
     pub java_busy: bool,
     pub java_status: String,
@@ -158,6 +163,7 @@ impl GameService {
             backup_instance: String::new(),
             instances,
             renewed_session: None,
+            renewed_external: None,
             java_runtimes: Vec::new(),
             java_busy: false,
             java_status: String::new(),
@@ -317,6 +323,13 @@ impl GameService {
                     }
                 }
                 Event::Session(session) => self.renewed_session = Some(session),
+                Event::ExternalSession(session) => self.renewed_external = Some(*session),
+                Event::Migrated(instance) => {
+                    self.task = Task::Idle;
+                    self.selected = instance.id;
+                    self.refresh(settings);
+                    self.notice = "实例已复制迁入；来源文件保持不变。".into();
+                }
                 Event::Java(runtimes) => {
                     self.java_status = format!("检测到 {} 个 Java 运行环境。", runtimes.len());
                     self.java_runtimes = runtimes;
@@ -571,6 +584,7 @@ impl GameService {
             return;
         };
         let account = accounts.launch_account();
+        let external = accounts.external_for_launch();
         let offline_identity = minecraft::LaunchIdentity::offline(&selected_account.name);
         let Some(instance) = self
             .instances
@@ -618,27 +632,58 @@ impl GameService {
                 );
                 return;
             }
-            let identity = match account {
-                Some((account, cached)) => {
-                    match crate::accounts::AuthClient::new().and_then(|client| {
-                        client.resume(&account, cached, &crate::accounts::SystemVault, &cancel)
-                    }) {
-                        Ok(session) => {
-                            let identity = minecraft::LaunchIdentity::microsoft(&session);
-                            send(&sender, &context, Event::Session(session));
-                            identity
-                        }
-                        Err(error) => {
-                            send(
-                                &sender,
-                                &context,
-                                Event::Failed(format!("正版身份验证失败：{error}")),
-                            );
-                            return;
-                        }
+            let identity = if let Some((account, cached)) = external {
+                let result = nscl::external_auth::Client::new()
+                    .and_then(|client| {
+                        client.resume(&account, cached, &nscl::external_auth::SystemVault, &cancel)
+                    })
+                    .and_then(|session| {
+                        send(
+                            &sender,
+                            &context,
+                            Event::ExternalSession(Box::new(session.clone())),
+                        );
+                        let d = Downloader::new(
+                            settings.source.clone(),
+                            cancel.clone(),
+                            reporter(&sender, &context),
+                        )?;
+                        let agent = nscl::external_auth::install_agent(
+                            &store::settings_path().with_file_name("tools"),
+                            &d,
+                        )?;
+                        minecraft::LaunchIdentity::external(&session, &agent)
+                    });
+                match result {
+                    Ok(identity) => identity,
+                    Err(e) => {
+                        send(&sender, &context, Event::Failed(e));
+                        return;
                     }
                 }
-                None => offline_identity,
+            } else {
+                match account {
+                    Some((account, cached)) => {
+                        match crate::accounts::AuthClient::new().and_then(|client| {
+                            client.resume(&account, cached, &crate::accounts::SystemVault, &cancel)
+                        }) {
+                            Ok(session) => {
+                                let identity = minecraft::LaunchIdentity::microsoft(&session);
+                                send(&sender, &context, Event::Session(session));
+                                identity
+                            }
+                            Err(error) => {
+                                send(
+                                    &sender,
+                                    &context,
+                                    Event::Failed(format!("正版身份验证失败：{error}")),
+                                );
+                                return;
+                            }
+                        }
+                    }
+                    None => offline_identity,
+                }
             };
             let mut plan = match Downloader::new(
                 settings.source.clone(),

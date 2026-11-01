@@ -111,7 +111,7 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) 
     }
     crate::instance_resources::show(ui, app, instance, crate::content::LocalKind::Mods, editable);
     for warning in &app.service.content.updates.warnings {
-        ui.label(RichText::new(warning).size(12.0).color(theme::MUTED));
+        ui.label(RichText::new(warning).size(12.0).color(theme::muted()));
     }
 }
 
@@ -126,7 +126,7 @@ fn search(ui: &mut Ui, app: &mut NsclApp) {
             egui::Label::new(
                 RichText::new("从 Modrinth 添加")
                     .size(16.0)
-                    .color(theme::HEADING),
+                    .color(theme::heading()),
             )
             .truncate(),
         );
@@ -237,7 +237,7 @@ fn versions(ui: &mut Ui, app: &mut NsclApp) {
             egui::Label::new(
                 RichText::new(&project.title)
                     .size(16.0)
-                    .color(theme::HEADING),
+                    .color(theme::heading()),
             )
             .truncate(),
         );
@@ -321,7 +321,7 @@ fn plan(ui: &mut Ui, app: &mut NsclApp, editable: bool) {
                     "确认安装方案"
                 })
                 .size(16.0)
-                .color(theme::HEADING),
+                .color(theme::heading()),
             )
             .truncate(),
         );
@@ -334,7 +334,8 @@ fn plan(ui: &mut Ui, app: &mut NsclApp, editable: bool) {
     match plan {
         ContentPlan::Mod(plan) => {
             ui.add(
-                egui::Label::new(RichText::new(plan.target.label()).color(theme::BODY_TEXT)).wrap(),
+                egui::Label::new(RichText::new(plan.target.label()).color(theme::body_text()))
+                    .wrap(),
             );
             app::body(
                 ui,
@@ -344,13 +345,13 @@ fn plan(ui: &mut Ui, app: &mut NsclApp, editable: bool) {
                 ),
             );
             for warning in &plan.warnings {
-                ui.label(RichText::new(warning).color(theme::MUTED).size(13.0));
+                ui.label(RichText::new(warning).color(theme::muted()).size(13.0));
             }
             ui.separator();
             for version in &plan.versions {
                 ui.label(
                     RichText::new(format!("{} · {}", version.name, version.version_number))
-                        .color(theme::BODY_TEXT)
+                        .color(theme::body_text())
                         .size(14.0),
                 );
             }
@@ -368,7 +369,7 @@ fn plan(ui: &mut Ui, app: &mut NsclApp, editable: bool) {
                         "{} · {}",
                         entry.version.name, entry.version.version_number
                     ))
-                    .color(theme::HEADING),
+                    .color(theme::heading()),
                 );
                 app::hint(ui, &entry.file.path);
             }
@@ -421,11 +422,11 @@ fn row(
     enabled: bool,
 ) -> bool {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 64.0), Sense::hover());
-    ui.painter().rect_filled(rect, 8.0, theme::TOPBAR_BG);
+    ui.painter().rect_filled(rect, 8.0, theme::topbar_bg());
     ui.painter().rect_stroke(
         rect,
         8.0,
-        Stroke::new(1.0, theme::CARD_BORDER),
+        Stroke::new(1.0, theme::card_border()),
         egui::StrokeKind::Inside,
     );
     let mut info = ui.new_child(UiBuilder::new().max_rect(Rect::from_min_max(
@@ -437,15 +438,15 @@ fn row(
         egui::Label::new(
             RichText::new(title)
                 .size(14.0)
-                .color(theme::HEADING)
+                .color(theme::heading())
                 .family(theme::bold_family()),
         )
         .truncate(),
     );
     info.add(
-        egui::Label::new(RichText::new(description).size(11.0).color(theme::MUTED)).truncate(),
+        egui::Label::new(RichText::new(description).size(11.0).color(theme::muted())).truncate(),
     );
-    info.add(egui::Label::new(RichText::new(meta).size(10.0).color(theme::HINT)).truncate());
+    info.add(egui::Label::new(RichText::new(meta).size(10.0).color(theme::hint())).truncate());
     let mut button = ui.new_child(UiBuilder::new().max_rect(Rect::from_min_size(
         Pos2::new(
             rect.right() - 110.0,
@@ -486,14 +487,14 @@ fn audit(ctx: &egui::Context, app: &mut NsclApp) {
                             } else {
                                 "已登记文件的版本、依赖与完整性检查通过。"
                             })
-                            .color(theme::ACCENT),
+                            .color(theme::accent()),
                         );
                     }
                     for error in &report.errors {
                         ui.label(error);
                     }
                     for warning in &report.warnings {
-                        ui.label(RichText::new(warning).color(theme::MUTED));
+                        ui.label(RichText::new(warning).color(theme::muted()));
                     }
                 });
         });

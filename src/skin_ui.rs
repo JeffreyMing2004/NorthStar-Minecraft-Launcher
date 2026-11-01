@@ -53,11 +53,7 @@ impl SkinView {
         }
     }
     pub fn sync(&mut self, accounts: &mut AccountService, online: bool, ctx: &egui::Context) {
-        let selected = accounts
-            .list
-            .current()
-            .filter(|_| online)
-            .map(|a| a.id.clone());
+        let selected = accounts.list.current().map(|a| a.id.clone());
         if selected != self.account {
             self.account = selected;
             self.generation += 1;
@@ -67,8 +63,25 @@ impl SkinView {
             self.texture = None;
             self.model = Model::Classic;
             self.status = "默认 Steve".into();
-            if self.account.is_some() {
+            if accounts.list.current().is_some_and(|a| a.is_online()) && online {
                 self.remote(accounts, false, ctx);
+            } else if let Some(account) = accounts
+                .list
+                .current()
+                .filter(|a| a.kind == nscl::accounts::AccountKind::Offline)
+            {
+                match skins::load_local(account) {
+                    Ok(Some(image)) => {
+                        self.model = image.model;
+                        self.image = image;
+                        self.local = true;
+                        self.status =
+                            "离线账号预览皮肤；仅启动器内显示。游戏内显示需服务器或皮肤模组支持。"
+                                .into();
+                    }
+                    Ok(None) => {}
+                    Err(e) => self.status = e,
+                }
             }
         }
         while let Ok((generation, result)) = self.receiver.try_recv() {
@@ -264,7 +277,7 @@ impl SkinView {
             egui::Align2::CENTER_BOTTOM,
             "拖动旋转 · 双击复位",
             egui::FontId::proportional(11.0),
-            theme::HINT,
+            theme::hint(),
         );
     }
 }
@@ -353,7 +366,8 @@ pub fn controls(ui: &mut Ui, app: &mut NsclApp) {
         let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
         let model_width = width * 0.36;
         let model_rect = Rect::from_min_size(rect.min, Vec2::new(model_width, rect.height()));
-        ui.painter().rect_filled(model_rect, 12.0, theme::TOPBAR_BG);
+        ui.painter()
+            .rect_filled(model_rect, 12.0, theme::topbar_bg());
         app.skin
             .paint(ui, model_rect.shrink(12.0), "account-skin-model");
         let form_rect = Rect::from_min_max(
@@ -382,7 +396,7 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
                 .unwrap_or("本地角色预览"),
         )
         .size(17.0)
-        .color(theme::HEADING),
+        .color(theme::heading()),
     );
     ui.add_space(10.0);
     app::hint(ui, "选择 PNG 与手臂模型，先预览，再上传到当前正版账号。");
@@ -415,9 +429,44 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
             if ui.button("预览本地皮肤").clicked() {
                 app.skin.preview(ui.ctx());
             }
+            if let Some(account) = app
+                .accounts
+                .list
+                .current()
+                .filter(|a| a.kind == nscl::accounts::AccountKind::Offline)
+            {
+                if ui.button("保存为离线账号预览").clicked() {
+                    match skins::save_local(
+                        account,
+                        &PathBuf::from(app.skin.path.trim().trim_matches('"')),
+                        app.skin.model,
+                    ) {
+                        Ok(image) => {
+                            app.skin.image = image;
+                            app.skin.texture = None;
+                            app.skin.local = true;
+                            app.skin.status =
+                                "已保存此离线账号的本地预览；不修改游戏内皮肤。".into();
+                        }
+                        Err(e) => app.skin.status = e,
+                    }
+                }
+                if ui.button("恢复默认预览").clicked() {
+                    match skins::remove_local(account) {
+                        Ok(()) => {
+                            app.skin.image = skins::default_skin();
+                            app.skin.texture = None;
+                            app.skin.local = false;
+                            app.skin.status = "已恢复默认预览。".into();
+                        }
+                        Err(e) => app.skin.status = e,
+                    }
+                }
+            }
             if ui
                 .add_enabled(
-                    app.settings.online_mode && app.accounts.list.current().is_some(),
+                    app.settings.online_mode
+                        && app.accounts.list.current().is_some_and(|a| a.is_online()),
                     egui::Button::new("上传到当前正版账号"),
                 )
                 .clicked()
@@ -426,7 +475,8 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
             }
             if ui
                 .add_enabled(
-                    app.settings.online_mode && app.accounts.list.current().is_some(),
+                    app.settings.online_mode
+                        && app.accounts.list.current().is_some_and(|a| a.is_online()),
                     egui::Button::new("刷新账号皮肤"),
                 )
                 .clicked()
@@ -454,7 +504,7 @@ fn form_controls(ui: &mut Ui, app: &mut NsclApp) {
         }
         ui.label(
             RichText::new(&app.skin.status)
-                .color(theme::MUTED)
+                .color(theme::muted())
                 .size(12.0),
         );
     });

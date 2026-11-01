@@ -137,7 +137,7 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
                 egui::Label::new(
                     RichText::new(format!("已下载：{}", path.display()))
                         .size(11.0)
-                        .color(theme::HINT),
+                        .color(theme::hint()),
                 )
                 .truncate(),
             )
@@ -170,7 +170,7 @@ fn versions(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
             egui::Label::new(
                 RichText::new(&project.title)
                     .size(19.0)
-                    .color(theme::HEADING),
+                    .color(theme::heading()),
             )
             .truncate(),
         );
@@ -295,7 +295,7 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
         egui::ScrollArea::vertical().id_salt("content-plan").max_height(height).min_scrolled_height(0.0).auto_shrink([false,false]).show(ui,|ui| {
             ui.spacing_mut().item_spacing.y=10.0;
             let Some(ContentPlan::Pack(plan)) = &app.service.content.plan else { return };
-            ui.label(RichText::new(plan.label()).color(theme::BODY_TEXT).size(16.0));
+            ui.label(RichText::new(plan.label()).color(theme::body_text()).size(16.0));
             app::body(ui,"安装到新的独立实例，自动准备整合包要求的游戏和加载器。");
             if plan.optional_files>0 {
                 let mut choice = plan.include_optional;
@@ -420,11 +420,11 @@ fn row(
     logo: Option<Logo>,
 ) -> bool {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 82.0), Sense::hover());
-    ui.painter().rect_filled(rect, 10.0, theme::TOPBAR_BG);
+    ui.painter().rect_filled(rect, 10.0, theme::topbar_bg());
     ui.painter().rect_stroke(
         rect,
         10.0,
-        Stroke::new(1.0, theme::CARD_BORDER),
+        Stroke::new(1.0, theme::card_border()),
         egui::StrokeKind::Inside,
     );
     let text_offset = if let Some(logo) = logo {
@@ -446,15 +446,15 @@ fn row(
         egui::Label::new(
             RichText::new(title)
                 .size(15.0)
-                .color(theme::HEADING)
+                .color(theme::heading())
                 .family(theme::bold_family()),
         )
         .truncate(),
     );
     info.add(
-        egui::Label::new(RichText::new(description).size(12.0).color(theme::MUTED)).truncate(),
+        egui::Label::new(RichText::new(description).size(12.0).color(theme::muted())).truncate(),
     );
-    info.add(egui::Label::new(RichText::new(meta).size(11.0).color(theme::HINT)).truncate());
+    info.add(egui::Label::new(RichText::new(meta).size(11.0).color(theme::hint())).truncate());
     let mut button = ui.new_child(UiBuilder::new().max_rect(Rect::from_min_size(
         Pos2::new(
             rect.right() - 114.0,

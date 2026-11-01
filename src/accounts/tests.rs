@@ -140,6 +140,7 @@ impl CredentialStore for Vault {
 }
 fn account() -> Account {
     Account {
+        external: None,
         kind: AccountKind::Microsoft,
         id: PROFILE.into(),
         name: "TestPlayer".into(),

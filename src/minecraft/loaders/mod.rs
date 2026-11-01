@@ -21,14 +21,16 @@ pub enum LoaderKind {
     Forge,
     Fabric,
     NeoForge,
+    Quilt,
 }
 impl LoaderKind {
-    pub const ALL: [Self; 3] = [Self::Forge, Self::Fabric, Self::NeoForge];
+    pub const ALL: [Self; 4] = [Self::Forge, Self::Fabric, Self::NeoForge, Self::Quilt];
     pub fn label(self) -> &'static str {
         match self {
             Self::Forge => "Forge",
             Self::Fabric => "Fabric",
             Self::NeoForge => "NeoForge",
+            Self::Quilt => "Quilt",
         }
     }
     pub fn key(self) -> &'static str {
@@ -36,13 +38,14 @@ impl LoaderKind {
             Self::Forge => "forge",
             Self::Fabric => "fabric",
             Self::NeoForge => "neoforge",
+            Self::Quilt => "quilt",
         }
     }
     pub fn parse(value: &str) -> Result<Self> {
         Self::ALL
             .into_iter()
             .find(|kind| kind.key() == value.to_ascii_lowercase())
-            .ok_or_else(|| "加载器应为 forge、fabric 或 neoforge。".into())
+            .ok_or_else(|| "加载器应为 forge、fabric、neoforge 或 quilt。".into())
     }
 }
 
@@ -91,7 +94,9 @@ impl LoaderVersion {
                 "neoforge",
                 self.version.clone(),
             ),
-            LoaderKind::Fabric => return Err("Fabric 不使用 Forge 安装包。".into()),
+            LoaderKind::Fabric | LoaderKind::Quilt => {
+                return Err("此加载器使用在线启动配置，无需 Forge 安装包。".into());
+            }
         };
         Ok(format!(
             "{base}/{group}/{name}/{version}/{name}-{version}-installer.jar"
@@ -115,16 +120,21 @@ pub fn install_loader(
     let root = absolute_root(root)?;
     // Fetch remote loader metadata before a potentially lengthy vanilla cache check.
     // Invalid or unavailable installers fail before touching the existing profile.
-    let installer = if selection.kind == LoaderKind::Fabric {
+    let installer = if matches!(selection.kind, LoaderKind::Fabric | LoaderKind::Quilt) {
         None
     } else {
         Some(processors::download_installer(
             &root, selection, downloader,
         )?)
     };
-    let fabric_profile = if selection.kind == LoaderKind::Fabric {
+    let fabric_profile = if matches!(selection.kind, LoaderKind::Fabric | LoaderKind::Quilt) {
+        let base = if selection.kind == LoaderKind::Quilt {
+            "https://meta.quiltmc.org/v3"
+        } else {
+            "https://meta.fabricmc.net/v2"
+        };
         let url = format!(
-            "https://meta.fabricmc.net/v2/versions/loader/{}/{}/profile/json",
+            "{base}/versions/loader/{}/{}/profile/json",
             entry.id, selection.version
         );
         Some(downloader.json(&url)?)
@@ -151,7 +161,10 @@ pub fn install_loader(
         0,
     );
     let (mut child, extra_files) = match selection.kind {
-        LoaderKind::Fabric => (fabric_profile.ok_or("Fabric 启动配置缺失。")?, Vec::new()),
+        LoaderKind::Fabric | LoaderKind::Quilt => (
+            fabric_profile.ok_or("加载器在线启动配置缺失。")?,
+            Vec::new(),
+        ),
         _ => processors::install(
             &root,
             &base,

@@ -645,6 +645,8 @@ fn online_arguments_use_msa_identity_and_the_selected_instance_directory() {
         .map(|s| Argument::Plain(s.into())),
     );
     let identity = LaunchIdentity {
+        user_type: "msa".into(),
+        extra_jvm: Vec::new(),
         name: "OnlinePlayer".into(),
         uuid: "0123456789abcdef0123456789abcdef".into(),
         access_token: "PRIVATE-TEST-TOKEN".into(),

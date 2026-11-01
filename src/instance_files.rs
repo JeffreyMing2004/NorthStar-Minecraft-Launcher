@@ -230,7 +230,7 @@ pub fn show(ui: &mut Ui, root: &Path, instance: &Instance, browser: &mut Browser
         egui::Label::new(
             RichText::new(path.to_string_lossy())
                 .size(11.0)
-                .color(theme::HINT),
+                .color(theme::hint()),
         )
         .truncate(),
     )
@@ -321,7 +321,7 @@ pub fn show(ui: &mut Ui, root: &Path, instance: &Instance, browser: &mut Browser
     {
         ui.separator();
         ui.add(
-            egui::Label::new(RichText::new(entry.name.to_string_lossy()).color(theme::HEADING))
+            egui::Label::new(RichText::new(entry.name.to_string_lossy()).color(theme::heading()))
                 .truncate(),
         );
         app::hint(
@@ -353,7 +353,7 @@ pub fn show(ui: &mut Ui, root: &Path, instance: &Instance, browser: &mut Browser
                     } else {
                         size_label(entry.size)
                     };
-                    ui.label(RichText::new(label).size(11.0).color(theme::HINT));
+                    ui.label(RichText::new(label).size(11.0).color(theme::hint()));
                     let selected = browser.selected.as_ref() == Some(&entry.name);
                     if ui
                         .add(

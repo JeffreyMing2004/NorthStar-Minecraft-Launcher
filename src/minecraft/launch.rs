@@ -46,6 +46,8 @@ pub struct LaunchIdentity {
     pub xuid: String,
     pub client_id: String,
     pub online: bool,
+    pub user_type: String,
+    pub extra_jvm: Vec<String>,
 }
 impl LaunchIdentity {
     pub fn offline(name: &str) -> Self {
@@ -56,6 +58,8 @@ impl LaunchIdentity {
             xuid: String::new(),
             client_id: String::new(),
             online: false,
+            user_type: "legacy".into(),
+            extra_jvm: Vec::new(),
         }
     }
     pub fn microsoft(session: &crate::accounts::Session) -> Self {
@@ -66,10 +70,44 @@ impl LaunchIdentity {
             xuid: session.account.xuid.clone(),
             client_id: session.account.client_id.clone(),
             online: true,
+            user_type: "msa".into(),
+            extra_jvm: Vec::new(),
         }
     }
 }
 
+impl LaunchIdentity {
+    pub fn external(session: &crate::external_auth::Session, agent: &Path) -> Result<Self> {
+        use base64::Engine;
+        crate::external_auth::validate_account(&session.account)?;
+        if agent.to_string_lossy().contains('=')
+            || agent.to_string_lossy().chars().any(char::is_control)
+        {
+            return Err(
+                "authlib-injector 路径包含不支持的等号或控制字符，请将启动器放到其他目录。".into(),
+            );
+        }
+        let mut extra_jvm = vec![format!(
+            "-javaagent:{}={}",
+            agent.display(),
+            session.server.root
+        )];
+        let prefetch = base64::engine::general_purpose::STANDARD.encode(&session.server.metadata);
+        if prefetch.len() <= 8192 {
+            extra_jvm.push(format!("-Dauthlibinjector.yggdrasil.prefetched={prefetch}"));
+        }
+        Ok(Self {
+            name: session.account.name.clone(),
+            uuid: session.account.external.as_ref().unwrap().profile.clone(),
+            access_token: session.credential.access_token.clone(),
+            xuid: String::new(),
+            client_id: String::new(),
+            online: true,
+            user_type: "mojang".into(),
+            extra_jvm,
+        })
+    }
+}
 pub fn prepare_launch(root: &Path, id: &str, settings: &Settings) -> Result<LaunchPlan> {
     prepare_instance_launch(
         root,
@@ -110,7 +148,13 @@ pub fn prepare_instance_launch_with_downloader(
     let mut settings = instance.effective_settings(settings);
     let id = instance.version_id.as_str();
     super::validate_local_id(id)?;
-    validate_player_name(&identity.name)?;
+    if identity.user_type == "mojang" {
+        if !crate::external_auth::valid_profile_name(&identity.name) {
+            return Err("外置角色名称无效。".into());
+        }
+    } else {
+        validate_player_name(&identity.name)?;
+    }
     if !crate::accounts::valid_profile_id(&identity.uuid)
         || (identity.online && (identity.access_token.is_empty() || identity.access_token == "0"))
     {
@@ -402,14 +446,15 @@ pub(super) fn launch_arguments_for(
         ("auth_access_token", identity.access_token.clone()),
         (
             "auth_session",
-            format!("token:{}:{}", identity.access_token, identity.uuid),
+            if identity.user_type == "mojang" {
+                identity.access_token.clone()
+            } else {
+                format!("token:{}:{}", identity.access_token, identity.uuid)
+            },
         ),
         ("clientid", identity.client_id.clone()),
         ("auth_xuid", identity.xuid.clone()),
-        (
-            "user_type",
-            if identity.online { "msa" } else { "legacy" }.into(),
-        ),
+        ("user_type", identity.user_type.clone()),
         ("version_type", version.kind.clone()),
         ("user_properties", "{}".into()),
         ("profile_properties", "{}".into()),
@@ -473,6 +518,7 @@ pub(super) fn launch_arguments_for(
         jvm.push(format!("-D{property}={}", natives.display()));
     }
     jvm.extend(settings.launch.jvm_args.iter().cloned());
+    jvm.extend(identity.extra_jvm.iter().cloned());
     jvm.push(version.main_class.clone());
     if settings.launch.custom_resolution {
         for (flag, value) in [

@@ -342,6 +342,7 @@ fn filters(params: &mut Vec<(&str, String)>, target: Option<&Target>) {
                     LoaderKind::Forge => 1,
                     LoaderKind::Fabric => 4,
                     LoaderKind::NeoForge => 6,
+                    LoaderKind::Quilt => 5,
                 }
                 .to_string(),
             ));
@@ -395,7 +396,7 @@ impl CfFile {
                 .game_versions
                 .iter()
                 .map(|s| s.to_ascii_lowercase())
-                .filter(|s| matches!(s.as_str(), "forge" | "fabric" | "neoforge"))
+                .filter(|s| matches!(s.as_str(), "forge" | "fabric" | "neoforge" | "quilt"))
                 .collect(),
             dependencies: self
                 .dependencies

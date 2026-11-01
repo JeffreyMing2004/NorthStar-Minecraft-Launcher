@@ -22,10 +22,13 @@ pub enum AccountKind {
     #[default]
     Microsoft,
     Offline,
+    External,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Account {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external: Option<crate::external_auth::Reference>,
     #[serde(default)]
     pub kind: AccountKind,
     pub id: String,
@@ -39,6 +42,7 @@ impl Account {
         let name = name.trim();
         crate::minecraft::validate_player_name(name)?;
         Ok(Self {
+            external: None,
             kind: AccountKind::Offline,
             id: crate::minecraft::offline_uuid(name),
             name: name.into(),
@@ -48,6 +52,9 @@ impl Account {
     }
     pub fn is_online(&self) -> bool {
         self.kind == AccountKind::Microsoft
+    }
+    pub fn uses_auth(&self) -> bool {
+        self.kind != AccountKind::Offline
     }
 }
 
@@ -81,9 +88,19 @@ impl AccountList {
         let mut ids = std::collections::BTreeSet::new();
         for account in &self.accounts {
             if !valid_profile_id(&account.id)
-                || crate::minecraft::validate_player_name(&account.name).is_err()
+                || if account.kind == AccountKind::External {
+                    !crate::external_auth::valid_profile_name(&account.name)
+                } else {
+                    crate::minecraft::validate_player_name(&account.name).is_err()
+                }
                 || !ids.insert(&account.id)
-                || (!account.is_online() && Account::offline(&account.name)? != *account)
+                || match account.kind {
+                    AccountKind::Offline => Account::offline(&account.name)? != *account,
+                    AccountKind::Microsoft => account.external.is_some(),
+                    AccountKind::External => {
+                        crate::external_auth::validate_account(account).is_err()
+                    }
+                }
             {
                 return Err("账号列表包含无效或重复身份。".into());
             }
@@ -95,7 +112,7 @@ impl AccountList {
         if self
             .accounts
             .iter()
-            .any(|a| !a.is_online() && a.name.eq_ignore_ascii_case(&account.name))
+            .any(|a| a.kind == AccountKind::Offline && a.name.eq_ignore_ascii_case(&account.name))
         {
             return Err("此离线账号已存在，请直接选择使用。".into());
         }
@@ -439,6 +456,7 @@ impl AuthClient {
         check_cancel(cancel)?;
         Ok(Session {
             account: Account {
+                external: None,
                 kind: AccountKind::Microsoft,
                 id,
                 name,

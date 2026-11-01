@@ -51,6 +51,14 @@ pub fn save_pack(filename: &str) -> Result<Option<PathBuf>, String> {
         "mrpack\0",
     )
 }
+pub fn save_shortcut(filename: &str) -> Result<Option<PathBuf>, String> {
+    save_as(
+        filename,
+        "Windows 快捷方式\0*.lnk\0\0",
+        "创建实例快捷方式（保存为新文件）\0",
+        "lnk\0",
+    )
+}
 
 pub fn save_diagnostics() -> Result<Option<PathBuf>, String> {
     save_as(

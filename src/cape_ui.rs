@@ -16,8 +16,9 @@ enum Command {
     Select(Option<String>),
 }
 
+type CapeListResult = Result<(Vec<Cape>, Session, String), String>;
 enum Event {
-    Listed(Result<(Vec<Cape>, Session, String), String>),
+    Listed(Box<CapeListResult>),
     Texture {
         id: String,
         url: String,
@@ -96,7 +97,7 @@ impl CapeView {
             match event {
                 Event::Listed(result) => {
                     self.pending = false;
-                    match result {
+                    match *result {
                         Ok((capes, session, status))
                             if self.account.as_deref() == Some(&session.account.id) =>
                         {
@@ -209,13 +210,13 @@ impl CapeView {
                 Ok((client, capes, session, status)) => {
                     let _ = sender.send((
                         generation,
-                        Event::Listed(Ok((capes.clone(), session, status))),
+                        Event::Listed(Box::new(Ok((capes.clone(), session, status)))),
                     ));
                     ctx.request_repaint();
                     (client, capes)
                 }
                 Err(error) => {
-                    let _ = sender.send((generation, Event::Listed(Err(error))));
+                    let _ = sender.send((generation, Event::Listed(Box::new(Err(error)))));
                     ctx.request_repaint();
                     return;
                 }
@@ -280,7 +281,7 @@ impl CapeView {
                     ui.horizontal(|ui| {
                         let (rect, _) =
                             ui.allocate_exact_size(Vec2::new(48.0, 76.8), egui::Sense::hover());
-                        ui.painter().rect_filled(rect, 4.0, theme::TOPBAR_BG);
+                        ui.painter().rect_filled(rect, 4.0, theme::topbar_bg());
                         if let Some(pixels) = &entry.pixels {
                             let texture = entry.texture.get_or_insert_with(|| {
                                 ui.ctx().load_texture(
@@ -307,7 +308,7 @@ impl CapeView {
                                 egui::Align2::CENTER_CENTER,
                                 "披风",
                                 egui::FontId::proportional(12.0),
-                                theme::MUTED,
+                                theme::muted(),
                             );
                         }
                         ui.add_space(12.0);
@@ -341,7 +342,7 @@ impl CapeView {
                                     ui.add(
                                         egui::Label::new(
                                             RichText::new(&entry.cape.name)
-                                                .color(theme::HEADING)
+                                                .color(theme::heading())
                                                 .size(16.0),
                                         )
                                         .truncate(),
@@ -352,7 +353,7 @@ impl CapeView {
                                     if let Some(error) = &entry.error {
                                         ui.label(
                                             RichText::new("预览暂不可用")
-                                                .color(theme::MUTED)
+                                                .color(theme::muted())
                                                 .size(12.0),
                                         )
                                         .on_hover_text(error);
@@ -383,7 +384,7 @@ fn selection_radio(ui: &mut Ui, selected: bool, editable: bool, name: &str) -> b
 }
 
 pub fn controls(ui: &mut Ui, app: &mut app::NsclApp) {
-    ui.label(RichText::new("账号披风").size(18.0).color(theme::HEADING));
+    ui.label(RichText::new("账号披风").size(18.0).color(theme::heading()));
     ui.add_space(8.0);
     app::hint(
         ui,
@@ -410,7 +411,7 @@ pub fn controls(ui: &mut Ui, app: &mut app::NsclApp) {
         }
         ui.label(
             RichText::new(&app.capes.status)
-                .color(theme::MUTED)
+                .color(theme::muted())
                 .size(12.0),
         );
     });

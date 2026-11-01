@@ -290,7 +290,10 @@ fn launch_stays_at_the_bottom_right_when_switching_and_scrolling_details() {
             let output = frame(&ctx, &mut app, size, vec![]);
             let launch = text_rect(&output, "启动游戏");
             assert!(launch.min.x > 700.0 && launch.min.y > 350.0, "{launch:?}");
-            assert!(launch.max.x < size.x && launch.max.y < size.y, "{launch:?}");
+            assert!(
+                launch.max.x < size.x && launch.max.y < size.y,
+                "{tab:?}: {launch:?}"
+            );
             positions.push(launch);
             output.drop_without_applying_deltas();
         }
@@ -324,7 +327,7 @@ fn file_categories_show_real_contents_details_and_missing_directory_feedback() {
     text_rect(&output, "文件 · 2.0 KiB");
     text_rect(&output, &mods.join("local-example.jar").to_string_lossy());
     output.drop_without_applying_deltas();
-    click(&ctx, &mut app, "截图");
+    click_file_chip(&ctx, &mut app, "截图");
     wait_for_text(&ctx, &mut app, "此目录尚未创建");
     assert!(!root.path().join("instances/modded/screenshots").exists());
     assert_eq!(app.service.selected, "vanilla");

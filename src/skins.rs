@@ -2,7 +2,7 @@
 use crate::accounts::{Result, Session};
 use image::{ImageFormat, ImageReader, RgbaImage};
 use reqwest::blocking::{Client, Response, multipart};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     io::{Cursor, Read},
     path::Path,
@@ -11,11 +11,67 @@ use std::{
 
 const MAX_BYTES: u64 = 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Model {
     #[default]
     Classic,
     Slim,
+}
+#[derive(Serialize, Deserialize)]
+struct LocalSkin {
+    model: Model,
+    png: String,
+}
+fn local_path(account: &crate::accounts::Account) -> Result<std::path::PathBuf> {
+    if account.kind != crate::accounts::AccountKind::Offline
+        || !crate::accounts::valid_profile_id(&account.id)
+    {
+        return Err("仅离线账号支持保存本地预览皮肤。".into());
+    }
+    let path = crate::store::settings_path()
+        .with_file_name("cache")
+        .join("local-skins")
+        .join(format!("{}.json", account.id));
+    for p in path.ancestors() {
+        crate::instances::reject_link(p)?;
+    }
+    Ok(path)
+}
+pub fn save_local(account: &crate::accounts::Account, path: &Path, model: Model) -> Result<Skin> {
+    use base64::Engine;
+    let (bytes, skin) = read(path, model)?;
+    crate::store::write_json(
+        &local_path(account)?,
+        &LocalSkin {
+            model,
+            png: base64::engine::general_purpose::STANDARD.encode(bytes),
+        },
+    )?;
+    Ok(skin)
+}
+pub fn load_local(account: &crate::accounts::Account) -> Result<Option<Skin>> {
+    use base64::Engine;
+    let path = local_path(account)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > 2 * MAX_BYTES {
+        return Err("离线预览皮肤记录过大。".into());
+    }
+    let record: LocalSkin =
+        serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
+            .map_err(|_| "离线皮肤记录损坏。")?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(record.png)
+        .map_err(|_| "离线皮肤记录无效。")?;
+    png(&bytes, record.model).map(Some)
+}
+pub fn remove_local(account: &crate::accounts::Account) -> Result<()> {
+    match std::fs::remove_file(local_path(account)?) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 impl Model {
     pub fn key(self) -> &'static str {

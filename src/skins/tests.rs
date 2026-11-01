@@ -1,4 +1,32 @@
 use super::*;
+
+#[test]
+fn offline_preview_profiles_are_separate_and_do_not_accept_microsoft_accounts() {
+    let parent = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/test-work");
+    std::fs::create_dir_all(&parent).unwrap();
+    let root = tempfile::tempdir_in(parent).unwrap();
+    let name = format!("Skin{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+    let account = crate::accounts::Account::offline(&name).unwrap();
+    let other = crate::accounts::Account::offline(&format!(
+        "Other{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    ))
+    .unwrap();
+    let path = root.path().join("skin.png");
+    image::RgbaImage::from_pixel(64, 64, image::Rgba([20, 40, 60, 255]))
+        .save(&path)
+        .unwrap();
+    save_local(&account, &path, Model::Slim).unwrap();
+    let loaded = load_local(&account).unwrap().unwrap();
+    assert_eq!(loaded.model, Model::Slim);
+    assert_eq!(loaded.pixels.get_pixel(0, 0).0, [20, 40, 60, 255]);
+    assert!(load_local(&other).unwrap().is_none());
+    let mut online = account.clone();
+    online.kind = crate::accounts::AccountKind::Microsoft;
+    assert!(save_local(&online, &path, Model::Classic).is_err());
+    remove_local(&account).unwrap();
+    assert!(load_local(&account).unwrap().is_none());
+}
 use crate::accounts::{Account, RefreshCredential};
 
 #[test]
@@ -21,6 +49,7 @@ fn bytes(width: u32, height: u32) -> Vec<u8> {
 fn session() -> Session {
     Session {
         account: Account {
+            external: None,
             kind: crate::accounts::AccountKind::Microsoft,
             id: "0123456789abcdef0123456789abcdef".into(),
             name: "Test".into(),

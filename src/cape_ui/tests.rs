@@ -127,7 +127,10 @@ fn changing_accounts_discards_old_capes_and_late_worker_messages() {
     view.pending = true;
     let previous_cancel = view.cancel.clone();
     view.sender
-        .send((view.generation, Event::Listed(Err("old failure".into()))))
+        .send((
+            view.generation,
+            Event::Listed(Box::new(Err("old failure".into()))),
+        ))
         .unwrap();
     view.sync(&mut accounts, false, true, &Context::default());
     assert!(view.entries.is_empty() && !view.pending && !view.loaded);
@@ -146,7 +149,10 @@ fn failed_switch_keeps_last_confirmed_selection_and_texture_errors_keep_rows() {
     view.entries = vec![entry("first", true), entry("second", false)];
     let generation = view.generation;
     view.sender
-        .send((generation, Event::Listed(Err("网络不可用，请刷新".into()))))
+        .send((
+            generation,
+            Event::Listed(Box::new(Err("网络不可用，请刷新".into()))),
+        ))
         .unwrap();
     view.sender
         .send((

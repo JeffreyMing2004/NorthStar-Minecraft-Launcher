@@ -145,6 +145,22 @@ pub fn base_game_version(root: &Path, id: &str) -> Result<String> {
     super::validate_id(&version)?;
     Ok(version)
 }
+pub(crate) fn runtime_profiles(root: &Path, id: &str) -> Result<Vec<PathBuf>> {
+    let mut seen = BTreeSet::new();
+    profile(root, id, &mut seen)?;
+    let mut files = Vec::new();
+    for id in seen {
+        let directory = version_directory(root, &id)?;
+        files.push(directory.join(format!("{id}.json")));
+        for name in [format!("{id}.jar"), "nscl-instance.json".into()] {
+            let path = directory.join(name);
+            if path.is_file() {
+                files.push(path);
+            }
+        }
+    }
+    Ok(files)
+}
 
 fn loader(value: &Value) -> Option<LoaderVersion> {
     let libraries = value["libraries"].as_array()?;
@@ -167,20 +183,23 @@ fn loader(value: &Value) -> Option<LoaderVersion> {
             .find(|a| a[0] == key)?[1]
             .as_str()
     };
-    let (kind, version) =
-        if let Some(v) = coordinate("net.fabricmc:fabric-loader:").or_else(|| patch("fabric")) {
-            (LoaderKind::Fabric, v)
-        } else if let Some(v) = coordinate("net.neoforged:neoforge:")
-            .or_else(|| patch("neoforge"))
-            .or_else(|| arg("--fml.neoForgeVersion"))
-        {
-            (LoaderKind::NeoForge, v)
-        } else {
-            let v = coordinate("net.minecraftforge:forge:")
-                .or_else(|| patch("forge"))
-                .or_else(|| arg("--fml.forgeVersion"))?;
-            (LoaderKind::Forge, v)
-        };
+    let (kind, version) = if let Some(v) =
+        coordinate("org.quiltmc:quilt-loader:").or_else(|| patch("quilt"))
+    {
+        (LoaderKind::Quilt, v)
+    } else if let Some(v) = coordinate("net.fabricmc:fabric-loader:").or_else(|| patch("fabric")) {
+        (LoaderKind::Fabric, v)
+    } else if let Some(v) = coordinate("net.neoforged:neoforge:")
+        .or_else(|| patch("neoforge"))
+        .or_else(|| arg("--fml.neoForgeVersion"))
+    {
+        (LoaderKind::NeoForge, v)
+    } else {
+        let v = coordinate("net.minecraftforge:forge:")
+            .or_else(|| patch("forge"))
+            .or_else(|| arg("--fml.forgeVersion"))?;
+        (LoaderKind::Forge, v)
+    };
     let minecraft = arg("--fml.mcVersion")
         .map(str::to_owned)
         .unwrap_or_else(|| game_version(value));

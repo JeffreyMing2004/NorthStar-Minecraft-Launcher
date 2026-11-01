@@ -144,7 +144,7 @@ pub fn directory(settings: &crate::store::Settings) -> PathBuf {
 }
 
 // Check every existing ancestor, including user-selected roots, before any traversal.
-fn checked(path: &Path) -> Result<PathBuf> {
+pub(crate) fn checked(path: &Path) -> Result<PathBuf> {
     let path = std::path::absolute(path).map_err(|e| e.to_string())?;
     for ancestor in path.ancestors() {
         reject_link(ancestor)?;
@@ -165,6 +165,11 @@ fn checked(path: &Path) -> Result<PathBuf> {
 }
 fn io(error: std::io::Error) -> String {
     error.to_string()
+}
+pub(crate) fn copy_roots(directory: &Path) -> Result<Vec<String>> {
+    let mut roots = Scope::Instance.roots();
+    roots.extend(content_roots(directory, Scope::Instance, &[])?);
+    Ok(roots)
 }
 fn item(base: &Path, relative: &str) -> Result<PathBuf> {
     let path = safe_join(base, relative)?;

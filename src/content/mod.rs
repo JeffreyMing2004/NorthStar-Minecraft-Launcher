@@ -8,9 +8,12 @@ pub fn manual_file_hash(path: &Path) -> Result<String> {
 mod assets;
 mod identify;
 mod metadata;
+mod optifine;
 pub use identify::{IdentifyPlan, adopt, identify, lock as lock_mod_versions};
+pub use optifine::import_optifine;
 mod export;
 mod files;
+pub(crate) use files::Stage;
 mod local;
 mod manager;
 mod mods;

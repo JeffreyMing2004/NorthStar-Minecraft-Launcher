@@ -10,6 +10,7 @@ use std::{
 
 const CONFIG: &str = "nscl-instance.json";
 pub mod backup;
+pub mod migration;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -41,6 +42,8 @@ pub struct Instance {
     pub memory: Option<u32>,
     pub last_played: Option<u64>,
     pub launch: Option<crate::minecraft::LaunchOptions>,
+    pub group: String,
+    pub pinned: bool,
 }
 impl Instance {
     /// Metadata always stays here, including when game data uses the shared root.
@@ -82,6 +85,9 @@ impl Instance {
         result
     }
     pub fn validate(&self) -> Result<()> {
+        if self.group.chars().count() > 32 || self.group.chars().any(char::is_control) {
+            return Err("实例分组最多 32 个字符，不能包含控制字符。".into());
+        }
         if let Some(options) = &self.launch {
             options.validate()?;
         }
@@ -182,7 +188,12 @@ pub fn list(root: &Path) -> Vec<Instance> {
             });
         }
     }
-    result.sort_by(|a, b| b.last_played.cmp(&a.last_played).then(a.name.cmp(&b.name)));
+    result.sort_by(|a, b| {
+        b.pinned
+            .cmp(&a.pinned)
+            .then(b.last_played.cmp(&a.last_played))
+            .then(a.name.cmp(&b.name))
+    });
     result
 }
 

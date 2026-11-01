@@ -190,7 +190,7 @@ pub fn show(
                 let entry = entries[index];
                 ui.push_id(&entry.relative, |ui| {
                     egui::Frame::NONE
-                        .fill(theme::TOPBAR_BG)
+                        .fill(theme::topbar_bg())
                         .corner_radius(6)
                         .inner_margin(8)
                         .show(ui, |ui| {
@@ -245,7 +245,7 @@ pub fn show(
                                                 egui::Label::new(
                                                     RichText::new(&entry.name)
                                                         .size(13.0)
-                                                        .color(theme::HEADING),
+                                                        .color(theme::heading()),
                                                 )
                                                 .truncate()
                                                 .sense(if clickable {
@@ -327,7 +327,7 @@ pub fn show(
                                                     }
                                                 ))
                                                 .size(11.0)
-                                                .color(theme::HINT),
+                                                .color(theme::hint()),
                                             )
                                             .truncate(),
                                         );
@@ -358,7 +358,7 @@ pub fn show(
                                                         .unwrap_or("")
                                                 ))
                                                 .size(10.0)
-                                                .color(theme::HINT),
+                                                .color(theme::hint()),
                                             )
                                             .truncate(),
                                         );

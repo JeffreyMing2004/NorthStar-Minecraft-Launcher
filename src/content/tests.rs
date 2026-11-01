@@ -20,6 +20,8 @@ use std::{
 
 #[path = "p1_tests.rs"]
 mod p1;
+#[path = "p2_tests.rs"]
+mod p2;
 
 #[test]
 fn project_logos_allow_missing_null_and_empty_urls() {
@@ -543,7 +545,7 @@ fn mrpack_rejects_unsafe_paths_unknown_loaders_and_bad_download_hosts() {
         let root = temporary();
         let mut index = json!({"formatVersion":1,"game":"minecraft","versionId":"1","name":"Test","dependencies":{"minecraft":"test-1"},"files":[]});
         if failure == "loader" {
-            index["dependencies"]["quilt-loader"] = json!("1");
+            index["dependencies"]["liteloader"] = json!("1");
         }
         if failure == "host" {
             index["files"] = json!([{"path":"mods/test.jar","hashes":hashes(b"jar"),"fileSize":3,"downloads":["https://example.com/file.jar"]}]);

@@ -25,17 +25,22 @@ pub enum DetailTab {
     ResourcePacks,
     Shaders,
     Files,
+    Worlds,
+    Screenshots,
 }
 
 #[derive(Default)]
 pub struct BrowserState {
     pub pack_update: Option<crate::pack_update_ui::Dialog>,
+    pub optifine: Option<crate::optifine_ui::Dialog>,
     pub search: String,
+    pub group: Option<String>,
     pub selected: String,
     pub filter: Filter,
     pub tab: DetailTab,
     pub creating: bool,
     pub files: crate::instance_files::Browser,
+    pub media: crate::instance_media::Browser,
     pub export: Option<crate::instance_export::ExportDialog>,
     pub backup: Option<crate::instance_backup::Dialog>,
     root: Option<PathBuf>,
@@ -83,6 +88,7 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
     let root = crate::store::game_directory(&app.settings);
     if app.instance_browser.root.as_ref() != Some(&root) {
         app.instance_browser.root = Some(root.clone());
+        app.instance_browser.group = None;
         app.instance_browser.invalidate_archives();
     }
     let editable = !app.service.busy() && app.service.game.is_none();
@@ -92,6 +98,9 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
         }
         app::heading(ui, "版本管理");
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if download_button(ui, "迁入已有实例", editable) {
+                app.migration.open = true;
+            }
             if download_button(ui, "安装新版本", !app.service.busy()) {
                 app.page = Page::Downloads;
                 app.category = 0;
@@ -129,8 +138,8 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
             Layout::top_down(Align::Min),
             |ui| {
                 egui::Frame::NONE
-                    .fill(theme::TOPBAR_BG)
-                    .stroke(Stroke::new(1.0, theme::CARD_BORDER))
+                    .fill(theme::topbar_bg())
+                    .stroke(Stroke::new(1.0, theme::card_border()))
                     .corner_radius(8)
                     .inner_margin(12)
                     .show(ui, |ui| {
@@ -145,6 +154,40 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
                                 .desired_width(ui.available_width()),
                         );
                         input_focus(ui, &response);
+                        egui::CollapsingHeader::new("按分组筛选").show(ui, |ui| {
+                            let groups: std::collections::BTreeSet<_> = app
+                                .service
+                                .instances
+                                .iter()
+                                .map(|i| i.group.clone())
+                                .collect();
+                            egui::ComboBox::from_id_salt("instance-group-filter")
+                                .selected_text(
+                                    app.instance_browser
+                                        .group
+                                        .as_deref()
+                                        .map(|g| if g.is_empty() { "未分组" } else { g })
+                                        .unwrap_or("全部分组"),
+                                )
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut app.instance_browser.group,
+                                        None,
+                                        "全部分组",
+                                    );
+                                    for group in groups {
+                                        ui.selectable_value(
+                                            &mut app.instance_browser.group,
+                                            Some(group.clone()),
+                                            if group.is_empty() {
+                                                "未分组"
+                                            } else {
+                                                &group
+                                            },
+                                        );
+                                    }
+                                });
+                        });
                         egui::ComboBox::from_id_salt("instance-filter")
                             .width(ui.available_width())
                             .selected_text(filter_label(app.instance_browser.filter))
@@ -193,10 +236,14 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
                             }
                             .into_iter()
                             .filter(|(_, i)| {
-                                query.is_empty()
-                                    || format!("{} {}", i.name, i.version_id)
-                                        .to_lowercase()
-                                        .contains(&query)
+                                app.instance_browser
+                                    .group
+                                    .as_ref()
+                                    .is_none_or(|g| g == &i.group)
+                                    && (query.is_empty()
+                                        || format!("{} {}", i.name, i.version_id)
+                                            .to_lowercase()
+                                            .contains(&query))
                             })
                             .collect();
                         if !entries
@@ -220,9 +267,15 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
                                 for (archive, instance) in entries {
                                     let icon_kind = icon_kind(app, &instance);
                                     let meta = format!(
-                                        "{} · {}",
+                                        "{} · {}{}{}",
                                         game_version(app, &instance),
-                                        kind(app, &instance)
+                                        kind(app, &instance),
+                                        if instance.pinned { " · 已固定" } else { "" },
+                                        if instance.group.is_empty() {
+                                            String::new()
+                                        } else {
+                                            format!(" · {}", instance.group)
+                                        }
                                     );
                                     if instance_row(
                                         ui,
@@ -276,13 +329,14 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
                             .find(|i| i.id == app.instance_browser.selected)
                             .map(|i| (None, i.clone()))
                     };
-                    egui::ScrollArea::vertical()
+                    egui::ScrollArea::both()
                         .id_salt((
                             "instance-browser-details",
                             &app.instance_browser.selected,
                             app.instance_browser.tab as u8,
                         ))
                         .max_height((height - 106.0).max(60.0))
+                        .max_width((right_width - 46.0).max(0.0))
                         .min_scrolled_height(0.0)
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
@@ -357,6 +411,7 @@ fn icon_kind(app: &NsclApp, instance: &Instance) -> crate::instance_icons::Kind 
         .map(|l| l.kind)
     {
         Some(LoaderKind::Fabric) => Kind::Fabric,
+        Some(LoaderKind::Quilt) => Kind::Quilt,
         Some(LoaderKind::Forge) => Kind::Forge,
         Some(LoaderKind::NeoForge) => Kind::NeoForge,
         None => Kind::Vanilla,
@@ -384,7 +439,7 @@ fn instance_row(
             if selected {
                 theme::nav_active_bg()
             } else {
-                theme::HOVER
+                theme::hover()
             },
         );
     }
@@ -392,14 +447,14 @@ fn instance_row(
         ui.painter().rect_filled(
             Rect::from_min_size(rect.min, Vec2::new(2.0, rect.height())),
             1.0,
-            theme::ACCENT,
+            theme::accent(),
         );
     }
     if response.has_focus() {
         ui.painter().rect_stroke(
             rect.shrink(1.0),
             4.0,
-            Stroke::new(1.0, theme::ACCENT),
+            Stroke::new(1.0, theme::accent()),
             egui::StrokeKind::Inside,
         );
     }
@@ -416,16 +471,16 @@ fn instance_row(
         egui::Label::new(
             RichText::new(&instance.name)
                 .size(13.0)
-                .color(theme::BODY_TEXT),
+                .color(theme::body_text()),
         )
         .truncate(),
     );
-    text.add(egui::Label::new(RichText::new(meta).size(11.0).color(theme::HINT)).truncate());
+    text.add(egui::Label::new(RichText::new(meta).size(11.0).color(theme::hint())).truncate());
     if current {
         ui.painter().circle_filled(
             Pos2::new(rect.right() - 7.0, rect.center().y),
             2.5,
-            theme::ACCENT,
+            theme::accent(),
         );
     }
     response
@@ -541,7 +596,7 @@ fn details(
                     RichText::new(&instance.name)
                         .size(20.0)
                         .family(theme::bold_family())
-                        .color(theme::HEADING),
+                        .color(theme::heading()),
                 )
                 .truncate(),
             );
@@ -552,7 +607,7 @@ fn details(
                         kind(app, instance)
                     ))
                     .size(12.0)
-                    .color(theme::HINT),
+                    .color(theme::hint()),
                 )
                 .truncate(),
             );
@@ -570,6 +625,8 @@ fn details(
             (DetailTab::ResourcePacks, "资源包"),
             (DetailTab::Shaders, "光影"),
             (DetailTab::Files, "文件"),
+            (DetailTab::Worlds, "存档"),
+            (DetailTab::Screenshots, "截图"),
         ] {
             if app::tab_button(ui, label, app.instance_browser.tab == tab) {
                 app.instance_browser.tab = tab;
@@ -577,6 +634,18 @@ fn details(
         }
     });
     ui.add_space(18.0);
+    if matches!(
+        app.instance_browser.tab,
+        DetailTab::Worlds | DetailTab::Screenshots
+    ) {
+        crate::instance_media::show(
+            ui,
+            app,
+            instance,
+            app.instance_browser.tab == DetailTab::Screenshots,
+        );
+        return;
+    }
     if app.instance_browser.tab == DetailTab::Files {
         crate::instance_files::show(ui, root, instance, &mut app.instance_browser.files);
         return;
@@ -640,7 +709,7 @@ fn details(
         ui.horizontal(|ui| {
             ui.add_sized(
                 Vec2::new(80.0, 24.0),
-                egui::Label::new(RichText::new(label).color(theme::HINT)),
+                egui::Label::new(RichText::new(label).color(theme::hint())),
             );
             ui.add(egui::Label::new(value).truncate());
         });
@@ -651,6 +720,23 @@ fn details(
             app.instance_memory = instance.memory.unwrap_or(app.settings.memory).to_string();
             app.instance_edit = Some(instance.clone());
         }
+        if download_button(ui, "创建快捷方式", editable) {
+            let name: String = instance
+                .name
+                .chars()
+                .map(|c| if "<>:\"/\\|?*".contains(c) { '_' } else { c })
+                .collect();
+            match crate::file_picker::save_shortcut(&format!("{name}.lnk")).and_then(|p| {
+                p.map(|p| nscl::shortcuts::create(root, &instance.id, &p))
+                    .transpose()
+            }) {
+                Ok(Some(path)) => {
+                    app.instance_status = format!("已创建快捷方式：{}", path.display())
+                }
+                Ok(None) => {}
+                Err(e) => app.service.error = Some(e),
+            }
+        }
         if download_button(
             ui,
             "管理模组",
@@ -660,6 +746,17 @@ fn details(
         }
         if download_button(ui, "归档实例", editable) {
             app.archive_confirm = Some(instance.clone());
+        }
+        if download_button(
+            ui,
+            "本地 OptiFine",
+            editable
+                && installed
+                    .as_ref()
+                    .and_then(|v| v.loader.as_ref())
+                    .is_some_and(|l| l.kind == crate::minecraft::LoaderKind::Forge),
+        ) {
+            app.instance_browser.optifine = Some(crate::optifine_ui::Dialog::new(root, instance));
         }
         if download_button(ui, "导出整合包", editable && installed.is_some()) {
             app.instance_browser.export = Some(crate::instance_export::ExportDialog::new(instance));

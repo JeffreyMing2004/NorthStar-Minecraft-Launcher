@@ -43,7 +43,7 @@ pub struct Logo(Option<TextureHandle>);
 
 impl Logo {
     pub fn paint(&self, ui: &Ui, rect: Rect, title: &str) {
-        ui.painter().rect_filled(rect, 8.0, theme::CARD_BG);
+        ui.painter().rect_filled(rect, 8.0, theme::card_bg());
         if let Some(texture) = &self.0 {
             let size = texture.size_vec2();
             let scale = (rect.width() / size.x).min(rect.height() / size.y);
@@ -57,7 +57,7 @@ impl Logo {
                 egui::Align2::CENTER_CENTER,
                 letter.to_uppercase().to_string(),
                 egui::FontId::proportional(rect.height() * 0.4),
-                theme::ACCENT,
+                theme::accent(),
             );
         }
     }
