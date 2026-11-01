@@ -24,6 +24,41 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool)
 }
 
 fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) {
+    ui.horizontal_wrapped(|ui| {
+        let modify = editable && !app.service.busy() && app.service.game.is_none();
+        for (label, action, selection) in [
+            (
+                "识别本地模组",
+                crate::service::mod_tools::Action::Identify,
+                false,
+            ),
+            (
+                "查看所选更新方案",
+                crate::service::mod_tools::Action::BatchUpdates,
+                true,
+            ),
+            (
+                "锁定所选版本",
+                crate::service::mod_tools::Action::Lock(true),
+                true,
+            ),
+            (
+                "解锁所选版本",
+                crate::service::mod_tools::Action::Lock(false),
+                true,
+            ),
+        ] {
+            if ui
+                .add_enabled(
+                    modify && (!selection || !app.service.content.managed_selection.is_empty()),
+                    egui::Button::new(label),
+                )
+                .clicked()
+            {
+                app.service.mod_tools(action, &app.settings, ui.ctx());
+            }
+        }
+    });
     let busy = app.service.busy();
     if app.service.content.managed.is_none()
         && !app.service.content.managed_requested
@@ -81,6 +116,7 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, instance: &Instance, editable: bool) 
 }
 
 fn search(ui: &mut Ui, app: &mut NsclApp) {
+    crate::content_page::provider(ui, app);
     let busy = app.service.busy();
     let mut back = false;
     ui.horizontal(|ui| {
@@ -350,7 +386,7 @@ fn plan(ui: &mut Ui, app: &mut NsclApp, editable: bool) {
                 );
             }
         }
-        ContentPlan::Pack(_) => {}
+        ContentPlan::Pack(_) | ContentPlan::Resource(_) => {}
     }
     ui.add_space(16.0);
     ui.separator();

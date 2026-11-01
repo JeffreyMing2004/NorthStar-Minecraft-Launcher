@@ -458,6 +458,14 @@ pub fn downloads(ui: &mut Ui, app: &mut NsclApp) {
                 }
             });
         });
+        let toolbar = ui.min_rect();
+        let mut tasks = ui.new_child(UiBuilder::new().max_rect(egui::Rect::from_min_max(
+            egui::pos2(toolbar.right() - 120.0, toolbar.top()),
+            toolbar.right_top() + egui::vec2(0.0, 40.0),
+        )));
+        if tasks.button("下载任务中心").clicked() {
+            app.tasks_open = true;
+        }
         ui.add_space(18.0);
         ui.separator();
         if app.category == 0 {
@@ -569,6 +577,12 @@ pub fn instance_windows(ctx: &egui::Context, app: &mut NsclApp) {
                                     ui.label("MiB（1024–32768）");
                                 });
                             }
+                            egui::CollapsingHeader::new("高级启动设置").show(ui, |ui| {
+                                let mut own = instance.launch.is_some();
+                                if ui.checkbox(&mut own, "覆盖全局启动参数").changed() { instance.launch = own.then(|| app.settings.launch.clone()); }
+                                if let Some(options) = &mut instance.launch { crate::launch_options_ui::show(ui, options); }
+                                else { app::hint(ui, "继承设置页的窗口、JVM 与游戏参数。"); }
+                            });
                         });
                     ui.separator();
                     if ui.button("保存实例配置").clicked() {
@@ -653,6 +667,9 @@ fn installation_options(ui: &mut Ui, app: &mut NsclApp) {
         ui.spacing_mut().item_spacing.x = 18.0;
         back = download_button(ui, "返回版本列表", !app.service.busy());
         app::heading(ui, &format!("Minecraft {}", version.id));
+        if ui.button("下载任务中心").clicked() {
+            app.tasks_open = true;
+        }
     });
     if back {
         app.download = Default::default();

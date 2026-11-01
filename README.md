@@ -24,11 +24,11 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 - **游戏安装**：安装、校验和修复 Minecraft，支持 Forge、Fabric 与 NeoForge。
 - **账号管理**：Microsoft 登录、离线账号、多账号切换，以及皮肤上传、3D 预览和正版账号披风选择。
 - **实例管理**：独立或共享游戏目录，复用已有 `.minecraft`，支持实例配置、归档与恢复，以及内容备份、存档恢复点和独立克隆。
-- **内容管理**：搜索 Modrinth 模组，处理必需依赖、兼容性检查和更新；管理本地模组、资源包与光影。
-- **整合包**：导入与导出 Modrinth `.mrpack` 整合包，按包要求准备游戏及加载器。
+- **内容管理**：Modrinth / CurseForge 模组与依赖安装，本地模组识别、批量更新及版本锁定；资源包与光影在线管理。
+- **整合包**：Modrinth `.mrpack` 导入导出、CurseForge 包导入，支持版本预览、升级前恢复点及历史回退。
 - **运行环境**：自动匹配 Java 和内存配置，支持手动调整；Windows 可下载所需 Java 运行时。
-- **联机**：自动下载 frpc、测速并分配隧道，无需开房码，最多同时开放 28 个房间。
-- **下载与更新**：下载源自动切换，文件校验与缓存复用，支持启动器更新检查。
+- **联机**：自动下载 frpc、测速并分配隧道，可选本地端口、发现局域网世界并检查房间环境，最多同时开放 28 个房间。
+- **下载与更新**：下载源自动切换、校验续传、持久安装队列及失败重试，支持启动器更新检查。
 - **运行与排障**：游戏停止与确认强制结束、实时日志搜索与过滤、按启动会话关联崩溃报告和 JVM 日志，支持导出脱敏诊断包。
 
 ## 界面预览
@@ -44,6 +44,8 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 </p>
 
 ## 快速开始
+
+操作说明见[使用指南](docs/user-guide.md)、[实例备份](docs/instance-backups.md)和[故障排查](docs/troubleshooting.md)。
 
 当前通过源码构建运行。可用发布包以 [GitHub Releases](https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases) 为准。
 

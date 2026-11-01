@@ -39,6 +39,8 @@ pub struct Source {
     pub custom_base: String,
     pub fallback_to_official: bool,
     pub proxy_mode: ProxyMode,
+    #[serde(skip)]
+    pub paused: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for Source {
@@ -48,6 +50,7 @@ impl Default for Source {
             custom_base: String::new(),
             fallback_to_official: true,
             proxy_mode: ProxyMode::System,
+            paused: Default::default(),
         }
     }
 }

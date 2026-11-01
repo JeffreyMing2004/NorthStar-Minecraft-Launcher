@@ -17,7 +17,17 @@ use std::{
 };
 
 struct Session(FrpcSession);
+use nscl::multiplayer::environment::{self, Environment, LanWorld};
+#[derive(Clone)]
+struct Review {
+    room: String,
+    remote: Option<Environment>,
+    local: Option<Environment>,
+    differences: Vec<String>,
+}
 enum Completion {
+    Review(Review),
+    Discovered(Result<Vec<LanWorld>, String>),
     Connected {
         result: Result<Session, String>,
         program: Option<PathBuf>,
@@ -26,6 +36,7 @@ enum Completion {
 }
 #[derive(Clone, Copy)]
 enum Task {
+    Discover,
     Download,
     Host,
     Join,
@@ -53,6 +64,12 @@ impl Session {
 
 #[derive(Default)]
 pub struct MultiplayerPage {
+    game_port: u16,
+    environment_source: Option<(PathBuf, crate::instances::Instance)>,
+    game_running: bool,
+    review: Option<Review>,
+    approved: Option<(String, Option<Environment>, Option<Environment>)>,
+    worlds: Vec<LanWorld>,
     room_code: String,
     message: String,
     pending: Option<Receiver<Completion>>,
@@ -85,6 +102,26 @@ impl MultiplayerPage {
                         return;
                     }
                     let result = match completion {
+                        Completion::Review(review) => {
+                            self.review = Some(review);
+                            self.message = "请确认房间环境差异。".into();
+                            return;
+                        }
+                        Completion::Discovered(result) => {
+                            match result {
+                                Ok(worlds) => {
+                                    self.worlds = worlds;
+                                    self.message = if self.worlds.is_empty() {
+                                        "未发现本机可用世界，可直接填写端口。"
+                                    } else {
+                                        "已发现本机局域网世界，请选择端口。"
+                                    }
+                                    .into();
+                                }
+                                Err(e) => self.message = e,
+                            }
+                            return;
+                        }
                         Completion::Downloaded(result) => {
                             match result {
                                 Ok(path) => {
@@ -181,6 +218,7 @@ impl MultiplayerPage {
             };
         }
         match self.task {
+            Some(Task::Discover) => "正在发现局域网世界",
             Some(Task::Download) => "frpc 下载中",
             Some(Task::Host) => "frpc 启动中",
             Some(Task::Join) => "正在加入联机",
@@ -232,7 +270,17 @@ impl MultiplayerPage {
         if self.pending.is_some() || self.session.is_some() {
             return;
         }
-        let port = GAME_PORT;
+        let port = if self.game_port == 0 {
+            GAME_PORT
+        } else {
+            self.game_port
+        };
+        let source = if hosting && !self.game_running {
+            None
+        } else {
+            self.environment_source.clone()
+        };
+        let approved = self.approved.clone();
         let (sender, receiver) = mpsc::channel();
         self.pending = Some(receiver);
         self.task = Some(if hosting { Task::Host } else { Task::Join });
@@ -250,12 +298,22 @@ impl MultiplayerPage {
         let endpoints: Vec<String> = endpoints.iter().map(|s| (*s).into()).collect();
         std::thread::spawn(move || {
             let mut program = None;
+            let mut review = None;
             let result = (|| {
                 if !hosting && !room.trim().starts_with("frpc:") {
                     return Err("请填写好友分享的 frpc 房间码。".into());
                 }
                 let endpoints: Vec<&str> = endpoints.iter().map(String::as_str).collect();
                 let client = RelayClient::available(&endpoints)?;
+                let local = source.as_ref().and_then(|(root, instance)| {
+                    let d = crate::minecraft::Downloader::new(
+                        Default::default(),
+                        cancel.clone(),
+                        Arc::new(|_| {}),
+                    )
+                    .ok()?;
+                    Environment::collect(root, instance, &d).ok()
+                });
                 if cancel.load(Ordering::Relaxed) {
                     return Err("操作已取消。".into());
                 }
@@ -278,7 +336,7 @@ impl MultiplayerPage {
                     executable.and_then(|executable| {
                         program = Some(executable.clone());
                         client
-                            .host_frpc_room(
+                            .host_frpc_room_with_environment(
                                 port,
                                 HostOptions {
                                     executable,
@@ -288,14 +346,55 @@ impl MultiplayerPage {
                                     cancel,
                                     report,
                                 },
+                                local,
                             )
                             .map(Session)
                     })
                 } else {
+                    let remote = client.room_environment(&room)?;
+                    let differences = match (&local, &remote) {
+                        (Some(a), Some(b)) => a.differences(b),
+                        (None, Some(_)) => {
+                            vec!["未能读取本机所选实例的环境，需自行核对版本与模组。".into()]
+                        }
+                        (_, None) => {
+                            vec!["房主或管理服务没有提供环境摘要，需自行核对版本与模组。".into()]
+                        }
+                    };
+                    if !differences.is_empty()
+                        && approved.as_ref() != Some(&(room.clone(), remote.clone(), local.clone()))
+                    {
+                        review = Some(Review {
+                            room: room.clone(),
+                            remote,
+                            local,
+                            differences,
+                        });
+                        return Err("等待确认环境差异。".into());
+                    }
                     client.join_frpc_room(&room, cancel).map(Session)
                 }
             })();
-            let _ = sender.send(Completion::Connected { result, program });
+            let _ = sender.send(if let Some(review) = review {
+                Completion::Review(review)
+            } else {
+                Completion::Connected { result, program }
+            });
+            ctx.request_repaint();
+        });
+    }
+    fn discover_worlds(&mut self, ctx: &egui::Context) {
+        if self.pending.is_some() || self.session.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.pending_cancel = Some(cancel.clone());
+        self.pending = Some(rx);
+        self.task = Some(Task::Discover);
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(Completion::Discovered(environment::discover(&cancel)));
             ctx.request_repaint();
         });
     }
@@ -329,6 +428,22 @@ impl Drop for MultiplayerPage {
 }
 
 pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
+    if app.multiplayer.game_port == 0 {
+        app.multiplayer.game_port = app.settings.local_game_port.max(1);
+    }
+    let instance_id = if app.service.game.is_some() {
+        &app.service.active_instance
+    } else {
+        &app.service.selected
+    };
+    app.multiplayer.environment_source = app
+        .service
+        .instances
+        .iter()
+        .find(|i| &i.id == instance_id)
+        .cloned()
+        .map(|i| (crate::store::game_directory(&app.settings), i));
+    app.multiplayer.game_running = app.service.game.is_some();
     let account = app.accounts.list.current().cloned();
     app.multiplayer.poll(account.as_ref());
     app.multiplayer.enter();
@@ -374,7 +489,7 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
                 app::hint(ui, &message);
             }
             if !session.running() {
-                app::hint(ui, "联机已停止，请关闭后重新连接。");
+                app::hint(ui, "连接已中断，可重新连接。房主重连后会生成新房间码。");
             }
             theme::toolbar(ui, |ui| {
                 if download_button(ui, "复制房间码", true) {
@@ -391,6 +506,25 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
             });
         });
         ui.add_space(12.0);
+        let reconnect =
+            (!session.running()).then(|| (session.hosting(), session.room().to_owned()));
+        if let Some((hosting, code)) = reconnect
+            && download_button(ui, "重新连接", true)
+        {
+            app.multiplayer.session = None;
+            app.multiplayer.approved = None;
+            if !hosting {
+                app.multiplayer.room_code = code;
+            }
+            let executable = app
+                .multiplayer
+                .program
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            app.multiplayer
+                .start(&VERIFICATION_ENDPOINTS, hosting, executable, ui.ctx());
+        }
         if download_button(ui, "断开联机", true) {
             app.multiplayer.session = None;
             app.multiplayer.message = "已断开联机。".into();
@@ -400,7 +534,16 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
             ui.spacing_mut().item_spacing.y = 10.0;
             ui.add_enabled_ui(!busy, |ui| {
                 app::body(ui, "创建房间");
-                app::hint(ui, "只能使用 25565 端口开房。请将游戏「对局域网开放」的端口或服务端端口设为 25565，再创建房间。好友需使用兼容的游戏版本和模组。");
+                app::hint(ui, "填写本机游戏对局域网开放的端口；可发现本机局域网世界。创建房间时分享当前运行实例的游戏、加载器和模组摘要。");
+                ui.horizontal(|ui| {
+                    ui.label("本地游戏端口");
+                    if ui.add(egui::DragValue::new(&mut app.multiplayer.game_port).range(1..=65535)).changed() {
+                        app.settings.local_game_port = app.multiplayer.game_port;
+                        if let Err(e) = crate::store::save(&app.settings) { app.multiplayer.message = e; }
+                    }
+                    if ui.button("发现局域网世界").clicked() { app.multiplayer.discover_worlds(ui.ctx()); }
+                });
+                for world in app.multiplayer.worlds.clone(){if ui.button(format!("{} · {}",world.motd,world.port)).clicked(){app.multiplayer.game_port=world.port;app.settings.local_game_port=world.port;if let Err(e)=crate::store::save(&app.settings){app.multiplayer.message=e;}}}
                 if app::primary_button(ui, "创建联机房间") {
                     if !app.multiplayer.detected {
                         app.multiplayer.message = "正在检测 frpc，请稍候。".into();
@@ -440,6 +583,18 @@ pub fn show(ui: &mut egui::Ui, app: &mut NsclApp) {
     if busy {
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(250));
+    }
+    if let Some(review) = app.multiplayer.review.clone() {
+        let mut open = true;
+        egui::Window::new("房间环境检查").open(&mut open).default_width(600.0).vscroll(true).max_height(480.0).show(ui.ctx(),|ui|{
+            ui.label("版本和模组差异可能影响连接；仅客户端模组不同也可能正常游戏，请按服务器要求确认。");
+            for difference in &review.differences{ui.label(difference);}
+            if ui.button("确认按当前环境加入").clicked(){app.multiplayer.approved=Some((review.room.clone(),review.remote.clone(),review.local.clone()));app.multiplayer.room_code=review.room.clone();app.multiplayer.review=None;app.multiplayer.start(&VERIFICATION_ENDPOINTS,false,String::new(),ui.ctx());}
+        });
+        if !open {
+            app.multiplayer.review = None;
+            app.multiplayer.approved = None;
+        }
     }
     if app.multiplayer.download_prompt {
         let mut open = true;
@@ -613,7 +768,7 @@ mod tests {
         ] {
             assert!(!labels.contains(removed), "unexpected setting: {removed}");
         }
-        assert!(labels.contains("只能使用 25565 端口开房"));
+        assert!(labels.contains("本地游戏端口"));
         let settings = serde_json::to_string(&app.settings).unwrap();
         assert!(!settings.contains("owner_token"));
         assert!(!settings.contains("multiplayer_endpoint"));

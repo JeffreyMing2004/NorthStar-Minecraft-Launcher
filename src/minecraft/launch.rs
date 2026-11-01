@@ -377,6 +377,7 @@ pub(super) fn launch_arguments_for(
     context: LaunchContext<'_>,
 ) -> Result<Vec<String>> {
     let settings = context.settings;
+    settings.launch.validate()?;
     let identity = context.identity;
     let demo = settings.demo_mode && !identity.online;
     let classpath = std::env::join_paths(classpath)
@@ -424,8 +425,8 @@ pub(super) fn launch_arguments_for(
             "library_directory",
             root.join("libraries").to_string_lossy().into_owned(),
         ),
-        ("resolution_width", "1280".into()),
-        ("resolution_height", "720".into()),
+        ("resolution_width", settings.launch.width.to_string()),
+        ("resolution_height", settings.launch.height.to_string()),
     ]);
     let (mut jvm, mut game) = if let Some(arguments) = &version.arguments {
         (
@@ -471,7 +472,26 @@ pub(super) fn launch_arguments_for(
     ] {
         jvm.push(format!("-D{property}={}", natives.display()));
     }
+    jvm.extend(settings.launch.jvm_args.iter().cloned());
     jvm.push(version.main_class.clone());
+    if settings.launch.custom_resolution {
+        for (flag, value) in [
+            ("--width", settings.launch.width),
+            ("--height", settings.launch.height),
+        ] {
+            if let Some(i) = game.iter().position(|a| a == flag)
+                && i + 1 < game.len()
+            {
+                game[i + 1] = value.to_string();
+            } else {
+                game.extend([flag.into(), value.to_string()]);
+            }
+        }
+    }
+    if settings.launch.fullscreen && !game.iter().any(|a| a == "--fullscreen") {
+        game.push("--fullscreen".into());
+    }
+    game.extend(settings.launch.game_args.iter().cloned());
     if demo && !game.iter().any(|argument| argument == "--demo") {
         game.push("--demo".into());
     }

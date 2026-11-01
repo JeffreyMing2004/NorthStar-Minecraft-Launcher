@@ -72,6 +72,8 @@ fn mod_tab_shows_update_preview_and_removal_controls_during_background_work() {
     app.service.content.managed = Some(crate::content::ManagedCatalog {
         target,
         entries: vec![crate::content::ManagedEntry {
+            locked: false,
+            pack_owned: false,
             installed,
             intact: true,
         }],

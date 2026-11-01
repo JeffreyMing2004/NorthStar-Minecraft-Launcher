@@ -32,6 +32,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct CreateRoom {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<super::environment::Environment>,
     pub candidates: Vec<String>,
     #[serde(default)]
     pub avoid: Vec<String>,
@@ -45,6 +47,8 @@ pub(crate) struct Lease {
 }
 #[derive(Serialize, Deserialize)]
 pub(crate) struct RoomInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<super::environment::Environment>,
     pub node_name: String,
     pub public_host: String,
     pub remote_port: u16,

@@ -18,6 +18,9 @@ use std::{
     time::Duration,
 };
 
+#[path = "p1_tests.rs"]
+mod p1;
+
 #[test]
 fn project_logos_allow_missing_null_and_empty_urls() {
     let mut project = json!({"project_id":"test","title":"Test","description":"","downloads":1});

@@ -213,7 +213,8 @@ fn installation_controls_fit_the_minimum_window_during_query_and_install() {
         if task == Task::LoaderVersions {
             app.service.loaders.clear();
         }
-        let output = frame(&ctx, &mut app, size, vec![]);
+        let mut output = frame(&ctx, &mut app, size, vec![]);
+        output.textures_delta.clear();
         let install = text_rect(&output, "开始安装");
         assert!(
             install.max.y < size.y && install.max.x < size.x,

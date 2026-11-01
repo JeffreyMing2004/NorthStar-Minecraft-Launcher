@@ -6,16 +6,19 @@ use crate::{
     minecraft::{self, Downloader, LoaderKind, LoaderVersion, Result},
     store::Settings,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+pub(super) mod curseforge;
+mod update;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
 };
+pub use update::{PackUpdatePlan, install_update, plan_update};
 use zip::ZipArchive;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PackIndex {
     format_version: u32,
@@ -26,7 +29,7 @@ struct PackIndex {
     dependencies: BTreeMap<String, String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PackFile {
     path: String,
@@ -53,6 +56,9 @@ impl PackFile {
 
 #[derive(Clone)]
 pub struct PackPlan {
+    pub origin: Option<super::PackOrigin>,
+    pub changelog: String,
+    pub manual_files: Vec<ContentVersion>,
     pub name: String,
     pub version: String,
     pub minecraft: String,
@@ -124,6 +130,22 @@ fn archive_entry(archive: &mut ZipArchive<fs::File>, name: &str, limit: u64) -> 
 }
 
 pub fn inspect_pack(root: &Path, path: &Path) -> Result<PackPlan> {
+    let d = Downloader::new(
+        Default::default(),
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        std::sync::Arc::new(|_| {}),
+    )?;
+    inspect_pack_with_downloader(root, path, &d)
+}
+pub fn inspect_pack_with_downloader(root: &Path, path: &Path, d: &Downloader) -> Result<PackPlan> {
+    let mut archive = ZipArchive::new(fs::File::open(path).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    if archive.by_name("manifest.json").is_ok() && archive.by_name("modrinth.index.json").is_err() {
+        return curseforge::inspect(root, path, d);
+    }
+    inspect_modrinth(root, path, false)
+}
+fn inspect_modrinth(root: &Path, path: &Path, allow_manual: bool) -> Result<PackPlan> {
     if !path.is_file() {
         return Err("请选择可读取的 .mrpack 文件。".into());
     }
@@ -229,8 +251,11 @@ pub fn inspect_pack(root: &Path, path: &Path) -> Result<PackPlan> {
             return Err("整合包下载清单有重复文件路径。".into());
         }
         files::validate_hashes(&file.hashes)?;
+        if !allow_manual && !file.hashes.contains_key("sha512") {
+            return Err("Modrinth 整合包文件缺少 SHA-512。".into());
+        }
         if file.file_size > files::MAX_FILE
-            || file.downloads.is_empty()
+            || (file.downloads.is_empty() && !allow_manual)
             || file.downloads.len() > 16
         {
             return Err("整合包资源大小或下载地址数量无效。".into());
@@ -295,6 +320,9 @@ pub fn inspect_pack(root: &Path, path: &Path) -> Result<PackPlan> {
         .filter(|f| f.env.get("client").is_some_and(|v| v == "optional"))
         .count();
     Ok(PackPlan {
+        origin: None,
+        changelog: String::new(),
+        manual_files: Vec::new(),
         name: index.name.clone(),
         version: index.version_id.clone(),
         minecraft,
@@ -320,7 +348,21 @@ pub fn plan_pack(root: &Path, version: &ContentVersion, api: &Modrinth) -> Resul
         &file.filename,
         &api.downloader,
     )?;
-    let plan = inspect_pack(root, &archive)?;
+    let mut plan = inspect_pack_with_downloader(root, &archive, &api.downloader)?;
+    plan.origin = Some(super::PackOrigin {
+        provider: if version.id.starts_with("cf-") {
+            super::Provider::CurseForge
+        } else {
+            super::Provider::Modrinth
+        },
+        project_id: version.project_id.clone(),
+        version_id: version.id.clone(),
+    });
+    plan.changelog = if version.id.starts_with("cf-") {
+        api.version(&version.id)?.changelog
+    } else {
+        version.changelog.clone()
+    };
     if !version.game_versions.contains(&plan.minecraft)
         || plan
             .loader
@@ -338,6 +380,27 @@ pub fn install_pack(
     settings: &Settings,
     downloader: &Downloader,
 ) -> Result<Instance> {
+    let prepared = prepare_pack(root, plan, settings, downloader)?;
+    let destination = files::safe_path(root, &format!("instances/{}", prepared.instance.id))?;
+    if destination.exists() {
+        return Err("整合包实例目录已存在，请重试。".into());
+    }
+    fs::create_dir_all(destination.parent().unwrap()).map_err(|e| e.to_string())?;
+    fs::rename(&prepared.payload, &destination).map_err(|e| format!("发布整合包实例失败：{e}"))?;
+    Ok(prepared.instance)
+}
+struct PreparedPack {
+    stage: files::Stage,
+    payload: PathBuf,
+    instance: Instance,
+    record: Registry,
+}
+fn prepare_pack(
+    root: &Path,
+    plan: &PackPlan,
+    settings: &Settings,
+    downloader: &Downloader,
+) -> Result<PreparedPack> {
     downloader.check_cancelled()?;
     if !files::verified(
         &plan.archive,
@@ -357,7 +420,7 @@ pub fn install_pack(
         .collect();
     let key = |file: &PackFile| {
         (
-            file.hashes["sha512"].to_ascii_lowercase(),
+            files::cache_key(&file.hashes),
             file.path
                 .rsplit('/')
                 .next()
@@ -480,8 +543,12 @@ pub fn install_pack(
     };
     instance.validate()?;
     let record = Registry {
+        pinned: Default::default(),
+        pack_mods: Default::default(),
+        resources: Default::default(),
         mods: BTreeMap::new(),
         pack: Some(PackRecord {
+            origin: plan.origin.clone(),
             name: plan.name.clone(),
             version: plan.version.clone(),
             minecraft: plan.minecraft.clone(),
@@ -492,11 +559,10 @@ pub fn install_pack(
     crate::store::write_json(&payload.join(REGISTRY), &record)?;
     crate::store::write_json(&payload.join("nscl-instance.json"), &instance)?;
     downloader.check_cancelled()?;
-    let destination = files::safe_path(root, &format!("instances/{}", instance.id))?;
-    if destination.exists() {
-        return Err("整合包实例目录已存在，请重试。".into());
-    }
-    fs::create_dir_all(destination.parent().unwrap()).map_err(|e| e.to_string())?;
-    fs::rename(&payload, &destination).map_err(|e| format!("发布整合包实例失败：{e}"))?;
-    Ok(instance)
+    Ok(PreparedPack {
+        stage,
+        payload,
+        instance,
+        record,
+    })
 }

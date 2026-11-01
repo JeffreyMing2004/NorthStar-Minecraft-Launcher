@@ -46,6 +46,10 @@ impl Page {
 }
 
 pub struct NsclApp {
+    pub curseforge_key: String,
+    pub manual_path: String,
+    pub tasks_open: bool,
+    pub queue_version: String,
     pub page: Page,
     pub category: usize,
     pub account_tab: u8,
@@ -93,6 +97,10 @@ impl NsclApp {
         settings.online_mode = accounts.list.current().is_some_and(|a| a.is_online());
         let service = crate::service::GameService::new(&settings);
         Self {
+            curseforge_key: String::new(),
+            manual_path: String::new(),
+            tasks_open: false,
+            queue_version: String::new(),
             page: initial_page(),
             category: 0,
             account_tab: 0,
@@ -148,6 +156,7 @@ impl eframe::App for NsclApp {
         let previous_instance = self.service.selected.clone();
         let previous_log = self.service.last_log.clone();
         self.service.poll(&self.settings);
+        self.service.run_queue(&self.settings, &ctx);
         if self.log_view.is_some() && previous_log != self.service.last_log {
             self.open_log();
         }
@@ -192,6 +201,11 @@ impl eframe::App for NsclApp {
         }
         pages::instance_windows(&ctx, self);
         crate::instance_backup::show(&ctx, self);
+        crate::preflight_ui::show(&ctx, self);
+        crate::task_ui::show(&ctx, self);
+        crate::manual_ui::show(&ctx, self);
+        crate::pack_update_ui::show(&ctx, self);
+        crate::mod_tools_ui::show(&ctx, self);
         crate::log_ui::show(&ctx, self);
         crate::error_ui::show(&ctx, self);
         #[cfg(debug_assertions)]

@@ -40,6 +40,7 @@ pub struct Instance {
     pub java_path: Option<String>,
     pub memory: Option<u32>,
     pub last_played: Option<u64>,
+    pub launch: Option<crate::minecraft::LaunchOptions>,
 }
 impl Instance {
     /// Metadata always stays here, including when game data uses the shared root.
@@ -75,9 +76,15 @@ impl Instance {
             result.memory = memory;
             result.auto_memory = false;
         }
+        if let Some(options) = &self.launch {
+            result.launch = options.clone();
+        }
         result
     }
     pub fn validate(&self) -> Result<()> {
+        if let Some(options) = &self.launch {
+            options.validate()?;
+        }
         minecraft::validate_id(&self.id)?;
         minecraft::validate_local_id(&self.version_id)?;
         if self.requires_isolation() && self.isolation != Isolation::Isolated {

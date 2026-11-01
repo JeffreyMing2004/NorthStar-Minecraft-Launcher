@@ -125,8 +125,12 @@ fn folder_packs_keep_their_files_and_pack_tracking_when_disabled() {
     )
     .unwrap();
     let record = Registry {
+        pinned: Default::default(),
+        pack_mods: Default::default(),
+        resources: Default::default(),
         mods: Default::default(),
         pack: Some(PackRecord {
+            origin: None,
             name: "Pack".into(),
             version: "1".into(),
             minecraft: target.minecraft.clone(),

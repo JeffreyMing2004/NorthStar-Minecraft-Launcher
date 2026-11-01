@@ -46,29 +46,38 @@ impl GameService {
             ctx.clone(),
             self.cancel.clone(),
         );
+        let source = crate::minecraft::Source {
+            paused: self.paused.clone(),
+            ..Default::default()
+        };
         std::thread::spawn(move || {
-            let result = Downloader::new(Default::default(), cancel, reporter(&sender, &ctx))
-                .and_then(|d| match action {
-                    Action::List => backup::list(&destination, &instance)
-                        .map(|s| BackupEvent::Listed(instance.id.clone(), s)),
-                    Action::Create(scope) => {
-                        backup::create(&root, &instance, &destination, scope, false, &d).map(|s| {
-                            BackupEvent::Done(format!(
-                                "{}备份完成（{:.1} MiB）。",
-                                scope.label(),
-                                s.bytes as f64 / 1048576.0
-                            ))
-                        })
-                    }
-                    Action::Restore(id) => backup::restore(&root, &instance, &destination, &id, &d)
-                        .map(|()| {
-                            BackupEvent::Done("恢复完成；恢复前的数据已另存为恢复点。".into())
-                        }),
-                    Action::Clone(options) => {
-                        backup::clone_instance(&root, &instance, &options, &d)
-                            .map(BackupEvent::Cloned)
-                    }
-                });
+            let result =
+                Downloader::new(source, cancel, reporter(&sender, &ctx)).and_then(
+                    |d| match action {
+                        Action::List => backup::list(&destination, &instance)
+                            .map(|s| BackupEvent::Listed(instance.id.clone(), s)),
+                        Action::Create(scope) => {
+                            backup::create(&root, &instance, &destination, scope, false, &d).map(
+                                |s| {
+                                    BackupEvent::Done(format!(
+                                        "{}备份完成（{:.1} MiB）。",
+                                        scope.label(),
+                                        s.bytes as f64 / 1048576.0
+                                    ))
+                                },
+                            )
+                        }
+                        Action::Restore(id) => {
+                            backup::restore(&root, &instance, &destination, &id, &d).map(|()| {
+                                BackupEvent::Done("恢复完成；恢复前的数据已另存为恢复点。".into())
+                            })
+                        }
+                        Action::Clone(options) => {
+                            backup::clone_instance(&root, &instance, &options, &d)
+                                .map(BackupEvent::Cloned)
+                        }
+                    },
+                );
             send(
                 &sender,
                 &ctx,

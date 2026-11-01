@@ -427,7 +427,10 @@ fn checksum_failure_never_marks_install_complete() {
         .server
         .put("/v1/objects/client/client.jar", b"broken fixture".to_vec());
     let error = install(&fixture.root, &fixture.entry, &fixture.server.downloader()).unwrap_err();
-    assert!(error.contains("SHA-1"), "{error}");
+    assert!(
+        error.contains("SHA-1") || error.contains("文件长度"),
+        "{error}"
+    );
     assert!(installed_versions(&fixture.root).is_empty());
     assert!(
         !fixture
@@ -581,6 +584,46 @@ fn java_versions_and_player_names_are_validated() {
         assert!(validate_player_name(name).is_err());
     }
     assert!(validate_player_name("NSCL_Player123").is_ok());
+}
+
+#[test]
+fn advanced_launch_arguments_keep_jvm_before_main_and_dimensions_in_game_arguments() {
+    let fixture = Fixture::new();
+    let settings = crate::store::Settings {
+        launch: LaunchOptions {
+            jvm_args: vec!["-Dcustom=value with spaces".into()],
+            game_args: vec!["--custom".into(), "value with spaces".into()],
+            custom_resolution: true,
+            width: 1600,
+            height: 900,
+            fullscreen: true,
+        },
+        ..Default::default()
+    };
+    let args = launch_arguments(
+        &fixture.root,
+        &fixture.version,
+        &fixture.index,
+        &[fixture.root.join("client.jar")],
+        &fixture.root.join("natives"),
+        &Platform::current(),
+        &settings,
+    )
+    .unwrap();
+    let main = args
+        .iter()
+        .position(|a| a == &fixture.version.main_class)
+        .unwrap();
+    assert!(
+        args.iter()
+            .position(|a| a == "-Dcustom=value with spaces")
+            .unwrap()
+            < main
+    );
+    assert!(args.windows(2).any(|a| a == ["--width", "1600"]));
+    assert!(args.windows(2).any(|a| a == ["--height", "900"]));
+    assert!(args[main + 1..].iter().any(|a| a == "--fullscreen"));
+    assert_eq!(&args[args.len() - 2..], ["--custom", "value with spaces"]);
 }
 
 #[test]
@@ -822,7 +865,10 @@ fn logging_download_failure_and_cancellation_preserve_original_files() {
     };
     let error = prepare().unwrap_err();
     assert!(error.contains("补全启动日志配置失败"), "{error}");
-    assert!(error.contains("SHA-1"), "{error}");
+    assert!(
+        error.contains("SHA-1") || error.contains("文件长度"),
+        "{error}"
+    );
     assert_eq!(fs::read(&destination).unwrap(), b"previous file");
     assert!(!destination.with_file_name("log.xml.part").exists());
     let requests = fixture.server.requests.load(Ordering::Relaxed);

@@ -1,6 +1,7 @@
 pub mod accounts;
 pub mod browser;
 pub mod content;
+pub mod download_tasks;
 pub mod instances;
 pub mod java;
 pub mod memory;

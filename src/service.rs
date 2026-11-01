@@ -18,6 +18,7 @@ pub mod backup;
 #[cfg(test)]
 mod backup_tests;
 pub mod content;
+mod downloads;
 mod export;
 #[cfg(test)]
 mod isolation_tests;
@@ -25,6 +26,9 @@ mod isolation_tests;
 mod java_tests;
 #[cfg(test)]
 mod managed_tests;
+mod manual;
+pub mod mod_tools;
+pub mod pack_updates;
 mod resources;
 pub use content::{ContentPlan, ContentState};
 
@@ -38,7 +42,20 @@ pub enum Task {
     Content,
 }
 
+#[derive(Clone)]
+pub enum LaunchPrompt {
+    Account,
+    Java {
+        instance: Box<crate::instances::Instance>,
+        major: u32,
+        detail: String,
+    },
+}
+
 enum Event {
+    ModTools(mod_tools::ModEvent),
+    Pack(pack_updates::PackEvent),
+    LaunchPrompt(LaunchPrompt),
     Progress(Progress),
     Versions(Vec<VersionEntry>),
     Loaders(Vec<LoaderVersion>),
@@ -57,6 +74,15 @@ enum Event {
 }
 
 pub struct GameService {
+    pub active_instance: String,
+    pub identify_plan: Option<crate::content::IdentifyPlan>,
+    pub pack_state: pack_updates::PackState,
+    pub queue: crate::download_tasks::Queue,
+    pub rate: crate::download_tasks::Rate,
+    paused: Arc<AtomicBool>,
+    pub launch_prompt: Option<LaunchPrompt>,
+    pub pending_java_launch: Option<String>,
+    pub resume_launch: Option<String>,
     pub versions: Vec<VersionEntry>,
     pub installed: Vec<InstalledVersion>,
     pub selected: String,
@@ -103,6 +129,15 @@ impl GameService {
             .map(|version| version.id.clone())
             .unwrap_or_default();
         Self {
+            active_instance: String::new(),
+            identify_plan: None,
+            pack_state: Default::default(),
+            queue: crate::download_tasks::Queue::load(&store::game_directory(settings)),
+            rate: Default::default(),
+            paused: settings.source.paused.clone(),
+            launch_prompt: None,
+            pending_java_launch: None,
+            resume_launch: None,
             versions: Vec::new(),
             installed,
             selected,
@@ -171,6 +206,8 @@ impl GameService {
     }
 
     fn begin(&mut self, task: Task) {
+        self.paused.store(false, Ordering::Relaxed);
+        self.rate = Default::default();
         self.cancel = Arc::new(AtomicBool::new(false));
         self.task = task;
         self.error = None;
@@ -188,7 +225,16 @@ impl GameService {
                 break;
             };
             match event {
-                Event::Progress(progress) => self.progress = progress,
+                Event::ModTools(event) => self.apply_mod_tools(event),
+                Event::Pack(event) => self.apply_pack(event, settings),
+                Event::LaunchPrompt(prompt) => {
+                    self.task = Task::Idle;
+                    self.launch_prompt = Some(prompt);
+                }
+                Event::Progress(progress) => {
+                    self.rate.update(progress.bytes_downloaded);
+                    self.progress = progress;
+                }
                 Event::Versions(versions) => {
                     self.versions = versions;
                     self.task = Task::Idle;
@@ -200,6 +246,8 @@ impl GameService {
                     self.notice.clear();
                 }
                 Event::Installed(version) => {
+                    self.queue
+                        .finish(crate::download_tasks::State::Complete, "安装完成".into());
                     let isolation = self
                         .instances
                         .iter()
@@ -226,6 +274,14 @@ impl GameService {
                     );
                 }
                 Event::Failed(error) => {
+                    self.queue.finish(
+                        if error == "操作已取消。" {
+                            crate::download_tasks::State::Cancelled
+                        } else {
+                            crate::download_tasks::State::Failed
+                        },
+                        error.clone(),
+                    );
                     let failed_task = self.task;
                     self.task = Task::Idle;
                     if error == "操作已取消。" {
@@ -244,6 +300,7 @@ impl GameService {
                     self.notice = format!("游戏已启动（PID {pid}）");
                 }
                 Event::GameExited(result) => {
+                    self.active_instance.clear();
                     self.game = None;
                     if self.game_control.stopped() {
                         self.notice = "游戏已停止。".into();
@@ -277,6 +334,10 @@ impl GameService {
                     }
                 }
                 Event::JavaInstalled(runtime) => {
+                    if let Some(id) = self.pending_java_launch.take() {
+                        self.resume_launch = Some(id);
+                        self.launch_prompt = None;
+                    }
                     self.task = Task::Idle;
                     self.java_status = format!("已安装：{}，自动匹配可直接使用。", runtime.label());
                     self.notice = self.java_status.clone();
@@ -417,6 +478,9 @@ impl GameService {
         }
         self.begin(Task::Install);
         let root = store::game_directory(settings);
+        if self.queue.active.is_none() {
+            self.queue.enqueue(entry.clone(), loader.clone(), true);
+        }
         let source = settings.source.clone();
         let java = settings.configured_java().to_owned();
         let cancel = self.cancel.clone();
@@ -453,8 +517,12 @@ impl GameService {
             self.cancel.clone(),
             ctx.clone(),
         );
+        let source = crate::minecraft::Source {
+            paused: self.paused.clone(),
+            ..Default::default()
+        };
         std::thread::spawn(move || {
-            let result = Downloader::new(Default::default(), cancel, reporter(&sender, &ctx))
+            let result = Downloader::new(source, cancel, reporter(&sender, &ctx))
                 .and_then(|d| crate::java::install_runtime(major, &d));
             send(
                 &sender,
@@ -499,8 +567,7 @@ impl GameService {
             return;
         }
         let Some(selected_account) = accounts.list.current() else {
-            self.error =
-                Some("请先在账号页登录 Microsoft 账号或创建离线账号，并选择要使用的账号。".into());
+            self.launch_prompt = Some(LaunchPrompt::Account);
             return;
         };
         let account = accounts.launch_account();
@@ -515,6 +582,7 @@ impl GameService {
             return;
         };
         self.begin(Task::Launch);
+        self.active_instance = instance.id.clone();
         self.game_control = minecraft::GameControl::default();
         self.show_diagnostics = false;
         let control = self.game_control.clone();
@@ -525,6 +593,31 @@ impl GameService {
         let context = ctx.clone();
         let cancel = self.cancel.clone();
         std::thread::spawn(move || {
+            let effective = instance.effective_settings(&settings);
+            let required = minecraft::installed_versions(&root)
+                .into_iter()
+                .find(|v| v.id == instance.version_id)
+                .map(|v| v.java_major)
+                .unwrap_or(8);
+            if let Err(e) = instance
+                .game_directory(&root)
+                .and_then(|p| minecraft::preflight::directory(&p))
+            {
+                send(&sender, &context, Event::Failed(e));
+                return;
+            }
+            if let Err(detail) = crate::java::find(effective.configured_java(), required) {
+                send(
+                    &sender,
+                    &context,
+                    Event::LaunchPrompt(LaunchPrompt::Java {
+                        instance: Box::new(instance),
+                        major: required,
+                        detail,
+                    }),
+                );
+                return;
+            }
             let identity = match account {
                 Some((account, cached)) => {
                     match crate::accounts::AuthClient::new().and_then(|client| {

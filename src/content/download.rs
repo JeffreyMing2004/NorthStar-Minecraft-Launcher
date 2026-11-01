@@ -12,6 +12,14 @@ pub fn download_mod(
     version: &ContentVersion,
     downloader: &Downloader,
 ) -> Result<PathBuf> {
+    download_mod_with_cache(directory, directory, version, downloader)
+}
+pub fn download_mod_with_cache(
+    directory: &Path,
+    cache: &Path,
+    version: &ContentVersion,
+    downloader: &Downloader,
+) -> Result<PathBuf> {
     minecraft::validate_id(&version.project_id)?;
     minecraft::validate_id(&version.id)?;
     let file = version.file(ContentKind::Mod)?;
@@ -26,7 +34,7 @@ pub fn download_mod(
     }
     downloader.phase(&format!("下载模组：{}", version.name), 0);
     let cached = files::fetch(
-        directory,
+        cache,
         std::slice::from_ref(&file.url),
         &file.hashes,
         file.size,

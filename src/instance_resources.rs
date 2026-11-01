@@ -14,6 +14,27 @@ pub fn show(
     kind: LocalKind,
     editable: bool,
 ) {
+    if kind != LocalKind::Mods {
+        let content_kind = if kind == LocalKind::ResourcePacks {
+            crate::content::ContentKind::ResourcePack
+        } else {
+            crate::content::ContentKind::Shader
+        };
+        if app.service.content.target == instance.id
+            && app.service.content.kind == content_kind
+            && app.service.content.adding
+        {
+            crate::content_page::resource_browser(ui, app, content_kind);
+            return;
+        }
+        if ui
+            .add_enabled(!app.service.busy(), egui::Button::new("在线搜索与安装"))
+            .clicked()
+        {
+            app.service
+                .content_resource_instance(&instance.id, content_kind);
+        }
+    }
     app.service
         .local_list(instance, kind, &app.settings, ui.ctx(), false);
     let root = crate::store::game_directory(&app.settings);
@@ -68,6 +89,36 @@ pub fn show(
         );
         return;
     };
+    if kind != LocalKind::Mods {
+        egui::CollapsingHeader::new("已登记资源的在线版本").show(ui, |ui| {
+            for e in &catalog.entries {
+                if let Some(project) = &e.project
+                    && ui
+                        .add_enabled(!busy, egui::Button::new(format!("查看 {} 的更新", e.name)))
+                        .clicked()
+                {
+                    let k = if kind == LocalKind::ResourcePacks {
+                        crate::content::ContentKind::ResourcePack
+                    } else {
+                        crate::content::ContentKind::Shader
+                    };
+                    app.service.content_resource_instance(&instance.id, k);
+                    app.service.content_versions(
+                        crate::content::Project {
+                            project_id: project.clone(),
+                            title: e.name.clone(),
+                            description: String::new(),
+                            author: String::new(),
+                            downloads: 0,
+                            icon_url: None,
+                        },
+                        &app.settings,
+                        ui.ctx(),
+                    );
+                }
+            }
+        });
+    }
     let enabled = catalog
         .entries
         .iter()
@@ -157,7 +208,9 @@ pub fn show(
                                 })
                                 .cloned();
                             ui.horizontal_top(|ui| {
-                                if let Some(id) = &entry.project {
+                                if kind == LocalKind::Mods
+                                    && let Some(id) = &entry.project
+                                {
                                     let mut selected =
                                         app.service.content.managed_selection.contains(id);
                                     if ui
@@ -280,9 +333,32 @@ pub fn show(
                                         );
                                         ui.add(
                                             egui::Label::new(
-                                                RichText::new(&entry.filename)
-                                                    .size(10.0)
-                                                    .color(theme::HINT),
+                                                RichText::new(format!(
+                                                    "{}{}",
+                                                    entry.filename,
+                                                    entry
+                                                        .project
+                                                        .as_ref()
+                                                        .and_then(|id| app
+                                                            .service
+                                                            .content
+                                                            .managed
+                                                            .as_ref()
+                                                            .and_then(|c| c.entries.iter().find(
+                                                                |m| &m.installed.version.project_id
+                                                                    == id
+                                                            )))
+                                                        .map(|m| if m.pack_owned {
+                                                            " · 随包管理"
+                                                        } else if m.locked {
+                                                            " · 已锁定"
+                                                        } else {
+                                                            ""
+                                                        })
+                                                        .unwrap_or("")
+                                                ))
+                                                .size(10.0)
+                                                .color(theme::HINT),
                                             )
                                             .truncate(),
                                         );

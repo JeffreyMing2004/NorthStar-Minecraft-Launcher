@@ -1,4 +1,5 @@
 use super::{ProxyMode, Result, Source};
+mod resume;
 use reqwest::blocking::{Client, ClientBuilder};
 use serde::de::DeserializeOwned;
 use sha1::{Digest, Sha1};
@@ -72,6 +73,9 @@ impl Downloader {
     }
 
     pub fn check_cancelled(&self) -> Result<()> {
+        while self.source.paused.load(Ordering::Relaxed) && !self.cancel.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
         if self.cancel.load(Ordering::Relaxed) {
             Err("操作已取消。".into())
         } else {
@@ -129,6 +133,30 @@ impl Downloader {
             serde_json::from_slice(bytes).map_err(|e| format!("元数据不是有效 JSON：{e}"))
         })
     }
+    pub fn post_json<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        body: &impl serde::Serialize,
+    ) -> Result<T> {
+        self.check_cancelled()?;
+        let response = self
+            .client
+            .post(url)
+            .json(body)
+            .send()
+            .and_then(|r| r.error_for_status())
+            .map_err(network_error)?;
+        let mut bytes = Vec::new();
+        response
+            .take(16 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        self.check_cancelled()?;
+        if bytes.len() > 16 * 1024 * 1024 {
+            return Err("资源接口响应过大。".into());
+        }
+        serde_json::from_slice(&bytes).map_err(|e| e.to_string())
+    }
 
     pub(super) fn checksum(&self, url: &str) -> Result<String> {
         self.fetch(url, |bytes| {
@@ -169,6 +197,12 @@ impl Downloader {
     }
 
     pub fn download(&self, job: &Job) -> Result<()> {
+        if let Some(size) = job.size {
+            let mut progress = self.progress.lock().unwrap();
+            if progress.0.total <= 1 {
+                progress.0.total_bytes = Some(progress.0.bytes_downloaded.saturating_add(size));
+            }
+        }
         if job.url.is_empty() {
             validate_hash(&job.sha1)?;
             self.check_cancelled()?;
@@ -185,78 +219,17 @@ impl Downloader {
     }
 
     pub(super) fn download_from(&self, job: &Job, candidates: &[String]) -> Result<()> {
-        validate_hash(&job.sha1)?;
-        self.check_cancelled()?;
-        if verified(&job.path, &job.sha1, job.size)? {
-            return Ok(());
-        }
-        let parent = job.path.parent().ok_or("无效下载路径")?;
-        fs::create_dir_all(parent).map_err(|e| format!("创建下载目录失败：{e}"))?;
-        let temporary = job.path.with_file_name(format!(
-            "{}.part",
-            job.path.file_name().unwrap().to_string_lossy()
-        ));
-        let mut errors = Vec::new();
-        for candidate in candidates {
-            for _ in 0..2 {
-                self.check_cancelled()?;
-                let result = (|| {
-                    let mut response = self
-                        .client
-                        .get(candidate.as_str())
-                        .send()
-                        .and_then(|r| r.error_for_status())
-                        .map_err(network_error)?;
-                    let mut file = File::create(&temporary).map_err(|e| e.to_string())?;
-                    let mut hash = Sha1::new();
-                    let mut size = 0u64;
-                    let mut buffer = [0u8; 65536];
-                    loop {
-                        self.check_cancelled()?;
-                        let read = response.read(&mut buffer).map_err(|e| e.to_string())?;
-                        if read == 0 {
-                            break;
-                        }
-                        size += read as u64;
-                        if size > job.size.unwrap_or(2 * 1024 * 1024 * 1024) {
-                            return Err("文件长度超出元数据记录，已拒绝保存。".into());
-                        }
-                        file.write_all(&buffer[..read]).map_err(|e| e.to_string())?;
-                        hash.update(&buffer[..read]);
-                        self.update(
-                            &format!("下载 {}", job.path.file_name().unwrap().to_string_lossy()),
-                            read as u64,
-                            false,
-                        );
-                    }
-                    if job.size.is_some_and(|expected| expected != size)
-                        || format!("{:x}", hash.finalize()) != job.sha1.to_ascii_lowercase()
-                    {
-                        return Err("SHA-1 或文件长度校验失败。".into());
-                    }
-                    file.sync_all().map_err(|e| e.to_string())?;
-                    drop(file);
-                    replace_file(&temporary, &job.path)
-                })();
-                match result {
-                    Ok(()) => return Ok(()),
-                    Err(error) => {
-                        let _ = fs::remove_file(&temporary);
-                        self.check_cancelled()?;
-                        errors.push(format!("{candidate}: {error}"));
-                    }
-                }
-            }
-        }
-        Err(format!(
-            "下载失败：{}\n{}",
-            job.path.display(),
-            errors.join("\n")
-        ))
+        self.resumable(job, candidates)
     }
 
     pub fn many(&self, jobs: &[Job]) -> Result<()> {
         self.phase("校验与下载游戏文件", jobs.len());
+        {
+            let mut progress = self.progress.lock().unwrap();
+            progress.0.total_bytes = jobs
+                .iter()
+                .try_fold(progress.0.bytes_downloaded, |n, j| n.checked_add(j.size?));
+        }
         let next = AtomicUsize::new(0);
         let error = Mutex::new(None);
         std::thread::scope(|scope| {
@@ -270,7 +243,19 @@ impl Downloader {
                         let Some(job) = jobs.get(index) else {
                             break;
                         };
-                        match self.download(job) {
+                        let result = match verified(&job.path, &job.sha1, job.size) {
+                            Ok(true) => {
+                                if let Some(size) = job.size {
+                                    let mut p = self.progress.lock().unwrap();
+                                    p.0.total_bytes =
+                                        p.0.total_bytes.map(|n| n.saturating_sub(size));
+                                }
+                                Ok(())
+                            }
+                            Ok(false) => self.download(job),
+                            Err(e) => Err(e),
+                        };
+                        match result {
                             Ok(()) => self.update("校验与下载游戏文件", 0, true),
                             Err(message) => {
                                 let mut first = error.lock().unwrap();

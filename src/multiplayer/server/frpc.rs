@@ -4,6 +4,7 @@ use crate::multiplayer::frpc::{
 };
 
 pub(super) struct DirectRoom {
+    pub environment: Option<crate::multiplayer::environment::Environment>,
     pub key: String,
     pub route: Route,
 }
@@ -120,6 +121,14 @@ impl RelayServer {
                     return;
                 };
                 let unique: std::collections::BTreeSet<_> = selection.candidates.iter().collect();
+                if selection
+                    .environment
+                    .as_ref()
+                    .is_some_and(|e| e.validate().is_err())
+                {
+                    reply(request, 400, vec![]);
+                    return;
+                }
                 if selection.candidates.is_empty()
                     || selection.candidates.len() > 32
                     || selection.avoid.len() > 128
@@ -176,6 +185,7 @@ impl RelayServer {
                         seen: Instant::now(),
                         pending: VecDeque::new(),
                         direct: Some(DirectRoom {
+                            environment: selection.environment.clone(),
                             key: key.clone(),
                             route: route.clone(),
                         }),
@@ -199,6 +209,7 @@ impl RelayServer {
                 json(
                     request,
                     &RoomInfo {
+                        environment: direct.environment.clone(),
                         node_name: direct.route.info.name.clone(),
                         public_host: direct.route.info.public_host.clone(),
                         remote_port: direct.route.proxy.remote_port,

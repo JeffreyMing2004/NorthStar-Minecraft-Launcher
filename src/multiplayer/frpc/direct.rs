@@ -107,12 +107,25 @@ impl RelayClient {
     }
 
     pub fn host_frpc_room(&self, game_port: u16, options: HostOptions) -> Result<FrpcSession> {
-        if game_port != super::GAME_PORT {
-            return Err(
-                "仅支持使用本机 25565 端口开房，请将游戏的局域网或服务端端口设置为 25565。".into(),
-            );
+        self.host_frpc_room_with_environment(game_port, options, None)
+    }
+    pub fn host_frpc_room_with_environment(
+        &self,
+        game_port: u16,
+        options: HostOptions,
+        environment: Option<crate::multiplayer::environment::Environment>,
+    ) -> Result<FrpcSession> {
+        if game_port == 0 {
+            return Err("本地游戏端口不能为 0。".into());
         }
-        self.host_frpc_local(game_port, options)
+        if let Some(env) = &environment {
+            env.validate()?;
+        }
+        if environment.is_none() {
+            self.host_frpc_local(game_port, options)
+        } else {
+            self.host_frpc_local_environment(game_port, options, environment)
+        }
     }
 
     pub(super) fn host_frpc_local(
@@ -120,15 +133,23 @@ impl RelayClient {
         game_port: u16,
         options: HostOptions,
     ) -> Result<FrpcSession> {
+        self.host_frpc_local_environment(game_port, options, None)
+    }
+    fn host_frpc_local_environment(
+        &self,
+        game_port: u16,
+        options: HostOptions,
+        environment: Option<crate::multiplayer::environment::Environment>,
+    ) -> Result<FrpcSession> {
         if !options.executable.is_file() {
             return Err("请先选择本地 frpc 程序，下载地址可稍后配置。".into());
         }
         self.check_service()?;
         let target = SocketAddr::from(([127, 0, 0, 1], game_port));
         if game_port == 0 || TcpStream::connect_timeout(&target, Duration::from_secs(2)).is_err() {
-            return Err(
-                "无法连接本机 25565 端口，请先启动游戏并在 25565 端口对局域网开放。".into(),
-            );
+            return Err(format!(
+                "无法连接本机 {game_port} 端口，请先启动游戏并在该端口对局域网开放。"
+            ));
         }
         (options.report)("正在随机测速北京、广州、杭州和上海节点……".into());
         let nodes: Vec<NodeInfo> = self.frpc_json(Method::GET, "v1/frpc/nodes", vec![])?;
@@ -152,6 +173,7 @@ impl RelayClient {
                 break;
             }
             let selection = serde_json::to_vec(&CreateRoom {
+                environment: environment.clone(),
                 candidates: candidates.clone(),
                 avoid: avoid.clone(),
             })
@@ -371,6 +393,7 @@ impl RelayClient {
                         let (state, info) = (
                             state.clone(),
                             RoomInfo {
+                                environment: info.environment.clone(),
                                 node_name: info.node_name.clone(),
                                 public_host: info.public_host.clone(),
                                 remote_port: info.remote_port,
@@ -403,6 +426,22 @@ impl RelayClient {
             .ok_or("无法连接 frpc 房间，请检查节点域名和隧道状态。")?;
         configure(&stream)?;
         Ok(stream)
+    }
+    pub fn room_environment(
+        &self,
+        code: &str,
+    ) -> Result<Option<crate::multiplayer::environment::Environment>> {
+        let room = code
+            .trim()
+            .strip_prefix("frpc:")
+            .filter(|s| valid_id(s))
+            .ok_or("房间码无效。")?;
+        let info: RoomInfo =
+            self.frpc_json(Method::GET, &format!("v1/frpc/rooms/{room}"), vec![])?;
+        if let Some(env) = &info.environment {
+            env.validate()?;
+        }
+        Ok(info.environment)
     }
     fn copy_peer(mut tunnel: TcpStream, mut game: TcpStream, state: Arc<Runtime>) {
         let connection = secret();

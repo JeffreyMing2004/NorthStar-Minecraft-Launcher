@@ -164,23 +164,34 @@ pub fn list_local(
                 break 'locations;
             }
             let managed = record.mods.iter().find(|(_, m)| m.file.path == relative);
+            let resource = record.resources.values().find(|m| m.file.path == relative);
             let (name, version) = if let Some((_, managed)) = managed {
                 (
                     managed.version.name.clone(),
                     managed.version.version_number.clone(),
                 )
+            } else if let Some(resource) = resource {
+                (
+                    resource.version.name.clone(),
+                    resource.version.version_number.clone(),
+                )
             } else if kind == LocalKind::Mods {
                 let metadata = json_metadata(&path, false, "fabric.mod.json");
+                let fallback = super::metadata::read(&path)
+                    .ok()
+                    .and_then(|m| m.into_iter().next());
                 (
                     metadata
                         .as_ref()
                         .and_then(|m| m["name"].as_str())
                         .map(short)
+                        .or_else(|| fallback.as_ref().map(|m| short(&m.name)))
                         .unwrap_or_else(|| filename.trim_end_matches(".disabled").to_owned()),
                     metadata
                         .as_ref()
                         .and_then(|m| m["version"].as_str())
                         .map(short)
+                        .or_else(|| fallback.as_ref().map(|m| short(&m.version)))
                         .unwrap_or_default(),
                 )
             } else {
@@ -197,7 +208,9 @@ pub fn list_local(
                 directory: metadata.is_dir(),
                 size: metadata.len(),
                 modified: metadata.modified().ok(),
-                project: managed.map(|(id, _)| id.clone()),
+                project: managed
+                    .map(|(id, _)| id.clone())
+                    .or_else(|| resource.map(|r| r.version.project_id.clone())),
                 missing: false,
             });
         }
@@ -310,7 +323,17 @@ pub fn change_local(
         .iter()
         .find(|(_, m)| m.file.path == entry.relative)
         .map(|(id, _)| id.clone());
-    if managed_id != entry.project {
+    let resource_id = record
+        .resources
+        .iter()
+        .find(|(_, r)| r.file.path == entry.relative)
+        .map(|(id, _)| id.clone());
+    let expected_project = managed_id.clone().or_else(|| {
+        resource_id
+            .as_ref()
+            .map(|id| record.resources[id].version.project_id.clone())
+    });
+    if expected_project != entry.project {
         return Err("资源安装记录已改变，请刷新后重试。".into());
     }
     if let Some(id) = &managed_id {
@@ -381,6 +404,8 @@ pub fn change_local(
         }
         if matches!(action, LocalAction::Remove) {
             record.mods.remove(id);
+            record.pinned.remove(id);
+            record.pack_mods.remove(id);
         } else {
             record.mods.get_mut(id).unwrap().file.path = destination.clone();
         }
@@ -394,6 +419,13 @@ pub fn change_local(
                     file.path = format!("{destination}{}", &file.path[entry.relative.len()..]);
                 }
             }
+        }
+    }
+    if let Some(id) = resource_id {
+        if matches!(action, LocalAction::Remove) {
+            record.resources.remove(&id);
+        } else {
+            record.resources.get_mut(&id).unwrap().file.path = destination.clone();
         }
     }
     downloader.check_cancelled()?;

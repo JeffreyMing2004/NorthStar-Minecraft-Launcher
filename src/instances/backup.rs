@@ -64,6 +64,8 @@ pub struct Snapshot {
     pub scope: Scope,
     pub bytes: u64,
     pub recovery: bool,
+    #[serde(default)]
+    extra_roots: Vec<String>,
     source: PathBuf,
     entries: Vec<Entry>,
 }
@@ -72,6 +74,57 @@ struct Entry {
     path: String,
     size: u64,
     hash: Option<String>,
+}
+impl Snapshot {
+    fn roots(&self) -> Vec<String> {
+        let mut roots = self.scope.roots();
+        roots.extend(
+            self.extra_roots
+                .iter()
+                .filter(|p| !roots_contains(self.scope, p))
+                .cloned(),
+        );
+        roots
+    }
+}
+fn roots_contains(scope: Scope, path: &str) -> bool {
+    scope.roots().iter().any(|p| p.eq_ignore_ascii_case(path))
+}
+fn content_roots(from: &Path, scope: Scope, additional: &[String]) -> Result<Vec<String>> {
+    let mut extras = BTreeSet::new();
+    if scope == Scope::Instance {
+        if let Ok(record) = crate::content::registry(from)
+            && let Some(pack) = record.pack
+        {
+            for f in pack.files {
+                if let Some(root) = f.path.split('/').next()
+                    && root != ".nscl"
+                    && !roots_contains(scope, root)
+                {
+                    extras.insert(root.to_owned());
+                }
+            }
+        }
+        for path in additional {
+            let root = path.split('/').next().ok_or("备份附加路径无效。")?;
+            if root != ".nscl" && !roots_contains(scope, root) {
+                extras.insert(root.into());
+            }
+        }
+    }
+    if extras.len() > 512 {
+        return Err("整合包自定义根目录过多。".into());
+    }
+    for path in &extras {
+        crate::minecraft::safe_join(Path::new(""), path)?;
+        if matches!(
+            path.to_ascii_lowercase().as_str(),
+            "nscl-instance.json" | ".nscl"
+        ) {
+            return Err("拒绝备份启动器内部路径。".into());
+        }
+    }
+    Ok(extras.into_iter().collect())
 }
 
 #[derive(Clone)]
@@ -270,11 +323,41 @@ pub fn create(
     recovery: bool,
     d: &Downloader,
 ) -> Result<Snapshot> {
+    create_extra(root, instance, destination, scope, recovery, &[], d)
+}
+pub fn create_for_update(
+    root: &Path,
+    instance: &Instance,
+    destination: &Path,
+    additional: &[String],
+    d: &Downloader,
+) -> Result<Snapshot> {
+    create_extra(
+        root,
+        instance,
+        destination,
+        Scope::Instance,
+        true,
+        additional,
+        d,
+    )
+}
+fn create_extra(
+    root: &Path,
+    instance: &Instance,
+    destination: &Path,
+    scope: Scope,
+    recovery: bool,
+    additional: &[String],
+    d: &Downloader,
+) -> Result<Snapshot> {
     let from = source(root, instance)?;
+    let extra_roots = content_roots(&from, scope, additional)?;
+    let mut roots = scope.roots();
+    roots.extend(extra_roots.clone());
     let destination = checked(destination)?;
     // The snapshot store must never be traversed as game content.
-    if scope
-        .roots()
+    if roots
         .iter()
         .any(|p| checked(&from.join(p)).is_ok_and(|base| destination.starts_with(base)))
         || destination == from
@@ -282,7 +365,7 @@ pub fn create(
         return Err("备份位置必须位于备份内容目录之外。".into());
     }
     let mut entries = Vec::new();
-    for p in scope.roots() {
+    for p in roots {
         scan(&from, &p, &mut entries, 0, d)?;
     }
     let work = Work::new(&destination)?;
@@ -294,6 +377,7 @@ pub fn create(
         scope,
         bytes: entries.iter().map(|e| e.size).sum(),
         recovery,
+        extra_roots,
         source: from,
         entries,
     };
@@ -318,7 +402,21 @@ fn load(destination: &Path, id: &str) -> Result<Snapshot> {
     if s.id != id || s.entries.len() > MAX_ENTRIES {
         return Err("备份清单不合法。".into());
     }
-    let roots = s.scope.roots();
+    if s.extra_roots.len() > 512 || s.scope == Scope::Saves && !s.extra_roots.is_empty() {
+        return Err("备份附加范围不合法。".into());
+    }
+    for p in &s.extra_roots {
+        crate::minecraft::safe_join(Path::new(""), p)?;
+        if p.contains('/')
+            || matches!(
+                p.to_ascii_lowercase().as_str(),
+                "nscl-instance.json" | ".nscl"
+            )
+        {
+            return Err("备份附加范围含内部路径。".into());
+        }
+    }
+    let roots = s.roots();
     let mut seen = BTreeSet::new();
     let mut bytes = 0u64;
     for e in &s.entries {
@@ -383,7 +481,11 @@ fn restore_inner(
     let snapshot = load(destination, id)?;
     let target = source(root, instance)?;
     if snapshot.instance.id != instance.id
-        || snapshot.instance.version_id != instance.version_id
+        || (snapshot.instance.version_id != instance.version_id
+            && (snapshot.scope != Scope::Instance
+                || !crate::minecraft::installed_versions(root)
+                    .iter()
+                    .any(|v| v.id == snapshot.instance.version_id)))
         || snapshot.instance.isolation != instance.isolation
         || snapshot.source != target
     {
@@ -400,14 +502,22 @@ fn restore_inner(
     )?;
     // Check the current trees as well: rollback must not follow links.
     let mut current = Vec::new();
-    for p in snapshot.scope.roots() {
+    for p in snapshot.roots() {
         scan(&target, &p, &mut current, 0, d)?;
     }
-    create(root, instance, destination, snapshot.scope, true, d)?;
+    create_extra(
+        root,
+        instance,
+        destination,
+        snapshot.scope,
+        true,
+        &snapshot.roots(),
+        d,
+    )?;
     d.check_cancelled()?;
     let mut moved: Vec<(PathBuf, PathBuf, bool)> = Vec::new();
     let commit = (|| -> Result<()> {
-        for p in snapshot.scope.roots() {
+        for p in snapshot.roots() {
             before_swap(&p)?;
             let to = item(&target, &p)?;
             let old = item(&work.path.join("old"), &p)?;
@@ -487,14 +597,16 @@ pub fn clone_instance(
     let target = clone.directory(root)?;
     let work = Work::new(target.parent().unwrap())?;
     let mut entries = Vec::new();
-    for p in CONTENT {
-        if (!options.saves && *p == "saves")
-            || (!options.screenshots && *p == "screenshots")
+    let mut roots = Scope::Instance.roots();
+    roots.extend(content_roots(&from, Scope::Instance, &[])?);
+    for p in roots {
+        if (!options.saves && p == "saves")
+            || (!options.screenshots && p == "screenshots")
             || (!options.servers && p.starts_with("servers.dat"))
         {
             continue;
         }
-        scan(&from, p, &mut entries, 0, d)?;
+        scan(&from, &p, &mut entries, 0, d)?;
     }
     copy_entries(&from, &work.path, &mut entries, d)?;
     crate::store::write_json(&work.path.join("nscl-instance.json"), &clone)?;

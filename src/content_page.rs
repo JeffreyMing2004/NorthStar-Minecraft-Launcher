@@ -25,6 +25,7 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
 }
 
 fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
+    provider(ui, app);
     let mut search = false;
     ui.add_enabled_ui(!app.service.busy(), |ui| {
         ui.horizontal(|ui| {
@@ -34,11 +35,11 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
                     .font(FontId::proportional(14.0))
                     .frame(input_frame())
                     .margin(Vec2::new(14.0, 10.0))
-                    .hint_text(if kind == ContentKind::Mod {
-                        "搜索 Modrinth 模组，例如 Sodium"
-                    } else {
-                        "搜索 Modrinth 整合包"
-                    })
+                    .hint_text(format!(
+                        "搜索 {} {}",
+                        app.service.content.provider.label(),
+                        kind.label()
+                    ))
                     .desired_width((ui.available_width() - 132.0).max(180.0)),
             );
             input_focus(ui, &response);
@@ -69,10 +70,10 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
                     );
                     app::hint(
                         ui,
-                        if kind == ContentKind::Mod {
-                            "资源来自 Modrinth；下载后的 JAR 可直接放入任意实例的 mods 目录。"
-                        } else {
-                            "资源来自 Modrinth；整合包会安装为独立实例。"
+                        match kind {
+                            ContentKind::Mod => "下载后的 JAR 可放入实例的 mods 目录；也可在实例模组页安装并管理依赖。",
+                            ContentKind::Modpack => "整合包会安装为独立实例。",
+                            _ => "根据当前实例的 Minecraft 版本筛选，安装后在游戏内启用。",
                         },
                     );
                 });
@@ -96,8 +97,10 @@ fn catalog(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
                                 &project.title,
                                 &project.description,
                                 &format!(
-                                    "{} · {} 次下载 · Modrinth",
-                                    project.author, project.downloads
+                                    "{} · {} 次下载 · {}",
+                                    project.author,
+                                    project.downloads,
+                                    app.service.content.provider.label()
                                 ),
                                 "查看版本",
                                 !app.service.busy(),
@@ -272,12 +275,19 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
             logo.paint(ui, rect, &project.title);
         }
         app::heading(ui, "确认安装方案");
+        if ui.button("下载任务中心").clicked() {
+            app.tasks_open = true;
+        }
     });
     if back {
         app.service.content.plan = None;
         return;
     }
     ui.add_space(16.0);
+    if !app.service.content.manual_required.is_empty() && ui.button("查看并补齐缺失文件").clicked()
+    {
+        app.service.content.show_manual = true;
+    }
     let height = (ui.available_height() - download_status_height(app) - 90.0).max(0.0);
     let busy = app.service.busy();
     let mut include_optional = None;
@@ -314,6 +324,79 @@ pub fn plan(ui: &mut Ui, app: &mut NsclApp) {
         }
     });
     task_status(ui, app);
+}
+
+pub fn provider(ui: &mut Ui, app: &mut NsclApp) {
+    if matches!(
+        app.service.content.kind,
+        ContentKind::ResourcePack | ContentKind::Shader
+    ) {
+        return;
+    }
+    ui.add_enabled_ui(!app.service.busy(), |ui| {
+        ui.horizontal(|ui| {
+            ui.label("内容来源");
+            for source in [
+                crate::content::Provider::Modrinth,
+                crate::content::Provider::CurseForge,
+            ] {
+                if ui
+                    .selectable_value(&mut app.service.content.provider, source, source.label())
+                    .changed()
+                {
+                    app.service.content.results = Default::default();
+                    app.service.content.searched = false;
+                    app.service.content.project = None;
+                }
+            }
+        });
+    });
+}
+
+pub fn resource_browser(ui: &mut Ui, app: &mut NsclApp, kind: ContentKind) {
+    if ui
+        .add_enabled(!app.service.busy(), egui::Button::new("返回本地资源"))
+        .clicked()
+    {
+        app.service.content.adding = false;
+        app.service.content.plan = None;
+        return;
+    }
+    if let Some(ContentPlan::Resource(plan)) = app.service.content.plan.clone() {
+        app::heading(ui, "确认资源安装方案");
+        ui.label(plan.target.label());
+        ui.label(format!(
+            "{} · {}",
+            plan.version.name, plan.version.version_number
+        ));
+        egui::ScrollArea::vertical()
+            .max_height(200.0)
+            .show(ui, |ui| {
+                ui.label(&plan.version.changelog);
+            });
+        if ui
+            .add_enabled(
+                !app.service.busy() && app.service.game.is_none(),
+                egui::Button::new("安装或更新资源"),
+            )
+            .clicked()
+        {
+            app.service.content_install(&app.settings, ui.ctx());
+        }
+        if ui
+            .add_enabled(!app.service.busy(), egui::Button::new("返回版本列表"))
+            .clicked()
+        {
+            app.service.content.plan = None;
+        }
+        task_status(ui, app);
+        return;
+    }
+    if app.service.content.project.is_some() {
+        versions(ui, app, kind);
+    } else {
+        catalog(ui, app, kind);
+    }
 }
 
 fn list_area(ui: &mut Ui, height: f32, add: impl FnOnce(&mut Ui)) {

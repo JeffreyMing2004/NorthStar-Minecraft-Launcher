@@ -463,6 +463,8 @@ fn mod_update_opens_the_existing_installation_plan_flow() {
     app.service.content.managed = Some(crate::content::ManagedCatalog {
         target,
         entries: vec![crate::content::ManagedEntry {
+            locked: false,
+            pack_owned: false,
             installed: crate::content::ManagedMod {
                 version: version.clone(),
                 file: crate::content::InstalledFile {
@@ -523,6 +525,9 @@ fn removal_fixture() -> (
     crate::store::write_json(
         &directory.join(".nscl-content.json"),
         &crate::content::Registry {
+            pinned: Default::default(),
+            pack_mods: Default::default(),
+            resources: Default::default(),
             mods: std::collections::BTreeMap::from([(
                 "example".into(),
                 crate::content::ManagedMod {

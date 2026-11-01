@@ -5,11 +5,16 @@ mod launch;
 mod loaders;
 mod logging;
 mod model;
+mod options;
+pub use options::LaunchOptions;
+pub mod preflight;
 mod process;
 pub mod session;
 mod source;
 pub use process::GameControl;
 
+pub(crate) use download::replace_file;
+pub(crate) use download::validate_hash;
 pub use download::validate_id;
 pub use download::validate_local_id;
 pub use download::{Downloader, Progress, Reporter};

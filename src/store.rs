@@ -27,7 +27,9 @@ pub struct Settings {
     pub online_mode: bool,
     pub selected_instance: String,
     pub frpc_path: String,
+    pub local_game_port: u16,
     pub backup_directory: String,
+    pub launch: crate::minecraft::LaunchOptions,
 }
 
 impl Default for Settings {
@@ -50,7 +52,9 @@ impl Default for Settings {
             online_mode: false,
             selected_instance: String::new(),
             frpc_path: String::new(),
+            local_game_port: 25565,
             backup_directory: String::new(),
+            launch: Default::default(),
         }
     }
 }

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 #[derive(Clone)]
 pub enum ContentPlan {
+    Resource(content::ResourcePlan),
     Mod(ModPlan),
     Pack(PackPlan),
     Remove(content::RemovalPlan),
@@ -29,6 +30,9 @@ pub enum ContentMode {
 
 #[derive(Default)]
 pub struct ContentState {
+    pub provider: content::Provider,
+    pub manual_required: Vec<ContentVersion>,
+    pub show_manual: bool,
     pub kind: ContentKind,
     pub mode: ContentMode,
     pub query: String,
@@ -64,6 +68,11 @@ impl ContentState {
 
     fn accepts_plan(&self, plan: &ContentPlan) -> bool {
         match plan {
+            ContentPlan::Resource(p) => {
+                self.mode == ContentMode::Instance
+                    && self.kind == p.kind
+                    && self.target == p.target.instance.id
+            }
             ContentPlan::Pack(_) => {
                 self.mode == ContentMode::Download && self.kind == ContentKind::Modpack
             }
@@ -93,6 +102,8 @@ impl ContentState {
 }
 
 pub(super) enum ContentEvent {
+    ManualRequired(Vec<ContentVersion>),
+    ManualReady(String),
     Search(SearchPage),
     Versions(Vec<ContentVersion>),
     Plan(Box<ContentPlan>),
@@ -135,10 +146,11 @@ impl GameService {
             return;
         }
         let kind = self.content.kind;
+        let provider = self.content.provider;
         let target = match self.content.mode {
             ContentMode::Download => None,
             ContentMode::Instance => match self.content_target(settings) {
-                Ok(target) if target.loader.is_some() => Some(target),
+                Ok(target) if target.loader.is_some() || kind != ContentKind::Mod => Some(target),
                 Ok(_) => {
                     self.error=Some("请先在 Minecraft 下载页为目标游戏安装 Forge、Fabric 或 NeoForge，再选择对应实例。".into());
                     return;
@@ -165,7 +177,7 @@ impl GameService {
             let result = Downloader::new(settings.source, cancel, reporter(&sender, &ctx))
                 .and_then(|d| {
                     d.phase("搜索 Modrinth 资源", 0);
-                    Modrinth::new(d).search(kind, &query, offset, target.as_ref())
+                    Modrinth::new(d).search_from(provider, kind, &query, offset, target.as_ref())
                 });
             send(
                 &sender,
@@ -180,7 +192,7 @@ impl GameService {
 
     /// True when the browser filters by an instance instead of listing everything.
     fn content_targets_instance(&self) -> bool {
-        self.content.kind == ContentKind::Mod && self.content.mode == ContentMode::Instance
+        self.content.kind != ContentKind::Modpack && self.content.mode == ContentMode::Instance
     }
 
     pub fn content_versions(&mut self, project: Project, settings: &Settings, ctx: &egui::Context) {
@@ -214,7 +226,7 @@ impl GameService {
                     d.phase("获取资源版本", 0);
                     let api = Modrinth::new(d);
                     api.check_project(&project.project_id, kind)?;
-                    api.versions(&project.project_id, target.as_ref())
+                    api.versions_kind(&project.project_id, kind, target.as_ref())
                 });
             send(
                 &sender,
@@ -240,7 +252,8 @@ impl GameService {
             self.error = Some("请在版本管理中为具体实例安装模组，或直接下载模组文件。".into());
             return;
         }
-        let target = if self.content.kind == ContentKind::Mod {
+        let kind = self.content.kind;
+        let target = if kind != ContentKind::Modpack {
             match self.content_target(settings) {
                 Ok(t) => Some(t),
                 Err(e) => {
@@ -270,7 +283,12 @@ impl GameService {
                     }
                     match target {
                         Some(target) => {
-                            content::plan_mod(&root, target, fresh, &api).map(ContentPlan::Mod)
+                            if kind == ContentKind::Mod {
+                                content::plan_mod(&root, target, fresh, &api).map(ContentPlan::Mod)
+                            } else {
+                                content::plan_resource(&root, target, fresh, kind, &api)
+                                    .map(ContentPlan::Resource)
+                            }
                         }
                         None => content::plan_pack(&root, &fresh, &api).map(ContentPlan::Pack),
                     }
@@ -308,6 +326,7 @@ impl GameService {
             self.cancel.clone(),
         );
         std::thread::spawn(move || {
+            let cache = store::game_directory(&settings);
             let result = Downloader::new(settings.source, cancel, reporter(&sender, &ctx))
                 .and_then(|d| {
                     let api = Modrinth::new(d);
@@ -316,13 +335,19 @@ impl GameService {
                     if fresh.project_id != version.project_id {
                         return Err("资源项目 ID 已改变，请重新选择。".into());
                     }
-                    content::download_mod(&directory, &fresh, &api.downloader)
+                    if fresh.files.iter().any(|f| f.url.is_empty())
+                        && !content::manual_cached(&cache, &fresh)?
+                    {
+                        return Ok(ContentEvent::ManualRequired(vec![fresh]));
+                    }
+                    content::download_mod_with_cache(&directory, &cache, &fresh, &api.downloader)
+                        .map(ContentEvent::Downloaded)
                 });
             send(
                 &sender,
                 &ctx,
                 match result {
-                    Ok(path) => Event::Content(ContentEvent::Downloaded(path)),
+                    Ok(event) => Event::Content(event),
                     Err(error) => Event::Failed(error),
                 },
             );
@@ -354,7 +379,7 @@ impl GameService {
             let result = Downloader::new(settings.source.clone(), cancel, reporter(&sender, &ctx))
                 .and_then(|d| {
                     d.check_cancelled()?;
-                    let plan = content::inspect_pack(&root, &path)?;
+                    let plan = content::inspect_pack_with_downloader(&root, &path, &d)?;
                     d.check_cancelled()?;
                     let instance = content::install_pack(&root, &plan, &settings, &d)?;
                     Ok((
@@ -418,6 +443,7 @@ impl GameService {
                         let instance = match &plan {
                             ContentPlan::Mod(p) => Some(&p.target.instance),
                             ContentPlan::Remove(p) => Some(&p.target.instance),
+                            ContentPlan::Resource(p) => Some(&p.target.instance),
                             ContentPlan::Pack(_) => None,
                         };
                         if let Some(instance) = instance {
@@ -432,6 +458,8 @@ impl GameService {
                         }
                     }
                     match plan {
+                        ContentPlan::Resource(p) => content::install_resource(&root, &p, &d)
+                            .map(|i| (i, "资源已安装，更新保留原启用状态。".into())),
                         ContentPlan::Mod(plan) => {
                             content::install_mods(&root, &plan, &d).map(|i| {
                                 (i, format!("{} 个模组及依赖安装完成。", plan.versions.len()))
@@ -598,9 +626,36 @@ impl GameService {
             return;
         }
         match event {
+            ContentEvent::ManualRequired(versions) => {
+                self.content.manual_required = versions;
+                self.content.show_manual = true;
+            }
+            ContentEvent::ManualReady(id) => {
+                self.content.manual_required.retain(|v| v.id != id);
+                if let Some(ContentPlan::Pack(plan)) = &mut self.content.plan {
+                    plan.manual_files.retain(|v| v.id != id);
+                }
+                if let Some(ContentPlan::Mod(plan)) = &mut self.content.plan {
+                    plan.manual_files.retain(|v| v.id != id);
+                }
+                if let Some(plan) = &mut self.pack_state.plan {
+                    plan.next.manual_files.retain(|v| v.id != id);
+                }
+                self.notice = "文件已通过官方哈希校验并补齐。".into();
+            }
             ContentEvent::Search(page) => self.content.results = page,
             ContentEvent::Versions(versions) => self.content.versions = versions,
-            ContentEvent::Plan(plan) => self.content.plan = Some(*plan),
+            ContentEvent::Plan(plan) => {
+                if let ContentPlan::Pack(p) = plan.as_ref() {
+                    self.content.manual_required = p.manual_files.clone();
+                    self.content.show_manual = !p.manual_files.is_empty();
+                }
+                if let ContentPlan::Mod(p) = plan.as_ref() {
+                    self.content.manual_required = p.manual_files.clone();
+                    self.content.show_manual = !p.manual_files.is_empty();
+                }
+                self.content.plan = Some(*plan);
+            }
             ContentEvent::Audit(report) => self.content.audit = Some(report),
             ContentEvent::Installed(instance, message) => {
                 self.local.catalog = None;

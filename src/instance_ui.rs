@@ -29,6 +29,7 @@ pub enum DetailTab {
 
 #[derive(Default)]
 pub struct BrowserState {
+    pub pack_update: Option<crate::pack_update_ui::Dialog>,
     pub search: String,
     pub selected: String,
     pub filter: Filter,
@@ -667,6 +668,11 @@ fn details(
             app.service.backup_instance.clear();
             app.service.backup_snapshots.clear();
             app.instance_browser.backup = Some(crate::instance_backup::Dialog::new(instance));
+        }
+        if instance.requires_isolation() && download_button(ui, "整合包升级与回退", editable)
+        {
+            app.service.pack_state = Default::default();
+            app.instance_browser.pack_update = Some(crate::pack_update_ui::Dialog::new(instance));
         }
     });
     if let Some(path) = &app.service.exported_pack {

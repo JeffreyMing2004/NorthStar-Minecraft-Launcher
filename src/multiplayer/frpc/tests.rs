@@ -343,10 +343,10 @@ fn public_service_check_reports_readiness_without_credentials() {
 }
 
 #[test]
-fn public_host_entry_rejects_ports_other_than_25565() {
+fn public_host_entry_rejects_zero_port() {
     let client = RelayClient::new("http://127.0.0.1:1", &"a".repeat(64)).unwrap();
     let result = client.host_frpc_room(
-        25566,
+        0,
         HostOptions {
             executable: std::env::current_exe().unwrap(),
             runtime_directory: Path::new("unused").into(),
@@ -354,13 +354,14 @@ fn public_host_entry_rejects_ports_other_than_25565() {
             report: Arc::new(|_| {}),
         },
     );
-    assert!(result.err().unwrap().contains("25565"));
+    assert!(result.err().unwrap().contains("不能为 0"));
 }
 
 #[test]
 fn service_allocates_exclusive_tunnels_hides_credentials_and_frees_leases() {
     let fixture = Fixture::new();
     let body = serde_json::to_vec(&CreateRoom {
+        environment: None,
         candidates: vec!["test-node".into()],
         avoid: vec![],
     })

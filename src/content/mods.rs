@@ -14,6 +14,7 @@ use std::{
 
 #[derive(Clone)]
 pub struct ModPlan {
+    pub manual_files: Vec<ContentVersion>,
     pub target: Target,
     pub versions: Vec<ContentVersion>,
     pub warnings: Vec<String>,
@@ -111,15 +112,44 @@ pub fn plan_mod(
     selected: ContentVersion,
     api: &Modrinth,
 ) -> Result<ModPlan> {
+    plan_mods(root, target, vec![selected], api)
+}
+pub fn plan_mods(
+    root: &Path,
+    target: Target,
+    selected: Vec<ContentVersion>,
+    api: &Modrinth,
+) -> Result<ModPlan> {
+    if selected.is_empty() || selected.len() > 256 {
+        return Err("请选择 1–256 个模组发布。".into());
+    }
     let target = current_target(root, &target)?;
-    target.check(&selected)?;
+    for v in &selected {
+        target.check(v)?;
+    }
     let directory = target.instance.game_directory(root)?;
     let previous = registry(&directory)?;
-    let selected_project = selected.project_id.clone();
+    let selected_projects: BTreeSet<_> = selected.iter().map(|v| v.project_id.clone()).collect();
     let mut chosen = BTreeMap::<String, ContentVersion>::new();
-    let mut queue = VecDeque::from([selected]);
+    let mut queue = VecDeque::from(selected);
     while let Some(version) = queue.pop_front() {
         api.downloader.check_cancelled()?;
+        if previous.pinned.contains(&version.project_id)
+            && previous
+                .mods
+                .get(&version.project_id)
+                .is_some_and(|m| m.version.id != version.id)
+        {
+            return Err(format!("{} 已锁定版本，请先解锁。", version.name));
+        }
+        if previous.pack_mods.contains(&version.project_id)
+            && previous
+                .mods
+                .get(&version.project_id)
+                .is_some_and(|m| m.version.id != version.id)
+        {
+            return Err(format!("{} 由整合包管理，请使用整合包升级。", version.name));
+        }
         if let Some(existing) = chosen.get(&version.project_id) {
             if existing.id != version.id {
                 return Err(format!(
@@ -132,7 +162,7 @@ pub fn plan_mod(
         if chosen.len() >= 256 {
             return Err("必需依赖超过 256 个，停止解析。".into());
         }
-        if version.project_id != selected_project
+        if !selected_projects.contains(&version.project_id)
             && previous
                 .mods
                 .get(&version.project_id)
@@ -231,6 +261,18 @@ pub fn plan_mod(
         warnings.push(format!("另有 {optional} 项可选依赖，不会自动安装。"));
     }
     Ok(ModPlan {
+        manual_files: chosen
+            .values()
+            .filter(|v| v.files.iter().any(|f| f.url.is_empty()))
+            .filter(|v| {
+                v.files.iter().any(|f| {
+                    files::cache_path(root, f)
+                        .and_then(|p| files::verified(&p, &f.hashes, f.size))
+                        .is_ok_and(|ready| !ready)
+                })
+            })
+            .cloned()
+            .collect(),
         target,
         versions: chosen.into_values().collect(),
         warnings,
@@ -369,6 +411,12 @@ pub fn check_instance(
         .map(|(id, m)| (id.clone(), m.version.clone()))
         .collect();
     report.errors.extend(dependency_issues(&versions));
+    let java = crate::minecraft::installed_versions(root)
+        .into_iter()
+        .find(|v| v.id == instance.version_id)
+        .map(|v| v.java_major)
+        .unwrap_or(8);
+    super::metadata::audit(root, &target, java, &mut report, downloader)?;
     for entry in record.mods.values() {
         if entry.enabled()
             && let Err(error) = target.check(&entry.version)

@@ -18,7 +18,7 @@ pub struct LocalState {
 }
 
 pub(super) enum LocalEvent {
-    Listed(LocalCatalog),
+    Listed(Box<LocalCatalog>),
     Changed(String),
     Cancelled,
 }
@@ -60,14 +60,18 @@ impl GameService {
             self.cancel.clone(),
             ctx.clone(),
         );
+        let source = crate::minecraft::Source {
+            paused: self.paused.clone(),
+            ..Default::default()
+        };
         std::thread::spawn(move || {
-            let result = Downloader::new(Default::default(), cancel, reporter(&sender, &ctx))
+            let result = Downloader::new(source, cancel, reporter(&sender, &ctx))
                 .and_then(|d| content::list_local(&root, &instance, kind, &d));
             send(
                 &sender,
                 &ctx,
                 match result {
-                    Ok(catalog) => Event::Local(LocalEvent::Listed(catalog)),
+                    Ok(catalog) => Event::Local(LocalEvent::Listed(Box::new(catalog))),
                     Err(e) => Event::Failed(e),
                 },
             );
@@ -95,9 +99,13 @@ impl GameService {
             self.cancel.clone(),
             ctx.clone(),
         );
+        let source = crate::minecraft::Source {
+            paused: self.paused.clone(),
+            ..Default::default()
+        };
         std::thread::spawn(move || {
             let root = store::game_directory(&settings);
-            let result = Downloader::new(Default::default(), cancel, reporter(&sender, &ctx))
+            let result = Downloader::new(source, cancel, reporter(&sender, &ctx))
                 .and_then(|d| content::change_local(&root, &catalog, &entry, action, &d));
             send(
                 &sender,
@@ -138,19 +146,22 @@ impl GameService {
             self.cancel.clone(),
             ctx.clone(),
         );
+        let source = crate::minecraft::Source {
+            paused: self.paused.clone(),
+            ..Default::default()
+        };
         std::thread::spawn(move || {
             let root = store::game_directory(&settings);
-            let result = Downloader::new(Default::default(), cancel, reporter(&sender, &ctx))
-                .and_then(|d| {
-                    let paths = match paths {
-                        Some(paths) => paths,
-                        None => crate::file_picker::resources(kind)?,
-                    };
-                    if paths.is_empty() {
-                        return Ok(None);
-                    }
-                    content::import_local(&root, &instance, kind, &paths, &d).map(Some)
-                });
+            let result = Downloader::new(source, cancel, reporter(&sender, &ctx)).and_then(|d| {
+                let paths = match paths {
+                    Some(paths) => paths,
+                    None => crate::file_picker::resources(kind)?,
+                };
+                if paths.is_empty() {
+                    return Ok(None);
+                }
+                content::import_local(&root, &instance, kind, &paths, &d).map(Some)
+            });
             send(
                 &sender,
                 &ctx,
@@ -166,7 +177,7 @@ impl GameService {
     pub(super) fn apply_local(&mut self, event: LocalEvent) {
         self.task = Task::Idle;
         match event {
-            LocalEvent::Listed(catalog) => self.local.catalog = Some(Arc::new(catalog)),
+            LocalEvent::Listed(catalog) => self.local.catalog = Some(Arc::from(catalog)),
             LocalEvent::Cancelled => {}
             LocalEvent::Changed(message) => {
                 self.local.notice = message;

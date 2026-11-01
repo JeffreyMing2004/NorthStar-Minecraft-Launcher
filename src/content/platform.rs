@@ -5,23 +5,29 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ContentKind {
     #[default]
     Mod,
     Modpack,
+    ResourcePack,
+    Shader,
 }
 impl ContentKind {
     pub fn key(self) -> &'static str {
         match self {
             Self::Mod => "mod",
             Self::Modpack => "modpack",
+            Self::ResourcePack => "resourcepack",
+            Self::Shader => "shader",
         }
     }
     pub fn label(self) -> &'static str {
         match self {
             Self::Mod => "模组",
             Self::Modpack => "整合包",
+            Self::ResourcePack => "资源包",
+            Self::Shader => "光影",
         }
     }
 }
@@ -57,6 +63,8 @@ pub struct ContentVersion {
     pub loaders: Vec<String>,
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
+    #[serde(default)]
+    pub changelog: String,
     pub files: Vec<VersionFile>,
 }
 
@@ -81,8 +89,10 @@ impl ContentVersion {
     pub fn file(&self, kind: ContentKind) -> Result<&VersionFile> {
         let extension = if kind == ContentKind::Mod {
             ".jar"
-        } else {
+        } else if kind == ContentKind::Modpack && !self.id.starts_with("cf-") {
             ".mrpack"
+        } else {
+            ".zip"
         };
         let mut files: Vec<_> = self
             .files
@@ -185,6 +195,50 @@ pub struct Modrinth {
     pub downloader: Downloader,
 }
 impl Modrinth {
+    pub fn versions_from_hashes(
+        &self,
+        hashes: &[String],
+    ) -> Result<BTreeMap<String, ContentVersion>> {
+        if hashes.len() > 100
+            || hashes
+                .iter()
+                .any(|h| crate::minecraft::validate_hash(h).is_err())
+        {
+            return Err("文件哈希列表无效。".into());
+        }
+        let versions: BTreeMap<String, ContentVersion> = self.downloader.post_json(
+            self.url("/version_files")?.as_str(),
+            &serde_json::json!({"hashes":hashes,"algorithm":"sha1"}),
+        )?;
+        for (hash, v) in &versions {
+            if !hashes.contains(hash)
+                || !v.files.iter().any(|f| {
+                    f.hashes
+                        .get("sha1")
+                        .is_some_and(|h| h.eq_ignore_ascii_case(hash))
+                })
+            {
+                return Err("哈希识别返回了不匹配的文件。".into());
+            }
+        }
+        Ok(versions)
+    }
+    pub fn search_from(
+        &self,
+        provider: super::Provider,
+        kind: ContentKind,
+        query: &str,
+        offset: usize,
+        target: Option<&Target>,
+    ) -> Result<SearchPage> {
+        match provider {
+            super::Provider::Modrinth => self.search(kind, query, offset, target),
+            super::Provider::CurseForge => {
+                super::curseforge::CurseForge::new(self.downloader.clone())?
+                    .search(kind, query, offset, target)
+            }
+        }
+    }
     pub fn new(downloader: Downloader) -> Self {
         Self {
             base: "https://api.modrinth.com/v2".into(),
@@ -206,7 +260,7 @@ impl Modrinth {
         let mut facets = vec![vec![format!("project_type:{}", kind.key())]];
         if let Some(target) = target {
             facets.push(vec![format!("versions:{}", target.minecraft)]);
-            if let Some(loader) = target.loader {
+            if let Some(loader) = target.loader.filter(|_| kind == ContentKind::Mod) {
                 facets.push(vec![format!("categories:{}", loader.key())]);
             }
         }
@@ -223,6 +277,18 @@ impl Modrinth {
     }
 
     pub fn versions(&self, project: &str, target: Option<&Target>) -> Result<Vec<ContentVersion>> {
+        self.versions_kind(project, ContentKind::Mod, target)
+    }
+    pub fn versions_kind(
+        &self,
+        project: &str,
+        kind: ContentKind,
+        target: Option<&Target>,
+    ) -> Result<Vec<ContentVersion>> {
+        if project.starts_with("cf-") {
+            return super::curseforge::CurseForge::new(self.downloader.clone())?
+                .versions(super::curseforge::project_id(project)?, target);
+        }
         minecraft::validate_id(project)?;
         let mut url = self.url(&format!("/project/{project}/version"))?;
         if let Some(target) = target {
@@ -230,13 +296,22 @@ impl Modrinth {
                 "game_versions",
                 &serde_json::json!([target.minecraft]).to_string(),
             );
-            if let Some(loader) = target.loader {
+            if let Some(loader) = target.loader.filter(|_| kind == ContentKind::Mod) {
                 url.query_pairs_mut()
                     .append_pair("loaders", &serde_json::json!([loader.key()]).to_string());
             }
         }
         let mut versions: Vec<ContentVersion> = self.downloader.json(url.as_str())?;
-        versions.retain(|v| v.project_id == project && target.is_none_or(|t| t.compatible(v)));
+        versions.retain(|v| {
+            v.project_id == project
+                && target.is_none_or(|t| {
+                    if kind == ContentKind::Mod {
+                        t.compatible(v)
+                    } else {
+                        v.game_versions.contains(&t.minecraft)
+                    }
+                })
+        });
         versions.sort_by(|a, b| {
             (a.version_type != "release")
                 .cmp(&(b.version_type != "release"))
@@ -246,6 +321,10 @@ impl Modrinth {
     }
 
     pub fn version(&self, id: &str) -> Result<ContentVersion> {
+        if id.starts_with("cf-") {
+            let (p, f) = super::curseforge::version_id(id)?;
+            return super::curseforge::CurseForge::new(self.downloader.clone())?.version(p, f);
+        }
         minecraft::validate_id(id)?;
         let version: ContentVersion = self
             .downloader
@@ -257,6 +336,10 @@ impl Modrinth {
     }
 
     pub fn check_project(&self, id: &str, kind: ContentKind) -> Result<()> {
+        if id.starts_with("cf-") {
+            return super::curseforge::CurseForge::new(self.downloader.clone())?
+                .check_project(super::curseforge::project_id(id)?, kind);
+        }
         minecraft::validate_id(id)?;
         let info: ProjectInfo = self
             .downloader

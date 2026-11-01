@@ -12,6 +12,8 @@ use std::{
 
 #[derive(Clone)]
 pub struct ManagedEntry {
+    pub locked: bool,
+    pub pack_owned: bool,
     pub installed: ManagedMod,
     pub intact: bool,
 }
@@ -53,6 +55,8 @@ pub fn list_managed(
         downloader.check_cancelled()?;
         let file = files::safe_path(&directory, &entry.file.path)?;
         entries.push(ManagedEntry {
+            locked: record.pinned.contains(&entry.version.project_id),
+            pack_owned: record.pack_mods.contains(&entry.version.project_id),
             installed: entry.clone(),
             intact: files::verified(&file, &entry.file.hashes, entry.file.size)?,
         });
@@ -77,6 +81,18 @@ pub fn check_updates(catalog: &ManagedCatalog, api: &Modrinth) -> Result<UpdateR
     }
     let mut report = UpdateReport::default();
     for (index, entry) in catalog.entries.iter().enumerate() {
+        if entry.locked || entry.pack_owned {
+            report.warnings.push(format!(
+                "{}：{}",
+                entry.installed.version.name,
+                if entry.locked {
+                    "版本已锁定，跳过更新。"
+                } else {
+                    "由整合包管理，请使用整合包升级。"
+                }
+            ));
+            continue;
+        }
         api.downloader.check_cancelled()?;
         let current = &entry.installed.version;
         api.downloader.phase(
@@ -182,6 +198,8 @@ pub fn remove_mods(
             ));
         }
         record.mods.remove(&entry.version.project_id);
+        record.pinned.remove(&entry.version.project_id);
+        record.pack_mods.remove(&entry.version.project_id);
         changes.insert(entry.file.path.clone(), None);
         if path.exists() {
             let name = path

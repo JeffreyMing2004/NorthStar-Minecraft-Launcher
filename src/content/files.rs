@@ -10,6 +10,61 @@ use std::{
 };
 
 pub(super) const MAX_FILE: u64 = 512 * 1024 * 1024;
+pub(super) fn cache_key(hashes: &BTreeMap<String, String>) -> String {
+    hashes
+        .get("sha512")
+        .cloned()
+        .unwrap_or_else(|| format!("sha1-{}", hashes.get("sha1").cloned().unwrap_or_default()))
+        .to_ascii_lowercase()
+}
+pub(super) fn cache_path(root: &Path, file: &super::platform::VersionFile) -> Result<PathBuf> {
+    safe_path(
+        root,
+        &format!(
+            ".nscl/content-cache/{}/{}",
+            cache_key(&file.hashes),
+            file.filename
+        ),
+    )
+}
+pub fn provide_manual(
+    root: &Path,
+    version: &super::ContentVersion,
+    path: &Path,
+    d: &Downloader,
+) -> Result<()> {
+    for file in &version.files {
+        validate_hashes(&file.hashes)?;
+    }
+    let actual = record(path, String::new())?;
+    let expected = version
+        .files
+        .iter()
+        .find(|f| {
+            actual.size == f.size
+                && f.hashes.iter().all(|(k, v)| {
+                    actual
+                        .hashes
+                        .get(k)
+                        .is_some_and(|a| a.eq_ignore_ascii_case(v))
+                })
+        })
+        .ok_or("所选文件的大小或哈希与官方文件记录不符。")?;
+    let target = cache_path(root, expected)?;
+    d.check_cancelled()?;
+    fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
+    let temp = target.with_extension(format!("{}.tmp", uuid::Uuid::new_v4().simple()));
+    let result = (|| {
+        fs::copy(path, &temp).map_err(|e| e.to_string())?;
+        if !verified(&temp, &expected.hashes, expected.size)? {
+            return Err("手动文件复制后校验失败。".into());
+        }
+        d.check_cancelled()?;
+        crate::minecraft::replace_file(&temp, &target)
+    })();
+    let _ = fs::remove_file(temp);
+    result
+}
 
 pub(super) fn reject_link(path: &Path) -> Result<()> {
     if let Ok(metadata) = fs::symlink_metadata(path) {
@@ -40,6 +95,9 @@ pub(super) fn safe_path(root: &Path, relative: &str) -> Result<PathBuf> {
 
 pub(super) fn validate_hashes(hashes: &BTreeMap<String, String>) -> Result<()> {
     for (key, len) in [("sha1", 40), ("sha512", 128)] {
+        if key == "sha512" && !hashes.contains_key(key) {
+            continue;
+        }
         if !hashes
             .get(key)
             .is_some_and(|value| value.len() == len && value.bytes().all(|b| b.is_ascii_hexdigit()))
@@ -61,7 +119,15 @@ pub(super) fn download_url(value: &str) -> Result<()> {
     if url.scheme() != "https"
         || !matches!(
             url.host_str(),
-            Some("cdn.modrinth.com" | "github.com" | "raw.githubusercontent.com" | "gitlab.com")
+            Some(
+                "cdn.modrinth.com"
+                    | "github.com"
+                    | "raw.githubusercontent.com"
+                    | "gitlab.com"
+                    | "edge.forgecdn.net"
+                    | "mediafilez.forgecdn.net"
+                    | "media.forgecdn.net"
+            )
         )
     {
         return Err("资源下载仅支持 Modrinth CDN、GitHub 或 GitLab 的 HTTPS 地址。".into());
@@ -102,9 +168,12 @@ pub(super) fn verified(path: &Path, hashes: &BTreeMap<String, String>, size: u64
         return Ok(false);
     }
     let actual = record(path, String::new())?;
-    Ok(["sha1", "sha512"]
-        .iter()
-        .all(|key| actual.hashes[*key].eq_ignore_ascii_case(&hashes[*key])))
+    Ok(hashes.iter().all(|(key, value)| {
+        actual
+            .hashes
+            .get(key)
+            .is_some_and(|h| h.eq_ignore_ascii_case(value))
+    }))
 }
 
 pub(super) fn fetch(
@@ -120,23 +189,23 @@ pub(super) fn fetch(
     if filename.contains('/') {
         return Err("资源缓存文件名不能包含目录。".into());
     }
-    if size > MAX_FILE || urls.is_empty() || urls.len() > 16 {
+    if size > MAX_FILE || urls.len() > 16 {
         return Err("资源大小或下载地址数量无效。".into());
-    }
-    for url in urls {
-        download_url(url)?;
     }
     let path = safe_path(
         root,
-        &format!(
-            ".nscl/content-cache/{}/{filename}",
-            hashes["sha512"].to_ascii_lowercase(),
-        ),
+        &format!(".nscl/content-cache/{}/{filename}", cache_key(hashes),),
     )?;
     reject_link(&path.with_file_name(format!("{filename}.part")))?;
     downloader.check_cancelled()?;
     if verified(&path, hashes, size)? {
         return Ok(path);
+    }
+    for url in urls {
+        download_url(url)?;
+    }
+    if urls.is_empty() {
+        return Err("此文件需要从官方页面手动下载并补齐后再安装。".into());
     }
     let mut errors = Vec::new();
     for url in urls {

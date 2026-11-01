@@ -37,8 +37,12 @@ impl GameService {
             self.sender.clone(),
             self.cancel.clone(),
         );
+        let source = crate::minecraft::Source {
+            paused: self.paused.clone(),
+            ..Default::default()
+        };
         std::thread::spawn(move || {
-            let result = Downloader::new(Default::default(), cancel, reporter(&sender, &ctx))
+            let result = Downloader::new(source, cancel, reporter(&sender, &ctx))
                 .and_then(|d| content::export_pack(&root, &instance, &options, &destination, &d));
             send(
                 &sender,

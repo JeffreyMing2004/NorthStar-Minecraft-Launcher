@@ -62,6 +62,27 @@ pub fn show(ui: &mut Ui, app: &mut NsclApp) {
                 ui.add_space(20.0);
                 network(ui, app);
             }
+            ui.add_space(20.0);
+            egui::CollapsingHeader::new("全局高级启动设置").show(ui, |ui| {
+                crate::launch_options_ui::show(ui, &mut app.settings.launch)
+            });
+            egui::CollapsingHeader::new("CurseForge 内容来源").show(ui, |ui| {
+                ui.label("API Key 保存到系统凭据库，不写入设置、整合包或任务记录。");
+                ui.add(
+                    egui::TextEdit::singleline(&mut app.curseforge_key)
+                        .password(true)
+                        .hint_text("填写自己的 CurseForge API Key"),
+                );
+                if ui.button("保存 CurseForge API Key").clicked() {
+                    app.save_status = match crate::content::set_api_key(&app.curseforge_key) {
+                        Ok(s) => {
+                            app.curseforge_key.clear();
+                            s
+                        }
+                        Err(e) => e,
+                    };
+                }
+            });
         });
 }
 
@@ -366,6 +387,10 @@ fn network(ui: &mut Ui, app: &mut NsclApp) {
 }
 
 fn save(app: &mut NsclApp) {
+    if let Err(e) = app.settings.launch.validate() {
+        app.save_status = e;
+        return;
+    }
     let memory = app
         .memory_input
         .trim()

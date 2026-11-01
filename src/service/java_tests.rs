@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn queued_downloads_wait_for_preflight_prompts_and_original_launch_resume() {
+    let (_root, mut app, ctx) = super::tests::fixture();
+    app.service
+        .queue
+        .enqueue(app.service.versions[0].clone(), None, false);
+    app.service.queue.enabled = true;
+    app.service.launch_prompt = Some(LaunchPrompt::Account);
+    app.service.run_queue(&app.settings, &ctx);
+    assert!(!app.service.busy());
+    assert!(app.service.queue.active.is_none());
+    app.service.launch_prompt = None;
+    app.service.resume_launch = Some("original-instance".into());
+    app.service.run_queue(&app.settings, &ctx);
+    assert!(!app.service.busy());
+    assert!(app.service.queue.active.is_none());
+    assert_eq!(
+        app.service.resume_launch.as_deref(),
+        Some("original-instance")
+    );
+}
+
+#[test]
 fn account_and_settings_ui_show_offline_accounts_and_automatic_controls() {
     let (_root, mut app, ctx) = super::tests::fixture();
     app.accounts.list = Default::default();
