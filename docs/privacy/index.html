@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="NorthStar Minecraft Launcher（NSCL）隐私政策 / Privacy Policy：账号、登录凭据、本地文件、网络服务与数据管理。">
+  <meta name="referrer" content="no-referrer">
+  <title>隐私政策 · Privacy Policy — NorthStar Minecraft Launcher</title>
+  <link rel="canonical" href="https://privacy.minguncle.cn/">
+  <style>
+    :root {
+      --paper: #f5f7f5;
+      --card: #fff;
+      --ink: #20332d;
+      --muted: #53665e;
+      --accent: #24634e;
+      --line: #dce5de;
+      --soft: #eaf2ec;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.8;
+      -webkit-text-size-adjust: 100%;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: var(--accent); text-underline-offset: .2em; overflow-wrap: anywhere; }
+    a:hover { text-decoration-thickness: 2px; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 5px; }
+    .skip { position: absolute; top: -100px; left: 16px; padding: 8px 16px; background: white; z-index: 2; }
+    .skip:focus { top: 12px; }
+    .shell { width: min(1100px, calc(100% - 48px)); margin: 0 auto; }
+    .masthead { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 28px 0; border-bottom: 1px solid var(--line); }
+    .brand { display: inline-flex; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; font-weight: 700; font-size: 14px; line-height: 1.5; }
+    .brand svg { width: 34px; height: 34px; flex: none; }
+    .masthead > a:last-child { font-size: 13px; }
+    .hero { padding: 64px 0 36px; max-width: 840px; }
+    .eyebrow { margin: 0 0 12px; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .16em; }
+    h1 { margin: 0; font-size: clamp(36px, 6vw, 56px); letter-spacing: -.04em; line-height: 1.2; }
+    .subtitle { display: block; color: var(--muted); font-size: .52em; font-weight: 500; letter-spacing: -.02em; margin-top: 12px; }
+    .intro { margin: 24px 0 20px; max-width: 710px; font-size: 17px; }
+    .date { display: flex; flex-wrap: wrap; gap: 6px 24px; color: var(--muted); font-size: 13px; }
+    .layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; padding: 8px 0 64px; align-items: start; }
+    aside { position: sticky; top: 24px; padding-top: 24px; font-size: 13px; }
+    .toc-label { margin: 0 0 14px; font-weight: 700; color: var(--muted); }
+    nav ol { list-style: none; padding: 0; margin: 0; }
+    nav li { margin: 0 0 10px; }
+    nav a { color: var(--muted); text-decoration: none; display: block; padding: 2px 0; }
+    nav a:hover { color: var(--accent); text-decoration: underline; }
+    article { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 36px 40px; }
+    section { scroll-margin-top: 24px; }
+    section + section { border-top: 1px solid var(--line); margin-top: 32px; padding-top: 28px; }
+    h2 { margin: 0 0 16px; font-size: 21px; line-height: 1.45; letter-spacing: -.02em; }
+    h2 span { display: block; color: var(--muted); font-size: 14px; font-weight: 500; letter-spacing: 0; margin-top: 3px; }
+    h3 { margin: 24px 0 8px; font-size: 16px; line-height: 1.6; }
+    p { margin: 0 0 12px; }
+    .en { color: var(--muted); font-size: 14px; line-height: 1.75; }
+    .note { background: var(--soft); border-left: 3px solid var(--accent); padding: 18px 20px; border-radius: 0 8px 8px 0; margin: 20px 0; }
+    .note p:last-child, li p:last-child, td p:last-child { margin-bottom: 0; }
+    ul, ol { padding-left: 22px; margin: 12px 0; }
+    li { margin-bottom: 12px; }
+    code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .88em; background: #f0f4f1; padding: 2px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+    .table-wrap { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; text-align: left; }
+    th, td { padding: 16px; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { background: #f2f6f3; font-weight: 600; }
+    th:first-child { width: 25%; }
+    tr:last-child td { border-bottom: 0; }
+    td .en, th .en { display: block; margin-top: 6px; font-size: 13px; }
+    .services { margin-top: 18px; }
+    .services li { padding-left: 2px; }
+    footer { padding: 24px 0 36px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    footer p { margin-bottom: 6px; }
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: 1fr; gap: 20px; }
+      aside { position: static; padding-top: 0; }
+      nav ol { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+      nav li { margin: 0; }
+      .toc-label { margin-bottom: 8px; }
+      .hero { padding-top: 40px; }
+    }
+    @media (max-width: 480px) {
+      .shell { width: calc(100% - 32px); }
+      .masthead { padding: 20px 0; gap: 12px; align-items: flex-start; }
+      .brand { font-size: 12px; gap: 8px; }
+      .brand svg { width: 28px; height: 28px; }
+      .masthead > a:last-child { white-space: nowrap; font-size: 12px; }
+      article { padding: 24px 20px; border-radius: 12px; }
+      h2 { font-size: 19px; }
+      th, td { padding: 12px 10px; }
+      .note { padding: 14px; }
+      .intro { font-size: 16px; }
+    }
+    @media print {
+      :root { background: white; color: #111; font-size: 10pt; }
+      .shell { width: 100%; }
+      .skip, aside, .masthead > a:last-child { display: none; }
+      .masthead { padding: 0 0 12px; }
+      .hero { padding: 24px 0; }
+      h1 { font-size: 28pt; }
+      .layout { display: block; padding: 0; }
+      article { padding: 0; border: 0; }
+      .note { border: 1px solid #aaa; background: white; }
+      h2, h3 { break-after: avoid; }
+      tr { break-inside: avoid; }
+      .table-wrap { overflow: visible; }
+      a { color: inherit; }
+      footer { margin-top: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#policy">跳至正文 / Skip to policy</a>
+  <div class="shell">
+    <header class="masthead">
+      <a class="brand" href="https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher" rel="noreferrer">
+        <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect width="40" height="40" rx="12" fill="#24634e"/><path d="M20 6 23.5 16.5 34 20 23.5 23.5 20 34 16.5 23.5 6 20 16.5 16.5Z" fill="#eff7f0"/></svg>
+        <span>NorthStar<br>Minecraft Launcher</span>
+      </a>
+      <a href="https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher" rel="noreferrer">项目源码 / Source ↗</a>
+    </header>
+    <div class="hero">
+      <p class="eyebrow">NORTHSTAR · NSCL</p>
+      <h1>隐私政策<span class="subtitle" lang="en">Privacy Policy</span></h1>
+      <p class="intro">了解启动器会处理哪些信息、何时连接网络，以及如何管理留在你设备上的数据。</p>
+      <p class="en" lang="en">What the launcher processes, when it connects to online services, and how you can manage your data.</p>
+      <div class="date"><span>生效及更新日期 / Effective &amp; updated: <time datetime="2026-11-01">2026-11-01</time></span><span>中文 · English</span></div>
+    </div>
+    <div class="layout">
+      <aside>
+        <p class="toc-label">本页目录 / Contents</p>
+        <nav aria-label="隐私政策目录 / Policy contents">
+          <ol>
+            <li><a href="#scope">01 · 适用范围 / Scope</a></li>
+            <li><a href="#overview">02 · 重点说明 / Overview</a></li>
+            <li><a href="#data">03 · 信息与用途 / Data</a></li>
+            <li><a href="#services">04 · 网络服务 / Services</a></li>
+            <li><a href="#storage">05 · 存储与保留 / Storage</a></li>
+            <li><a href="#controls">06 · 管理与删除 / Controls</a></li>
+            <li><a href="#security">07 · 安全与共享 / Security</a></li>
+            <li><a href="#website">08 · 本网站 / This website</a></li>
+            <li><a href="#children">09 · 未成年人 / Children</a></li>
+            <li><a href="#contact">10 · 更新与联系 / Contact</a></li>
+          </ol>
+        </nav>
+      </aside>
+      <main id="policy">
+        <article aria-label="NSCL 隐私政策 / NSCL privacy policy">
+          <section id="scope">
+            <h2>01 · 适用范围<span lang="en">Scope and project identity</span></h2>
+            <p>本政策适用于 NorthStar Minecraft Launcher（简称 NSCL）官方桌面启动器，以及本隐私政策页面。NSCL 是由项目维护者维护、采用 GPL-3.0-only 许可证的独立开源项目，与 Mojang Studios 或 Microsoft 无隶属或背书关系。</p>
+            <p class="en" lang="en">This policy covers the official NorthStar Minecraft Launcher (NSCL) desktop application and this privacy-policy page. NSCL is an independent open-source project maintained under GPL-3.0-only. It is not affiliated with or endorsed by Mojang Studios or Microsoft.</p>
+            <p>本政策描述当前项目的功能。自行修改的版本、第三方分发版本、Minecraft 本体、Java、模组、整合包及你连接的服务器可能有各自的数据处理行为和政策。</p>
+            <p class="en" lang="en">This policy describes the current project's functionality. Modified builds, third-party distributions, Minecraft itself, Java, mods, modpacks, and servers you connect to may have their own data practices and policies.</p>
+          </section>
+          <section id="overview">
+            <h2>02 · 重点说明<span lang="en">Key points</span></h2>
+            <ul>
+              <li>启动器未集成广告跟踪、行为分析或自动上传崩溃日志的功能，也不出售你的个人信息。<p class="en" lang="en">The launcher does not integrate advertising trackers, behavioral analytics, or automatic crash-log uploads. The project does not sell your personal information.</p></li>
+              <li>账号资料、设置、游戏实例、缓存和日志主要保存在你的设备上；登录、下载、更新、皮肤和联机功能需要连接对应服务。<p class="en" lang="en">Account metadata, settings, instances, caches, and logs are primarily stored on your device. Authentication, downloads, updates, skins, and multiplayer features connect to the relevant services.</p></li>
+              <li>Microsoft 登录在 Microsoft 授权页面完成。外置认证则会把你输入的账号和密码发送给你指定的认证站，请仅使用你信任的服务。<p class="en" lang="en">Microsoft sign-in takes place on Microsoft's authorization pages. External authentication sends the username and password you enter to the authentication server you specify; use only a service you trust.</p></li>
+            </ul>
+            <div class="note">
+              <p><strong>默认联网行为：</strong>启动器默认在启动时向 GitHub 检查最新版本。你可以在「更多」中关闭启动检查。打开相关页面或使用相关功能时，也可能加载版本列表、资源元数据、图片或服务状态。</p>
+              <p class="en" lang="en"><strong>Default network activity:</strong> NSCL checks GitHub for launcher updates on startup by default. You can disable startup checks in “More”. Opening relevant pages or using features may also load version lists, resource metadata, images, or service status.</p>
+            </div>
+          </section>
+          <section id="data">
+            <h2>03 · 处理的信息与用途<span lang="en">Information processed and why</span></h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th scope="col">功能<span class="en" lang="en">Feature</span></th><th scope="col">信息、接收方与用途<span class="en" lang="en">Data, recipients, and purpose</span></th></tr></thead>
+                <tbody>
+                  <tr><td>Microsoft 账号<span class="en" lang="en">Microsoft account</span></td><td>处理授权码或设备码、访问令牌和刷新令牌，并读取玩家名、UUID、Xbox 用户标识等资料，用于登录、验证游戏授权、刷新会话及启动游戏。必要认证信息发送给 Microsoft、Xbox 和 Minecraft 官方身份服务；游戏启动时，相应会话信息会传给本机游戏进程。启动器不直接接收你的 Microsoft 密码。<span class="en" lang="en">Authorization or device codes, access and refresh tokens, player name, UUID, and Xbox identifiers are used for sign-in, ownership checks, session renewal, and game launch. Necessary authentication data goes to Microsoft's, Xbox's, and Minecraft's official identity services. Relevant session data is passed to the local game process when launching. NSCL does not directly receive your Microsoft password.</span></td></tr>
+                  <tr><td>外置与离线账号<span class="en" lang="en">External and offline accounts</span></td><td>外置认证向指定的 HTTPS 认证站发送用户名、密码和协议所需的令牌，保存认证站地址、登录名及角色资料；持久化登录凭据为令牌，不将外置密码写入账号列表。离线账号在本机生成玩家标识，创建离线账号本身不请求身份认证服务。<span class="en" lang="en">External authentication sends your username, password, and protocol-required tokens to the HTTPS server you specify, and stores its address, login name, and profile metadata. Persisted credentials are tokens; the external password is not written to the account list. Offline profiles generate an identifier locally; creating one does not contact identity services.</span></td></tr>
+                  <tr><td>安装、下载与更新<span class="en" lang="en">Installation, downloads, and updates</span></td><td>处理搜索词、游戏/加载器版本、项目和文件标识、文件哈希、系统及架构等信息，用于查找资源、识别本地模组、校验文件和下载兼容版本。模组识别可向 Modrinth 发送文件哈希，而非上传整个文件。接收方为所选平台、下载源、镜像及其 CDN。<span class="en" lang="en">Search terms, game/loader versions, project and file identifiers, file hashes, OS, and architecture support resource searches, mod identification, integrity checks, and compatible downloads. Mod identification may send file hashes to Modrinth rather than uploading whole files. Recipients are the selected platforms, download sources, mirrors, and their CDNs.</span></td></tr>
+                  <tr><td>皮肤与披风<span class="en" lang="en">Skins and capes</span></td><td>读取或缓存角色外观。使用正版皮肤上传或披风设置时，将你选定的皮肤文件或披风标识及必要的登录凭据发送给 Minecraft 官方服务。离线账号的本地皮肤预览文件保存在本机。<span class="en" lang="en">Profile appearance may be retrieved or cached. Official skin uploads and cape changes send the chosen skin file or cape identifier and necessary authentication credentials to Minecraft's official service. Offline-profile preview skins are stored locally.</span></td></tr>
+                  <tr><td>联机与环境检查<span class="en" lang="en">Multiplayer and environment checks</span></td><td>处理房间码、会话/票据、节点选择、连接状态、端口与游戏流量。使用环境检查时，房主可向联机管理服务提交 Minecraft/加载器版本、整合包来源及模组标识和哈希，供持有房间码的加入者获取并比较。管理服务、中继节点和游戏服务器会处理连接所需信息；兼容的旧认证流程还可能使用玩家标识和联机凭证。<span class="en" lang="en">Room codes, sessions/tickets, node choices, connection status, ports, and game traffic support multiplayer. With environment checks, a host may submit Minecraft/loader versions, modpack origin, and mod identifiers/hashes to the coordination service for participants holding the room code to retrieve and compare. Coordination services, relay nodes, and game servers process connection data. Compatible legacy authentication flows may also use player identifiers and relay credentials.</span></td></tr>
+                  <tr><td>本地管理与诊断<span class="en" lang="en">Local management and diagnostics</span></td><td>读取本机配置、Java/内存信息、实例文件、模组、世界、备份、截图和日志，以提供管理、启动和排错功能。原始日志可能含本地路径、玩家名、服务器地址或第三方输出。内置诊断包仅导出固定错误特征和建议；不会自动发送诊断包或原始日志。<span class="en" lang="en">Local settings, Java/memory information, instance files, mods, worlds, backups, screenshots, and logs support management, launch, and troubleshooting. Raw logs may include local paths, player names, server addresses, or third-party output. Built-in diagnostic packages export fixed error signatures and advice only; neither packages nor raw logs are automatically sent.</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>发起网络连接时，目标服务及其网络基础设施通常能够获取你的 IP 地址、请求时间、请求的资源和 HTTP 请求头；部分请求包含启动器名称及版本。这些信息可能被服务提供者用于交付内容、流量管理、安全防护或其政策说明的其他用途。</p>
+            <p class="en" lang="en">When a connection is made, the receiving service and its network infrastructure can generally see your IP address, request time, requested resources, and HTTP headers. Some requests include the launcher name and version. Providers may use this information for delivery, traffic management, security, or other purposes described in their policies.</p>
+          </section>
+          <section id="services">
+            <h2>04 · 网络服务与第三方政策<span lang="en">Online services and third-party policies</span></h2>
+            <p>仅使用某项功能时才需要对应的服务。实际请求也可能访问资源清单、整合包或你提供的 URL 指向的下载主机。以下列出主要服务及其政策入口，并不代表每次启动都会访问所有服务。</p>
+            <p class="en" lang="en">Services depend on the features used. Resource manifests, modpacks, and URLs you provide may also direct requests to other download hosts. The main services and policy links are listed below; NSCL does not contact every listed service on every launch.</p>
+            <ul class="services">
+              <li><strong>Microsoft / Xbox / Minecraft：</strong>账号授权、游戏授权、玩家资料及正版外观。<a href="https://www.microsoft.com/en-us/privacy/privacystatement" rel="noreferrer">Microsoft 隐私声明 / Privacy Statement</a>。<span class="en" lang="en">Account authorization, game ownership, profiles, and official appearance services.</span></li>
+              <li><strong>GitHub：</strong>启动器更新、发布包，以及自动安装 frpc 和部分 Java 下载。<a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noreferrer">GitHub 隐私声明 / Privacy Statement</a>。<span class="en" lang="en">Launcher updates, release assets, automatic frpc installation, and some Java downloads.</span></li>
+              <li><strong>Modrinth：</strong>模组、整合包与资源搜索、文件识别和下载。<a href="https://modrinth.com/legal/privacy/" rel="noreferrer">Modrinth 隐私政策 / Privacy Policy</a>。<span class="en" lang="en">Mod, modpack, and resource searches, file identification, and downloads.</span></li>
+              <li><strong>CurseForge / Overwolf：</strong>使用相应内容功能时查询和下载资源。<a href="https://www.overwolf.com/legal/privacy/" rel="noreferrer">Overwolf 隐私政策 / Privacy Policy</a>。<span class="en" lang="en">Resource queries and downloads when the corresponding content features are used.</span></li>
+              <li><strong>Eclipse Adoptium：</strong>查询及下载 Eclipse Temurin Java 运行时。<a href="https://www.eclipse.org/legal/privacy/" rel="noreferrer">Eclipse 隐私政策 / Privacy Policy</a>。<span class="en" lang="en">Eclipse Temurin Java runtime metadata and downloads.</span></li>
+              <li><strong>游戏和加载器下载源：</strong>Mojang 官方源、Fabric、Quilt、Forge、NeoForge，以及所选的 BMCLAPI、<code>mirror.minguncle.cn</code> 或自定义镜像。自动源选择可能尝试多个来源；使用这些来源时，它们会收到相应资源请求。第三方服务的处理以其公布的政策为准。<span class="en" lang="en">Game and loader sources include official Mojang endpoints, Fabric, Quilt, Forge, NeoForge, and the selected BMCLAPI, <code>mirror.minguncle.cn</code>, or custom mirror. Automatic source selection may try multiple sources, which receive the relevant resource requests. Third-party processing is governed by each provider's published policy.</span></li>
+              <li><strong>NSCL 联机管理服务：</strong><code>auth.minguncle.cn</code> 与备用地址 <code>auth.northstarmc.cn</code>，用于检查服务、分配房间与节点、提供环境信息及维护会话。实际游戏流量通过所选 FRP 节点和游戏服务器传输；节点运营方可能是独立第三方。<span class="en" lang="en">NSCL coordination services at <code>auth.minguncle.cn</code> and fallback <code>auth.northstarmc.cn</code> handle service checks, room/node allocation, environment metadata, and session maintenance. Game traffic passes through the selected FRP node and game server; node operators may be independent third parties.</span></li>
+              <li><strong>外置认证站与自定义服务：</strong>由你选择，其账号、令牌、请求及日志处理方式以对应运营者的政策为准。<span class="en" lang="en">External authentication and custom services are chosen by you; their operators' policies govern their handling of accounts, tokens, requests, and logs.</span></li>
+            </ul>
+          </section>
+          <section id="storage">
+            <h2>05 · 存储位置与保留<span lang="en">Storage and retention</span></h2>
+            <p>Windows 正常发布版本的设置及应用数据通常位于 <code>%LOCALAPPDATA%\cool.cnb.jeffreyming.nscl\</code>；调试版本的设置位于可执行文件旁。账号列表保存为 <code>nscl-accounts.json</code>，包含账号资料，但不包含 Microsoft 刷新令牌。游戏、世界和实例保存在所选游戏目录，备份保存在所选备份位置；默认游戏目录可能位于启动器旁。</p>
+            <p class="en" lang="en">Settings and application data for normal Windows release builds are usually stored under <code>%LOCALAPPDATA%\cool.cnb.jeffreyming.nscl\</code>; debug-build settings are beside the executable. The account list, <code>nscl-accounts.json</code>, contains account metadata but not Microsoft refresh tokens. Games, worlds, and instances are in the chosen game directory, and backups in the chosen backup location. The default game directory may be beside the launcher.</p>
+            <p>需要持久化的 Microsoft 刷新令牌和外置认证令牌通过 Windows 凭据管理器保存，使用应用标识 <code>cool.cnb.jeffreyming.nscl</code>。令牌保存失败时，界面会提示登录仅在当前会话有效。访问令牌也会在运行期间由内存中的会话使用。</p>
+            <p class="en" lang="en">Persisted Microsoft refresh tokens and external-authentication tokens use Windows Credential Manager under the application identifier <code>cool.cnb.jeffreyming.nscl</code>. If saving fails, the UI indicates that sign-in is valid for the current session only. Access tokens are also used by in-memory sessions while running.</p>
+            <p>本地账号资料、设置、下载缓存、日志和备份通常保留到你删除，或由相应功能清理、替换为止。联机运行时的房间与票据状态按会话心跳及过期机制清理。服务器、反向代理、CDN 和节点可能另有访问或安全日志，其保留由实际运营配置及运营方政策决定；本政策不承诺所有远端日志具有统一的保留天数。</p>
+            <p class="en" lang="en">Local account metadata, settings, download caches, logs, and backups generally remain until you delete them or the relevant feature cleans up or replaces them. Runtime room and ticket state is cleaned up through session heartbeat and expiry mechanisms. Servers, reverse proxies, CDNs, and nodes may maintain separate access or security logs; retention depends on their actual configuration and operators' policies. This policy does not assign one retention period to all remote logs.</p>
+            <p>第三方服务可能在不同国家或地区运营基础设施。联网功能的数据会传输至对应服务所在地；本政策不承诺所有处理均在你的设备所在地区完成。</p>
+            <p class="en" lang="en">Third-party infrastructure may operate in different countries or regions. Online features transmit data to the relevant service locations; this policy does not promise that all processing takes place in your region.</p>
+          </section>
+          <section id="controls">
+            <h2>06 · 你的选择与删除方式<span lang="en">Your choices and deletion controls</span></h2>
+            <ol>
+              <li><strong>关闭启动更新检查：</strong>在「更多」中关闭相应选项。手动检查或下载更新时仍会连接 GitHub。<p class="en" lang="en"><strong>Disable startup update checks:</strong> turn off the option in “More”. Manual checks and update downloads still connect to GitHub.</p></li>
+              <li><strong>移除账号：</strong>在账号管理中移除账号，启动器会删除相应本地账号记录、缓存会话和系统凭据条目。此操作不会删除 Microsoft 或外置认证站上的账号，也不等于在服务端撤销所有已签发令牌；如需撤销授权，请在对应服务管理。<p class="en" lang="en"><strong>Remove an account:</strong> account removal deletes the corresponding local account entry, cached sessions, and system-vault credentials. It does not delete your Microsoft or external-service account or revoke all server-issued tokens; manage authorization at the relevant provider if needed.</p></li>
+              <li><strong>管理本地文件：</strong>退出启动器后，可自行检查、备份或删除应用数据、日志、皮肤预览、下载缓存及凭据管理器中属于 NSCL 的条目。游戏目录、世界、截图和备份需单独管理；删除启动器 EXE 不会自动清除这些文件。操作前请备份需要保留的世界与资料。<p class="en" lang="en"><strong>Manage local files:</strong> after closing NSCL, you can inspect, back up, or remove application data, logs, skin previews, download caches, and NSCL entries in Credential Manager. Game directories, worlds, screenshots, and backups require separate management; deleting the launcher EXE does not erase them. Back up worlds and data you want to keep first.</p></li>
+              <li><strong>选择网络功能：</strong>可以不使用外置认证、联机或在线内容功能，或更换下载源。离线账号仅避免相应身份认证，不代表启动器其他功能或游戏本身不会联网。<p class="en" lang="en"><strong>Choose online features:</strong> you can avoid external authentication, multiplayer, or online content features, or choose another download source. An offline account avoids its identity-authentication requests; it does not make every launcher feature or the game itself offline.</p></li>
+              <li><strong>提出请求：</strong>你可以联系维护者了解与项目服务有关的数据处理，并请求查询、更正或删除由项目维护者持有的相关数据。仅保存在你设备上的资料由你管理；第三方持有的数据应向相应服务提出请求。<p class="en" lang="en"><strong>Make a request:</strong> contact the maintainer about project-service processing and request access, correction, or deletion of relevant data held by the project maintainer. You manage data stored only on your device; requests concerning third-party-held data should go to that provider.</p></li>
+            </ol>
+          </section>
+          <section id="security">
+            <h2>07 · 安全与共享边界<span lang="en">Security and sharing boundaries</span></h2>
+            <p>身份认证等敏感接口使用 HTTPS，持久化令牌使用系统凭据库。请保护操作系统账号，不要公开令牌、外置密码、房间管理凭证或含敏感内容的原始日志。系统凭据存储不能消除恶意软件或设备被他人控制的风险。</p>
+            <p class="en" lang="en">Sensitive interfaces such as authentication use HTTPS, and persisted tokens use the system vault. Protect your operating-system account and do not publish tokens, external-service passwords, room-management credentials, or sensitive raw logs. System credential storage cannot eliminate risks from malware or a compromised device.</p>
+            <p>联机环境信息可能被持有房间码的其他人读取，分享房间码前请确认内容。中继并不等于游戏流量受到端到端加密；节点及游戏服务器可能处理玩家身份、连接信息、聊天或其他游戏协议内容，具体取决于游戏、模组、隧道配置及服务器行为。</p>
+            <p class="en" lang="en">People holding a room code may retrieve shared environment metadata; review it before sharing the code. Relaying does not imply end-to-end encryption of game traffic. Nodes and game servers may process player identity, connection data, chat, or other game-protocol content, depending on the game, mods, tunnel configuration, and server behavior.</p>
+            <p>向必要服务发送的数据用于相应功能。维护者可能在依法处理的请求或维护服务安全所必要的范围内处理或披露其实际持有的信息；这不代表维护者可以访问仅存在于你设备凭据库中的内容。</p>
+            <p class="en" lang="en">Data sent to necessary services supports the corresponding features. The maintainer may process or disclose information actually held when necessary to address lawful requests or protect service security. This does not give the maintainer access to contents stored only in your device's credential vault.</p>
+          </section>
+          <section id="website">
+            <h2>08 · 本隐私政策网站<span lang="en">This privacy-policy website</span></h2>
+            <p>本页面是静态 HTML，不包含 JavaScript、Cookie、浏览器本地存储、统计代码、广告、表单、远程字体或嵌入式第三方资源。页面内的外部链接仅在你主动打开时访问对应网站。</p>
+            <p class="en" lang="en">This page is static HTML with no JavaScript, cookies, browser local storage, analytics, advertising, forms, remote fonts, or embedded third-party resources. External links are visited only when you open them.</p>
+            <p>访问 <code>privacy.minguncle.cn</code> 时，承载网站的服务器及实际使用的 CDN、安全或托管服务仍可能依部署配置处理 IP 地址、请求路径、时间、浏览器请求头和安全日志。这与页面嵌入跟踪脚本不同；如对网站访问记录有疑问，可联系项目维护者。</p>
+            <p class="en" lang="en">When you visit <code>privacy.minguncle.cn</code>, its server and any CDN, security, or hosting provider actually used may process IP addresses, request paths, times, browser headers, and security logs according to the deployment configuration. The page itself embeds no tracking scripts. Contact the project maintainer with questions about website access records.</p>
+          </section>
+          <section id="children">
+            <h2>09 · 未成年人使用<span lang="en">Children and younger users</span></h2>
+            <p>未成年人应在监护人指导下使用账号登录、第三方下载和联机功能，并遵守相应服务的年龄与账号规则。请勿在公开问题反馈、日志或房间信息中分享真实姓名、联系方式或其他敏感个人资料。如监护人认为项目服务不当处理了未成年人的信息，可联系维护者。</p>
+            <p class="en" lang="en">Younger users should use account sign-in, third-party downloads, and multiplayer with guidance from a parent or guardian, and follow the relevant services' age and account rules. Do not share real names, contact details, or other sensitive personal data in public issues, logs, or room information. Guardians can contact the maintainer about concerns regarding a child's information processed by project services.</p>
+          </section>
+          <section id="contact">
+            <h2>10 · 政策更新与联系<span lang="en">Policy updates and contact</span></h2>
+            <p>功能或数据处理方式变化时，本页面将相应更新，并修改页首日期。重大变化会在项目说明或发布说明中告知。项目公开源代码和本政策文件的版本记录，便于核对变化。</p>
+            <p class="en" lang="en">This page and its date will be updated as functionality or data practices change. Significant changes will be described in project or release notes. The source code and policy-file history are public so changes can be reviewed.</p>
+            <p>项目维护者公开账号：<a href="https://github.com/JeffreyMing2004" rel="noreferrer">JeffreyMing2004</a>。隐私相关的一般问题或联系请求可通过 <a href="https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues" rel="noreferrer">项目 GitHub Issues</a> 提交。Issues 是公开的：涉及敏感信息时，请先仅提出需要私下联系的请求，待维护者确认合适渠道后再提供必要详情；不要公开密码、令牌、账号恢复信息或未脱敏日志。</p>
+            <p class="en" lang="en">Public maintainer account: <a href="https://github.com/JeffreyMing2004" rel="noreferrer">JeffreyMing2004</a>. General privacy questions or contact requests can be submitted through <a href="https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/issues" rel="noreferrer">the project's GitHub Issues</a>. Issues are public: for sensitive matters, first request a private contact channel without posting sensitive details, then provide only necessary information after the maintainer confirms a suitable channel. Do not publish passwords, tokens, account-recovery information, or unredacted logs.</p>
+          </section>
+        </article>
+      </main>
+    </div>
+    <footer>
+      <p>NorthStar Minecraft Launcher · NSCL · 隐私政策 / Privacy Policy</p>
+      <p>独立开源项目，与 Mojang Studios 或 Microsoft 无隶属或背书关系。<span lang="en"> An independent open-source project; not affiliated with or endorsed by Mojang Studios or Microsoft.</span></p>
+    </footer>
+  </div>
+</body>
+</html>
