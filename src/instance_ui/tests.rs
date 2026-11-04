@@ -143,11 +143,98 @@ fn frame(ctx: &Context, app: &mut NsclApp, size: Vec2, events: Vec<Event>) -> Fu
         },
         |ui| {
             crate::pages::instance_windows(ui.ctx(), app);
+            crate::instance_delete::show(ui.ctx(), app);
             show(ui, app);
         },
     );
     output.textures_delta.clear();
     output
+}
+
+fn finish_deletion(app: &mut NsclApp) {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while app.service.busy() && std::time::Instant::now() < until {
+        app.service.poll(&app.settings);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!app.service.busy());
+    assert!(app.service.error.is_none(), "{:?}", app.service.error);
+}
+
+#[test]
+fn deleting_an_instance_requires_confirmation_and_preserves_other_instances() {
+    let (root, mut app, ctx) = populated();
+    let directory = root.path().join("instances/modded");
+    std::fs::write(directory.join("keep-until-confirmed"), b"world").unwrap();
+    click(&ctx, &mut app, "删除实例");
+    assert!(app.instance_browser.delete.is_some());
+    click(&ctx, &mut app, "确认删除");
+    assert!(directory.join("keep-until-confirmed").exists());
+    assert!(!app.service.busy());
+    click(&ctx, &mut app, "取消");
+    assert!(app.instance_browser.delete.is_none());
+    click(&ctx, &mut app, "删除实例");
+    click(&ctx, &mut app, "我已了解，确认永久删除此实例");
+    click(&ctx, &mut app, "确认删除");
+    finish_deletion(&mut app);
+    assert!(!directory.exists());
+    assert!(!app.service.instances.iter().any(|i| i.id == "modded"));
+    assert_eq!(app.service.selected, "vanilla");
+    assert_eq!(app.service.deleted_instance.as_deref(), Some("modded"));
+    assert!(root.path().join("instances/vanilla").exists());
+    assert!(root.path().join("instances/pack-example").exists());
+    assert!(
+        root.path()
+            .join("versions/1.20.1-fabric/1.20.1-fabric.json")
+            .exists()
+    );
+}
+
+#[test]
+fn archived_instances_have_a_permanent_delete_action() {
+    let (root, mut app, ctx) = populated();
+    let pack = app
+        .service
+        .instances
+        .iter()
+        .find(|i| i.id == "pack-example")
+        .unwrap()
+        .clone();
+    let archive = instances::archive(root.path(), &pack).unwrap();
+    app.service.refresh(&app.settings);
+    app.instance_browser.filter = Filter::Archived;
+    app.instance_browser.selected = pack.id;
+    app.instance_browser.invalidate_archives();
+    click(&ctx, &mut app, "删除实例");
+    click(&ctx, &mut app, "我已了解，确认永久删除此实例");
+    click(&ctx, &mut app, "确认删除");
+    finish_deletion(&mut app);
+    assert!(!archive.exists());
+    assert!(instances::archived(root.path()).is_empty());
+    assert!(root.path().join("instances/vanilla").exists());
+}
+
+#[test]
+fn deleting_is_locked_while_a_game_or_task_is_running() {
+    let (root, mut app, ctx) = populated();
+    app.service.game = Some((1, Default::default()));
+    click(&ctx, &mut app, "删除实例");
+    assert!(app.instance_browser.delete.is_none());
+    let instance = app
+        .service
+        .instances
+        .iter()
+        .find(|i| i.id == "modded")
+        .unwrap()
+        .clone();
+    app.service
+        .delete_instance(instance, None, &app.settings, &ctx);
+    assert!(!app.service.busy());
+    assert!(root.path().join("instances/modded").exists());
+    app.service.game = None;
+    app.service.task = crate::service::Task::Content;
+    click(&ctx, &mut app, "删除实例");
+    assert!(app.instance_browser.delete.is_none());
 }
 
 fn click(ctx: &Context, app: &mut NsclApp, label: &str) {

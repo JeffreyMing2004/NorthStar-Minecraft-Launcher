@@ -10,7 +10,9 @@ use std::{
 
 const CONFIG: &str = "nscl-instance.json";
 pub mod backup;
+mod deletion;
 pub mod migration;
+pub use deletion::{delete, delete_archived};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -168,6 +170,7 @@ pub fn list(root: &Path) -> Vec<Instance> {
         };
         if !result.iter().any(|i| i.id == id)
             && !parent.join(format!("{id}.archived")).exists()
+            && !parent.join(format!("{id}.deleted")).exists()
             && managed_path(root, &id).is_ok()
         {
             let isolation = if version.external {

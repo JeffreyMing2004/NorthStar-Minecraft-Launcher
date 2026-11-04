@@ -12,6 +12,7 @@ mod error_ui;
 mod external_auth_ui;
 mod file_picker;
 mod instance_backup;
+mod instance_delete;
 mod instance_export;
 mod instance_files;
 mod instance_icons;

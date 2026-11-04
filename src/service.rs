@@ -22,6 +22,7 @@ mod pack_import;
 pub use pack_import::{PackImport, PackImportStatus};
 mod downloads;
 mod export;
+mod instance_delete;
 #[cfg(test)]
 mod isolation_tests;
 #[cfg(test)]
@@ -44,6 +45,7 @@ pub enum Task {
     Install,
     Launch,
     Content,
+    DeleteInstance,
 }
 
 #[derive(Clone)]
@@ -66,6 +68,7 @@ enum Event {
     Versions(Vec<VersionEntry>),
     Loaders(Vec<LoaderVersion>),
     Installed(InstalledVersion),
+    InstanceDeleted(String),
     Failed(String),
     GameStarted(u32, PathBuf),
     GameExited(std::result::Result<i32, String>),
@@ -81,6 +84,7 @@ enum Event {
 
 pub struct GameService {
     pub active_instance: String,
+    pub deleted_instance: Option<String>,
     pub identify_plan: Option<crate::content::IdentifyPlan>,
     pub pack_state: pack_updates::PackState,
     pub queue: crate::download_tasks::Queue,
@@ -138,6 +142,7 @@ impl GameService {
             .unwrap_or_default();
         Self {
             active_instance: String::new(),
+            deleted_instance: None,
             identify_plan: None,
             pack_state: Default::default(),
             queue: crate::download_tasks::Queue::load(&store::game_directory(settings)),
@@ -282,6 +287,17 @@ impl GameService {
                             .map(LoaderVersion::label)
                             .unwrap_or_else(|| format!("Minecraft {}", version.id))
                     );
+                }
+                Event::InstanceDeleted(id) => {
+                    self.task = Task::Idle;
+                    self.refresh(settings);
+                    if self.content.target == id {
+                        self.content = ContentState::default();
+                        self.local = Default::default();
+                        self.pack_state = Default::default();
+                    }
+                    self.deleted_instance = Some(id);
+                    self.notice = "实例已删除。".into();
                 }
                 Event::Failed(error) => {
                     self.queue.finish(

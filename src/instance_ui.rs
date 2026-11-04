@@ -31,6 +31,7 @@ pub enum DetailTab {
 
 #[derive(Default)]
 pub struct BrowserState {
+    pub delete: Option<crate::instance_delete::Dialog>,
     pub pack_update: Option<crate::pack_update_ui::Dialog>,
     pub optifine: Option<crate::optifine_ui::Dialog>,
     pub search: String,
@@ -617,6 +618,10 @@ fn details(
     ui.add_space(16.0);
     if archive.is_some() {
         app::hint(ui, "已归档");
+        if download_button(ui, "删除实例", editable) {
+            app.instance_browser.delete =
+                Some(crate::instance_delete::Dialog::new(root, instance, archive));
+        }
         return;
     }
     theme::toolbar(ui, |ui| {
@@ -747,6 +752,10 @@ fn details(
         }
         if download_button(ui, "归档实例", editable) {
             app.archive_confirm = Some(instance.clone());
+        }
+        if download_button(ui, "删除实例", editable) {
+            app.instance_browser.delete =
+                Some(crate::instance_delete::Dialog::new(root, instance, None));
         }
         if download_button(
             ui,

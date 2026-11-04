@@ -205,6 +205,20 @@ impl eframe::App for NsclApp {
         let previous_instance = self.service.selected.clone();
         let previous_log = self.service.last_log.clone();
         self.service.poll(&self.settings);
+        if let Some(id) = self.service.deleted_instance.take() {
+            if self.instance_browser.selected == id {
+                self.instance_browser.selected = self.service.selected.clone();
+                self.instance_browser.tab = crate::instance_ui::DetailTab::Overview;
+                self.instance_browser.files = Default::default();
+                self.instance_browser.media = Default::default();
+            }
+            self.instance_browser.delete = None;
+            crate::accessibility::finish_dialog(&ctx, "删除实例确认");
+            self.instance_browser.invalidate_archives();
+            self.instance_icons.clear();
+            self.instance_status = self.service.notice.clone();
+            self.remember_instance();
+        }
         if let Some(id) = self.quick_start.take() {
             self.service.selected = id;
             self.service.launch(&self.settings, &self.accounts, &ctx);
@@ -258,6 +272,7 @@ impl eframe::App for NsclApp {
             self.service.error = Some(error);
         }
         pages::instance_windows(&ctx, self);
+        crate::instance_delete::show(&ctx, self);
         crate::instance_backup::show(&ctx, self);
         crate::preflight_ui::show(&ctx, self);
         crate::task_ui::show(&ctx, self);

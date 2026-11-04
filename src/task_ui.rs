@@ -15,31 +15,36 @@ pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
             if app.service.busy() {
                 ui.label(&app.service.progress.stage);
                 ui.label(app.service.rate.label(&app.service.progress));
-                ui.horizontal(|ui| {
-                    if ui
-                        .button(
-                            if app
-                                .settings
-                                .source
-                                .paused
-                                .load(std::sync::atomic::Ordering::Relaxed)
+                ui.add_enabled_ui(
+                    app.service.task != crate::service::Task::DeleteInstance,
+                    |ui| {
+                        ui.horizontal(|ui| {
+                            if ui
+                                .button(
+                                    if app
+                                        .settings
+                                        .source
+                                        .paused
+                                        .load(std::sync::atomic::Ordering::Relaxed)
+                                    {
+                                        "继续当前任务"
+                                    } else {
+                                        "暂停当前任务"
+                                    },
+                                )
+                                .clicked()
                             {
-                                "继续当前任务"
-                            } else {
-                                "暂停当前任务"
-                            },
-                        )
-                        .clicked()
-                    {
-                        app.settings
-                            .source
-                            .paused
-                            .fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
-                    }
-                    if ui.button("取消当前任务").clicked() {
-                        app.service.cancel();
-                    }
-                });
+                                app.settings
+                                    .source
+                                    .paused
+                                    .fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
+                            }
+                            if ui.button("取消当前任务").clicked() {
+                                app.service.cancel();
+                            }
+                        });
+                    },
+                );
             }
             if let Some(e) = &app.service.queue.error {
                 ui.label(e);
