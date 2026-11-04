@@ -53,3 +53,11 @@ tempfile = "3"
 
 [build-dependencies]
 embed-resource = "3.0.11"
+
+# Large modpacks are hashed several times during import. Keep the launcher in
+# debug mode while optimizing the CPU-intensive digest implementations.
+[profile.dev.package.sha1]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3

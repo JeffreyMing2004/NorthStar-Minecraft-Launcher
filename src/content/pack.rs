@@ -8,7 +8,9 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 pub(super) mod curseforge;
+mod parallel;
 mod update;
+use parallel::parallel_map;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -138,6 +140,8 @@ pub fn inspect_pack(root: &Path, path: &Path) -> Result<PackPlan> {
     inspect_pack_with_downloader(root, path, &d)
 }
 pub fn inspect_pack_with_downloader(root: &Path, path: &Path, d: &Downloader) -> Result<PackPlan> {
+    d.check_cancelled()?;
+    d.phase("读取并校验整合包", 0);
     let mut archive = ZipArchive::new(fs::File::open(path).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     if archive.by_name("manifest.json").is_ok() && archive.by_name("modrinth.index.json").is_err() {
@@ -403,6 +407,7 @@ fn prepare_pack(
     downloader: &Downloader,
 ) -> Result<PreparedPack> {
     downloader.check_cancelled()?;
+    downloader.phase("校验整合包缓存", 1);
     if !files::verified(
         &plan.archive,
         &plan.archive_hash.hashes,
@@ -410,6 +415,7 @@ fn prepare_pack(
     )? {
         return Err("整合包缓存损坏，请重新检查安装方案。".into());
     }
+    downloader.complete("整合包缓存已通过校验");
     let stage = files::Stage::new(root)?;
     let payload = stage.directory("instance")?;
     let mut records = BTreeMap::<String, InstalledFile>::new();
@@ -441,38 +447,21 @@ fn prepare_pack(
         }
     }
     let unique: Vec<_> = unique.into_iter().collect();
-    let mut cached = BTreeMap::new();
     downloader.phase("下载并校验整合包资源", unique.len());
-    for batch in unique.chunks(4) {
-        let results = std::thread::scope(|scope| {
-            let jobs: Vec<_> = batch
-                .iter()
-                .map(|(key, file)| {
-                    (
-                        key.clone(),
-                        scope.spawn(move || {
-                            files::fetch(
-                                root,
-                                &file.downloads,
-                                &file.hashes,
-                                file.file_size,
-                                file.path.rsplit('/').next().unwrap_or("resource"),
-                                downloader,
-                            )
-                        }),
-                    )
-                })
-                .collect();
-            jobs.into_iter()
-                .map(|(key, job)| {
-                    let path = job.join().map_err(|_| "资源下载线程异常。".to_owned())??;
-                    downloader.complete("整合包资源已通过校验");
-                    Ok((key, path))
-                })
-                .collect::<Result<Vec<_>>>()
-        })?;
-        cached.extend(results);
-    }
+    let cached: BTreeMap<_, _> = parallel_map(&unique, downloader, |(key, file)| {
+        let path = files::fetch(
+            root,
+            &file.downloads,
+            &file.hashes,
+            file.file_size,
+            file.path.rsplit('/').next().unwrap_or("resource"),
+            downloader,
+        )?;
+        downloader.complete("整合包资源已通过校验");
+        Ok((key.clone(), path))
+    })?
+    .into_iter()
+    .collect();
     for file in active {
         downloader.check_cancelled()?;
         let cache = cached.get(&key(file)).ok_or("整合包资源缓存缺失。")?;
@@ -519,6 +508,7 @@ fn prepare_pack(
             relative.clone(),
             files::record(&destination, relative.clone())?,
         );
+        downloader.complete("写入整合包客户端配置");
     }
     downloader.phase("准备整合包要求的 Minecraft 与加载器", 0);
     let manifest = minecraft::manifest(downloader)?;
