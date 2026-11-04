@@ -7,6 +7,7 @@ impl GameService {
             self.queue = crate::download_tasks::Queue::load(&root);
         }
         if self.busy()
+            || self.pack_import.is_some()
             || self.game.is_some()
             || self.resume_launch.is_some()
             || self.launch_prompt.is_some()

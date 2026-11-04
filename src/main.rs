@@ -25,6 +25,7 @@ mod manual_ui;
 mod migration_ui;
 mod mod_tools_ui;
 mod optifine_ui;
+mod pack_import_ui;
 mod pack_update_ui;
 mod preflight_ui;
 mod task_ui;

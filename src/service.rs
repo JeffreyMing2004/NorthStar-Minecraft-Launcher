@@ -18,6 +18,8 @@ pub mod backup;
 #[cfg(test)]
 mod backup_tests;
 pub mod content;
+mod pack_import;
+pub use pack_import::{PackImport, PackImportStatus};
 mod downloads;
 mod export;
 #[cfg(test)]
@@ -95,6 +97,7 @@ pub struct GameService {
     pub loader_search: String,
     pub loaders: Vec<LoaderVersion>,
     pub progress: Progress,
+    pub pack_import: Option<PackImport>,
     pub error: Option<String>,
     pub manifest_error: Option<String>,
     pub notice: String,
@@ -169,6 +172,7 @@ impl GameService {
             java_status: String::new(),
             java_install_major: 21,
             content: ContentState::default(),
+            pack_import: None,
             exported_pack: None,
             local: resources::LocalState::default(),
             versions_requested: false,
@@ -366,6 +370,7 @@ impl GameService {
                 Event::Local(event) => self.apply_local(event),
                 Event::Backup(event) => self.apply_backup(event, settings),
             }
+            self.finish_pack_import();
         }
     }
 

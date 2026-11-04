@@ -5,6 +5,9 @@ use crate::{
 };
 
 pub fn show(ctx: &egui::Context, app: &mut NsclApp) {
+    if app.service.pack_import.is_some() {
+        return;
+    }
     let Some(error) = app.service.error.clone() else {
         return;
     };

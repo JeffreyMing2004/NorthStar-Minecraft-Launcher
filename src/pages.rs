@@ -1152,6 +1152,9 @@ pub(crate) fn download_button(ui: &mut Ui, label: &str, enabled: bool) -> bool {
 }
 
 pub(crate) fn task_status(ui: &mut Ui, app: &mut NsclApp) {
+    if app.service.pack_import.is_some() {
+        return;
+    }
     if app.service.busy() {
         ui.add_space(16.0);
         ui.separator();

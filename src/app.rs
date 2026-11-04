@@ -267,6 +267,7 @@ impl eframe::App for NsclApp {
         crate::mod_tools_ui::show(&ctx, self);
         crate::log_ui::show(&ctx, self);
         crate::error_ui::show(&ctx, self);
+        crate::pack_import_ui::show(&ctx, self);
         #[cfg(debug_assertions)]
         if self.screenshot_pending
             && (self.page != Page::Downloads

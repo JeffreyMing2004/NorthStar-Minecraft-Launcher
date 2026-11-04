@@ -365,7 +365,12 @@ impl GameService {
         }
         self.content =
             ContentState::scoped(ContentKind::Modpack, ContentMode::Download, String::new());
-        self.begin(Task::Content);
+        self.begin_pack_import(
+            path.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+        );
         self.progress.stage = "正在识别拖入的整合包".into();
         let (path, settings, ctx, sender, cancel) = (
             path.to_path_buf(),
@@ -428,7 +433,11 @@ impl GameService {
             return;
         }
         let backup_before_change = self.content.backup_before_change;
-        self.begin(Task::Content);
+        if let ContentPlan::Pack(pack) = &plan {
+            self.begin_pack_import(pack.name.clone());
+        } else {
+            self.begin(Task::Content);
+        }
         let (settings, ctx, sender, cancel) = (
             settings.clone(),
             ctx.clone(),
