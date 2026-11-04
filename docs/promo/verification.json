@@ -1,0 +1,15 @@
+{
+  "file": "NorthStar-60s-1080p.mp4",
+  "duration_seconds": 60.0,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "fps": 30.0,
+  "decoded_frames": 1800,
+  "video_codec": "h264",
+  "audio_codec": "aac",
+  "full_decode": "passed",
+  "download_url": "https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases",
+  "sha256": "c30b2d59328176e82be1b5a06794d6b59d3d6cb6acd61bdc41ac37b652e31bce"
+}

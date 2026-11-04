@@ -1,0 +1,16 @@
+{
+  "file": "NorthStar-Fluent-60s-1080p.mp4",
+  "duration_seconds": 60,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "fps": 30,
+  "decoded_frames": 1800,
+  "video_codec": "h264",
+  "audio_codec": "aac",
+  "full_decode": "passed",
+  "renderer": "Three.js 0.180.0 / Edge WebGL / FFmpeg",
+  "download_url": "https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases",
+  "sha256": "95c03db165bad6f702c4ff6237e38415047b2209f5d002405f6db4d133bd1c71"
+}

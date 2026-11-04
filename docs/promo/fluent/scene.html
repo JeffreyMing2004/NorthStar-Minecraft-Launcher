@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NorthStar · 下一站，你的世界</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+    body { background: #eef6f1; color: #19382e; font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; }
+    #backdrop { position:absolute; inset:0; background:radial-gradient(ellipse at 65% 45%,#d1ecd9 0%,#e9f5ef 42%,#f5f5f3 85%); }
+    #stage { position:absolute; inset:0; }
+    #stage canvas { display:block; }
+    #brand { position:absolute; left:78px; top:49px; display:flex; align-items:center; gap:13px; color:#254d3b; font:600 22px 'Segoe UI',sans-serif; letter-spacing:1px; }
+    #brand img { width:35px; height:35px; }
+    #copy { position:absolute; top:93px; left:100px; right:100px; text-align:center; }
+    #eyebrow { margin:0 0 18px; font:500 18px 'Segoe UI',sans-serif; letter-spacing:5px; color:#54826b; }
+    #headline { margin:0; font-size:71px; font-weight:500; line-height:1.38; letter-spacing:-2px; white-space:pre-line; }
+    #detail { margin:23px 0 0; font-size:25px; font-weight:400; letter-spacing:1px; color:#5d7a6c; white-space:pre-line; line-height:1.8; }
+    #caption { position:absolute; bottom:48px; left:100px; right:100px; text-align:center; color:#587869; font-size:21px; letter-spacing:2px; }
+    #closing { position:absolute; left:0; top:0; width:1920px; height:1080px; opacity:0; }
+    #wordmark { position:absolute; top:330px; left:805px; font:600 94px 'Segoe UI',sans-serif; color:#193b2c; letter-spacing:-3px; }
+    #product { position:absolute; left:812px; top:451px; color:#648572; font:400 23px 'Segoe UI',sans-serif; letter-spacing:5px; }
+    #slogan { position:absolute; top:571px; width:100%; text-align:center; font-size:66px; font-weight:500; letter-spacing:-1px; }
+    #download { position:absolute; top:718px; left:746px; width:428px; height:76px; padding-top:17px; text-align:center; border-radius:38px; background:#254d3b; color:#eff8f1; font-size:27px; box-shadow:0 16px 35px #385d3922; }
+    #platform { position:absolute; top:827px; left:0; width:100%; text-align:center; color:#6c8376; font:400 22px 'Segoe UI',sans-serif; letter-spacing:2px; }
+    #qr { position:absolute; left:1515px; top:705px; padding:13px 13px 14px; width:230px; background:#ffffffbc; border:1px solid #ffffff; border-radius:22px; text-align:center; box-shadow:0 18px 55px #2b593a12; }
+    #qr img { display:block; width:202px; height:202px; }
+    #qr span { display:block; margin-top:11px; font-size:18px; color:#40644e; }
+    #legal { position:absolute; left:0; bottom:35px; width:100%; text-align:center; font-size:15px; letter-spacing:.5px; color:#8a9c91; }
+    #fade { position:absolute; inset:0; pointer-events:none; background:#f2f7f3; opacity:0; }
+    #wash { position:absolute; inset:0; pointer-events:none; background:linear-gradient(100deg,transparent,#ffffffbb,transparent); opacity:0; }
+  </style>
+  <script type="importmap">{"imports":{"three":"/target/promo-web/node_modules/three/build/three.module.js","three/addons/":"/target/promo-web/node_modules/three/examples/jsm/"}}</script>
+</head>
+<body>
+  <div id="backdrop"></div><div id="stage"></div>
+  <div id="brand"><img src="/assets/nscl-logo.svg" alt="">NORTHSTAR</div>
+  <div id="copy"><p id="eyebrow"></p><h1 id="headline"></h1><p id="detail"></p></div>
+  <div id="caption"></div>
+  <div id="closing">
+    <div id="wordmark">NorthStar</div><div id="product">MINECRAFT LAUNCHER</div>
+    <div id="slogan">下一站，你的世界。</div><div id="download">下载公开测试版</div>
+    <div id="platform">Minecraft Java Edition · Windows 10 / 11</div>
+    <div id="qr"><img src="/target/promo-fluent/qr.png" alt="下载二维码"><span>GitHub Releases</span></div>
+    <div id="legal">独立非官方项目，与 Mojang / Microsoft 无隶属或背书关系。</div>
+  </div>
+  <div id="wash"></div><div id="fade"></div>
+  <script type="module" src="scene.mjs"></script>
+</body>
+</html>
