@@ -1,0 +1,18 @@
+{
+  "file": "NorthStar-Animated-60s-1080p.mp4",
+  "duration_seconds": 60.0,
+  "resolution": [
+    1920,
+    1080
+  ],
+  "fps": 30.0,
+  "decoded_frames": 1800,
+  "video_codec": "h264",
+  "audio_codec": "aac",
+  "full_decode": "passed",
+  "download_url": "https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases",
+  "sha256": "bd6beb39972a0aaf896f82dfe2b36b5c20b34809fab121449728243f32fd79da",
+  "source": "Fresh screenshots of the running NSCL debug application",
+  "capture_count": 7,
+  "style": "Original dark mint layout with subtle motion"
+}

@@ -28,13 +28,17 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import qrcode
 
 W, H, FPS, DURATION = 1920, 1080, 30, 60
+ANIMATED = "--animated" in sys.argv
 MINT = "#B1EDC7"
 WHITE = "#F0F5F1"
 MUTED = "#99AFA5"
 BG = "#0B1415"
 DOWNLOAD = "https://github.com/JeffreyMing2004/NorthStar-Minecraft-Launcher/releases"
-OUT = ROOT / "docs" / "promo"
-CACHE = ROOT / "target" / "promo-render"
+OUT = ROOT / "docs" / "promo" / ("animated" if ANIMATED else "")
+CACHE = ROOT / "target" / ("promo-animated" if ANIMATED else "promo-render")
+CAPTURES = ROOT / "docs" / "promo" / "captures"
+PREFIX = "NorthStar-Animated" if ANIMATED else "NorthStar"
+VIDEO_NAME = f"{PREFIX}-60s-1080p.mp4"
 SCENES = [
     (0, 6, "序章", "下一站，你的世界。NorthStar，陪你开启新的冒险。"),
     (6, 14, "开始冒险", "选择实例，管理角色，从熟悉的开始页出发。"),
@@ -139,7 +143,8 @@ LAND = landscape()
 
 
 def screenshot(name, x=746, y=224, width=1080):
-    original = Image.open(ROOT / "docs" / "images" / name).convert("RGBA")
+    source = CAPTURES if ANIMATED else ROOT / "docs" / "images"
+    original = Image.open(source / name).convert("RGBA")
     height = round(original.height * width / original.width)
     shot = original.resize((width, height), Image.Resampling.LANCZOS)
     mask = Image.new("L", (width, height), 0)
@@ -154,7 +159,8 @@ def screenshot(name, x=746, y=224, width=1080):
     im.alpha_composite(shot, (x, y))
     d = ImageDraw.Draw(im)
     d.rounded_rectangle((x, y, x+width, y+height), 18, outline="#476255", width=2)
-    txt(d, (x+2, y-42), "NSCL  /  产品界面", 20, MUTED)
+    label = "NSCL  /  实际程序截图" if ANIMATED else "NSCL  /  产品界面"
+    txt(d, (x+2, y-42), label, 20, MUTED)
     return im
 
 
@@ -237,7 +243,11 @@ def build_scenes():
         txt(d, (cx, cy-41), label, 31, WHITE, True, anchor="mt")
         txt(d, (cx, cy+15), desc, 21, MUTED, anchor="mt")
     txt(d, (1730, 928), "联机功能示意", 19, "#789383", anchor="rt")
-    pages.append([(multi, .1, 0, 30), (network, .4, 0, 30)])
+    if ANIMATED:
+        pages.append([(multi, .1, 0, 30), (screenshot("multiplayer.png"), .28, 65, 12),
+                      (note(1252, 816, "从你的世界，到我们的世界", "发现局域网世界 · 连接朋友"), .8, 0, 30)])
+    else:
+        pages.append([(multi, .1, 0, 30), (network, .4, 0, 30)])
 
     ease = title_layer("06  /  MADE FOR YOUR JOURNEY", ["把准备，", "交给北极星。"],
                        ["从运行环境，到日常使用。", "让每次出发，更从容。"], ["Windows 10 / 11", "Java 版"])
@@ -278,11 +288,90 @@ def build_scenes():
 
 
 PAGES = build_scenes()
+PANEL_NAMES = {1: "home.png", 2: "downloads.png", 3: "instances.png",
+               4: "instance-files.png", 5: "multiplayer.png"}
+CAPTURE_IMAGES = {name: Image.open(CAPTURES / name).convert("RGBA")
+                  for name in [*PANEL_NAMES.values(), "home-menu.png", "download-setup.png"]} if ANIMATED else {}
+PANEL_MASK = Image.new("L", (1080, 684), 0)
+ImageDraw.Draw(PANEL_MASK).rounded_rectangle((0, 0, 1079, 683), 18, fill=255)
 
 
 def smooth(x):
     x = max(0.0, min(1.0, x))
     return 1-(1-x)**3
+
+
+def travel(points, local):
+    """A short, smooth annotation path over a real captured interface."""
+    for (start, a), (end, b) in zip(points, points[1:]):
+        if local < end:
+            q = smooth((local-start)/(end-start))
+            return a[0]+(b[0]-a[0])*q, a[1]+(b[1]-a[1])*q
+    return points[-1][1]
+
+
+def animated_panel(idx, local):
+    """Keep the first edit's framing, with small zooms and actual UI states."""
+    art = PAGES[idx][1][0].copy()
+    screen = CAPTURE_IMAGES[PANEL_NAMES[idx]].copy()
+    if idx == 1:
+        # The open menu was captured in the running launcher, not recreated.
+        weight = smooth((local-2.1)/.32)*(1-smooth((local-4.05)/.30))
+        if weight:
+            screen = Image.blend(screen, CAPTURE_IMAGES["home-menu.png"], weight)
+        points = [(.6, (940, 535)), (2.1, (687, 443)), (4.1, (687, 443)),
+                  (5.25, (164, 615)), (8, (164, 615))]
+        box = (58, 590, 262, 641) if local > 4.6 else (124, 422, 712, 464)
+        click = 2.1
+    elif idx == 2:
+        weight = smooth((local-3.25)/.38)
+        if weight:
+            screen = Image.blend(screen, CAPTURE_IMAGES["download-setup.png"], weight)
+        points = [(.6, (795, 645)), (3.25, (1077, 312)), (4.2, (1077, 312)),
+                  (5.6, (356, 203)), (9, (480, 203))]
+        box = (56, 181, 653, 225) if local > 3.8 else (1028, 292, 1127, 336)
+        click = 3.25
+    elif idx == 3:
+        points = [(.6, (160, 451)), (2.6, (160, 451)), (4.2, (595, 440)), (9, (595, 440))]
+        box, click = (330, 423, 750, 458), -10
+    elif idx == 4:
+        points = [(.6, (491, 326)), (2.2, (491, 326)), (4.1, (600, 582)), (9, (600, 582))]
+        box, click = (323, 535, 1144, 620), -10
+    else:
+        points = [(.6, (294, 243)), (3.2, (294, 243)), (5.5, (464, 402)), (8, (464, 402))]
+        box = (228, 220, 362, 264) if local < 4.5 else (50, 379, 1149, 423)
+        click = -10
+    overlay = Image.new("RGBA", screen.size)
+    draw = ImageDraw.Draw(overlay)
+    if local > 1.1:
+        alpha = round((105+55*math.sin(local*2))*smooth((local-1.1)/.5))
+        draw.rounded_rectangle(box, 10, outline=(177, 237, 199, alpha), width=2)
+        x, y = travel(points, local)
+        # A small editorial pointer guides attention; only the two captured
+        # menu/navigation interactions receive a click ripple.
+        if 0 <= local-click < .48:
+            q = (local-click)/.48
+            radius = 8+25*q
+            draw.ellipse((x-radius, y-radius, x+radius, y+radius),
+                         outline=(177, 237, 199, round(220*(1-q))), width=2)
+        draw.polygon([(x, y), (x+3, y+23), (x+9, y+16), (x+16, y+28),
+                      (x+21, y+25), (x+14, y+14), (x+23, y+12)],
+                     fill=(239, 253, 244, 235), outline=(12, 30, 23, 255), width=2)
+    screen = Image.alpha_composite(screen, overlay)
+    # At most 2.8% enlargement: movement remains subtle and controls readable.
+    span = SCENES[idx][1]-SCENES[idx][0]
+    zoom = 1+.028*smooth(local/span)
+    width, height = screen.size
+    cw, ch = width/zoom, height/zoom
+    cx = width/2 + 5*math.sin(local*.3)
+    cy = height/2 + 3*math.sin(local*.4)
+    content = screen.crop((round(cx-cw/2), round(cy-ch/2), round(cx+cw/2), round(cy+ch/2)))
+    content = content.resize((1080, 684), Image.Resampling.LANCZOS)
+    content.putalpha(PANEL_MASK)
+    art.alpha_composite(content, (746, 224))
+    ImageDraw.Draw(art).rounded_rectangle((746, 224, 1826, 908), 18,
+                                        outline="#476255", width=2)
+    return art
 
 
 def paste_animated(canvas, art, t, delay=0.0, dx=0, dy=0, float_y=0):
@@ -367,13 +456,16 @@ def chrome(canvas, global_t, idx):
 def compose_scene(idx, local, global_t):
     im = BASE.copy()
     decoration(im, global_t, idx)
-    if idx == 5:
+    if idx == 5 and not ANIMATED:
         network_motion(im, local)
     for j, (art, delay, dx, dy) in enumerate(PAGES[idx]):
-        drift = math.sin(local*.7)*3 if j == 1 and idx in (1, 2, 3, 4) else 0
+        if ANIMATED and j == 1 and idx in PANEL_NAMES:
+            art = animated_panel(idx, local)
+        moving_panels = PANEL_NAMES if ANIMATED else (1, 2, 3, 4)
+        drift = math.sin(local*.7)*3 if j == 1 and idx in moving_panels else 0
         paste_animated(im, art, local, delay, dx, dy, drift)
     # Gentle focus ring animates on the real home-page launch button.
-    if idx == 1 and local > 2:
+    if idx == 1 and local > 2 and not ANIMATED:
         d = ImageDraw.Draw(im)
         pulse = int(2+3*(.5+.5*math.sin(local*2.4)))
         d.rounded_rectangle((794-pulse, 755-pulse, 982+pulse, 808+pulse),
@@ -484,27 +576,33 @@ def stamp(seconds):
 def metadata():
     subtitles = "\n\n".join(f"{i+1}\n{stamp(a)} --> {stamp(b)}\n{s}"
                               for i, (a, b, _, s) in enumerate(SCENES))+"\n"
-    (OUT / "NorthStar-60s.zh-CN.srt").write_text(subtitles, encoding="utf-8")
+    (OUT / f"{PREFIX}-60s.zh-CN.srt").write_text(subtitles, encoding="utf-8")
     shotlist = [{"in": a, "out": b, "scene": title, "caption": s}
                 for a, b, title, s in SCENES]
     (OUT / "storyboard.json").write_text(json.dumps(shotlist, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
 
 
 def previews():
-    frame_at(3).save(OUT / "NorthStar-cover.jpg", quality=95)
+    frame_at(3).save(OUT / f"{PREFIX}-cover.jpg", quality=95)
     sheet = Image.new("RGB", (1920, 2160), BG)
     for i, (start, end, title, _) in enumerate(SCENES):
         frame = frame_at((start+end)/2).resize((960, 540), Image.Resampling.LANCZOS)
         sheet.paste(frame, ((i%2)*960, (i//2)*540))
-    sheet.save(OUT / "NorthStar-storyboard.jpg", quality=91)
+    sheet.save(OUT / f"{PREFIX}-storyboard.jpg", quality=91)
+    if ANIMATED:
+        detail = Image.new("RGB", (1920, 1080), BG)
+        for i, t in enumerate([7.4, 8.8, 16.4, 19.2]):
+            detail.paste(frame_at(t).resize((960, 540), Image.Resampling.LANCZOS),
+                         ((i%2)*960, (i//2)*540))
+        detail.save(OUT / "NorthStar-Animated-interactions.jpg", quality=93)
 
 
 def render():
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     music = CACHE / "original-score.wav"
     make_music(music)
-    destination = OUT / "NorthStar-60s-1080p.mp4"
-    temporary = CACHE / "NorthStar-60s-1080p.partial.mp4"
+    destination = OUT / VIDEO_NAME
+    temporary = CACHE / f"{PREFIX}-60s-1080p.partial.mp4"
     command = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning", "-f", "rawvideo",
                "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "pipe:0",
                "-i", str(music), "-map", "0:v:0", "-map", "1:a:0",
@@ -535,7 +633,7 @@ def render():
 
 
 def verify():
-    video = OUT / "NorthStar-60s-1080p.mp4"
+    video = OUT / VIDEO_NAME
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     # Full decode catches damaged frames and invalid timestamps, not only headers.
     result = subprocess.run([ffmpeg, "-v", "error", "-i", str(video), "-f", "null", "-"],
@@ -562,6 +660,10 @@ def verify():
               "decoded_frames": frames, "video_codec": info.get("codec"),
               "audio_codec": info.get("audio_codec"), "full_decode": "passed",
               "download_url": DOWNLOAD, "sha256": digest}
+    if ANIMATED:
+        report["source"] = "Fresh screenshots of the running NSCL debug application"
+        report["capture_count"] = len(CAPTURE_IMAGES)
+        report["style"] = "Original dark mint layout with subtle motion"
     (OUT / "verification.json").write_text(json.dumps(report, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2), flush=True)
 
@@ -570,6 +672,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preview-only", action="store_true")
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--animated", action="store_true",
+                        help="Use fresh program captures and subtle original-style animation")
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     CACHE.mkdir(parents=True, exist_ok=True)

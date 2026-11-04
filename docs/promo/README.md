@@ -1,6 +1,8 @@
 # NorthStar 一分钟宣传片
 
-新增的 Windows 11 / Fluent 风格版本见 [fluent/README.md](fluent/README.md)，成片为 `fluent/NorthStar-Fluent-60s-1080p.mp4`。下文保留第一版的说明与生成方式。
+当前推荐的是保留第一版风格、加入实际程序截图与轻动画的 [animated 版本](animated/README.md)，成片为 `animated/NorthStar-Animated-60s-1080p.mp4`。
+
+此前的 Windows 11 / Fluent 风格版本保留在 [fluent/README.md](fluent/README.md)。下文保留第一版的说明与生成方式。
 
 成片：`NorthStar-60s-1080p.mp4`，60 秒，1920 × 1080，30 fps，H.264 / AAC 立体声。中文字幕直接合成到画面，并提供 UTF-8 的 `NorthStar-60s.zh-CN.srt`。视频为原创动态图形、项目界面截图与原创合成电子配乐，无旁白。
 
