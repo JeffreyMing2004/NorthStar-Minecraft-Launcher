@@ -30,8 +30,8 @@ normalize() {
 
 # 头像/个人页归属站点，默认 GitHub；CNB 镜像可设为 https://cnb.cool
 profile_base=${CONTRIBUTOR_PROFILE_BASE:-https://github.com}
-# 头像地址：avatars.githubusercontent.com/<用户名>.png 直接可用，不用查数字 ID
-avatar_base=${CONTRIBUTOR_AVATAR_BASE:-https://avatars.githubusercontent.com}
+# 头像地址：github.com/<用户名>.png 会 302 到真实头像，避免 avatars 域名的 .png 路径回退到默认头像
+avatar_base=${CONTRIBUTOR_AVATAR_BASE:-https://github.com}
 # 每行头像数，6 个 112px 头像刚好铺满 1100px 阅读宽度
 avatar_columns=6
 output_file=CONTRIBUTORS.md
