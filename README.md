@@ -61,6 +61,17 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 
 已有游戏可以直接添加其 `.minecraft` 目录；本地 `.mrpack` 整合包可拖入启动器导入。
 
+## 贡献者
+<!-- contributors:start -->
+共 2 位贡献者：
+<table>
+  <tr>
+    <td align="center" width="180"><a href="https://github.com/JeffreyMing2004"><img src="https://avatars.githubusercontent.com/JeffreyMing2004.png?size=112" width="112" height="112" alt="JeffreyMing" /></a><br /><sub><b>JeffreyMing</b></sub></td>
+    <td align="center" width="180"><a href="https://github.com/sanyisi"><img src="https://avatars.githubusercontent.com/sanyisi.png?size=112" width="112" height="112" alt="sanyisi" /></a><br /><sub><b>sanyisi</b></sub></td>
+  </tr>
+</table>
+<!-- contributors:end -->
+
 ## 参考与致谢
 
 感谢 [HMCL](https://github.com/HMCL-dev/HMCL)、[PCL](https://github.com/Meloong-Git/PCL) 和 [Axolotl Launcher](https://github.com/Axolotl-Launcher/Axolotl) 提供的设计参考，以及 [eframe / egui](https://github.com/emilk/egui)、[Modrinth](https://modrinth.com/)、[BMCLAPI](https://bmclapi2.bangbang93.com/) 和 [minguncle 镜像](https://mirror.minguncle.cn/) 等项目与服务。
