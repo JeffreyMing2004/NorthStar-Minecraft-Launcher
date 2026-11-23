@@ -66,8 +66,8 @@ NorthStar Minecraft Launcher（NSCL）是使用 Rust 构建的 Minecraft Java Ed
 共 2 位贡献者：
 <table>
   <tr>
-    <td align="center" width="180"><a href="https://github.com/JeffreyMing2004"><img src="https://avatars.githubusercontent.com/JeffreyMing2004.png?size=112" width="112" height="112" alt="JeffreyMing" /></a><br /><sub><b>JeffreyMing</b></sub></td>
-    <td align="center" width="180"><a href="https://github.com/sanyisi"><img src="https://avatars.githubusercontent.com/sanyisi.png?size=112" width="112" height="112" alt="sanyisi" /></a><br /><sub><b>sanyisi</b></sub></td>
+    <td align="center" width="180"><a href="https://github.com/JeffreyMing2004"><img src="https://github.com/JeffreyMing2004.png?size=112" width="112" height="112" alt="JeffreyMing" /></a><br /><sub><b>JeffreyMing</b></sub></td>
+    <td align="center" width="180"><a href="https://github.com/sanyisi"><img src="https://github.com/sanyisi.png?size=112" width="112" height="112" alt="sanyisi" /></a><br /><sub><b>sanyisi</b></sub></td>
   </tr>
 </table>
 <!-- contributors:end -->
