@@ -28,18 +28,18 @@ normalize() {
     sed -e 's/[[:space:]]*$//' -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' || true
 }
 
-# 头像/个人页归属站点，默认 GitHub；CNB 镜像可设为 https://cnb.cool
-profile_base=${CONTRIBUTOR_PROFILE_BASE:-https://github.com}
-# 头像地址：github.com/<用户名>.png 会 302 到真实头像，避免 avatars 域名的 .png 路径回退到默认头像
-avatar_base=${CONTRIBUTOR_AVATAR_BASE:-https://github.com}
+# 头像/个人页归属站点，默认 CNB；如需切回 GitHub 可设置环境变量
+profile_base=${CONTRIBUTOR_PROFILE_BASE:-https://cnb.cool/users}
+# CNB 的 /users/<用户名>/avatar/s 返回真实头像，无需像 GitHub 那样靠 .png 302 跳转
+avatar_base=${CONTRIBUTOR_AVATAR_BASE:-https://cnb.cool/users}
 # 每行头像数，6 个 112px 头像刚好铺满 1100px 阅读宽度
 avatar_columns=6
 output_file=CONTRIBUTORS.md
 start_marker='<!-- contributors:start -->'
 end_marker='<!-- contributors:end -->'
 
-# 统一昵称与 GitHub 账号。格式：邮箱|显示名|GitHub 用户名（第三列留空表示无公开账号）
-aliases='1640053235@qq.com|JeffreyMing|JeffreyMing2004
+# 统一昵称与 CNB 账号。格式：邮箱|显示名|CNB 用户名（第三列留空表示无公开账号）
+aliases='1640053235@qq.com|JeffreyMing|JeffreyMing
 1972138560@qq.com|sanyisi|sanyisi
 codebuddy@cnb.cool|CodeBuddy|'
 
@@ -86,11 +86,11 @@ for show in "${names[@]}"; do
     fi
     table+=$'\n    <td align="center" width="180">'
     if [ -n "$login" ]; then
-        table+="<a href=\"$profile_base/$login\"><img src=\"$avatar_base/$login.png?size=112\" width=\"112\" height=\"112\" alt=\"$show\" /></a><br /><sub><b>$show</b></sub></td>"
+        table+="<a href=\"$profile_base/$login\"><img src=\"$avatar_base/$login/avatar/s\" width=\"112\" height=\"112\" alt=\"$show\" /></a><br /><sub><b>$show</b></sub></td>"
     else
         # 没有公开账号就不编头像，用首字母方块占位，免得把别人的脸挂错人
         initial=$(initial_of "$show")
-        table+="<img src=\"https://placehold.co/112x112/555555/FFFFFF?text=$initial\" width=\"112\" height=\"112\" alt=\"$show\" /><br /><sub><b>$show</b></sub></td>"
+        table+="<img src=\"https://cnb.cool/images/default-group-avatar.svg\" width=\"112\" height=\"112\" alt=\"$show\" /><br /><sub><b>$show</b></sub></td>"
     fi
     column=$((column + 1))
     if [ $((column % avatar_columns)) -eq 0 ]; then
