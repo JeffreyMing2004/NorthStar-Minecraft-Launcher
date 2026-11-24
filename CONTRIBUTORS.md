@@ -4,5 +4,5 @@
 本文件由 `scripts/update-contributors.sh` 从 git 历史生成，请勿手动编辑。
 
 - CodeBuddy
-- [JeffreyMing](https://github.com/JeffreyMing2004)
-- [sanyisi](https://github.com/sanyisi)
+- [JeffreyMing](https://cnb.cool/users/JeffreyMing)
+- [sanyisi](https://cnb.cool/users/sanyisi)
