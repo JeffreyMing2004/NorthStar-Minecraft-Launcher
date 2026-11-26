@@ -96,12 +96,15 @@ impl Downloader {
     }
 
     pub(crate) fn byte_progress(&self, stage: &str, downloaded: u64, total: u64) {
-        (self.reporter)(Progress {
-            stage: stage.into(),
-            bytes_downloaded: downloaded,
-            total_bytes: Some(total),
-            ..Default::default()
-        });
+        let event = {
+            let mut state = self.progress.lock().unwrap();
+            state.0.stage = stage.into();
+            state.0.bytes_downloaded = downloaded;
+            state.0.total_bytes = Some(total);
+            state.1 = Instant::now();
+            state.0.clone()
+        };
+        (self.reporter)(event);
     }
 
     pub(crate) fn complete(&self, stage: &str) {
@@ -385,6 +388,45 @@ pub fn write_json(path: &Path, data: &impl serde::Serialize) -> Result<()> {
     )
     .map_err(|e| e.to_string())?;
     replace_file(&temporary, path)
+}
+
+#[cfg(test)]
+mod progress_tests {
+    use super::*;
+
+    fn downloader(reporter: Reporter) -> Downloader {
+        Downloader::new(
+            Source {
+                proxy_mode: ProxyMode::Direct,
+                ..Default::default()
+            },
+            Arc::new(AtomicBool::new(false)),
+            reporter,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn byte_progress_updates_the_shared_state_used_by_the_ui() {
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let capture = observed.clone();
+        let downloader = downloader(Arc::new(move |event| {
+            capture.lock().unwrap().push(event);
+        }));
+
+        downloader.phase("准备文件", 2);
+        downloader.byte_progress("复制文件", 24, 100);
+        downloader.byte_progress("复制文件", 48, 100);
+
+        let events = observed.lock().unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[1].bytes_downloaded, 24);
+        assert_eq!(events[2].bytes_downloaded, 48);
+        assert_eq!(events[2].total_bytes, Some(100));
+        assert_eq!(events[2].stage, "复制文件");
+        assert_eq!(events[2].completed, 0);
+        assert_eq!(events[2].total, 2);
+    }
 }
 
 #[cfg(test)]
