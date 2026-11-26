@@ -1,4 +1,5 @@
 use super::Route;
+#[cfg(windows)]
 use crate::multiplayer::Result;
 use std::{
     fs,

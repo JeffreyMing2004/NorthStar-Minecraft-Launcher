@@ -72,13 +72,17 @@ impl Platform {
 }
 
 pub fn hidden_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
-    let mut command = Command::new(program);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
+        let mut command = Command::new(program);
         command.creation_flags(0x08000000);
+        command
     }
-    command
+    #[cfg(not(windows))]
+    {
+        Command::new(program)
+    }
 }
 
 pub fn rules_allow(rules: &[Rule], platform: &Platform, demo: bool) -> bool {
